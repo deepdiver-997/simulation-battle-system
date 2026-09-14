@@ -220,8 +220,10 @@ public:
     int (&lastActionType)[2];
     int (&lastActionIndex)[2];
     PreemptiveRight& preemptive_right;
+    int (&damage_reduce_flat)[2][4];
     int (&damage_reduce_add)[2][4];
     int (&damage_reduce_mul)[2][4];
+    int (&damage_add_extra_mul)[2][4];
     DamageSnapshot& pendingDamage;
     DamageSnapshot& resolvedDamage;
 
@@ -503,6 +505,7 @@ public:
         install_default_damage_reduction();
         install_default_damage_block();
         install_default_damage_amp();
+        install_default_damage_amp_extra();
     }
 
     //--- 回合类效果管理 ---
@@ -631,12 +634,30 @@ public:
     }
 
     /**
-     * 安装默认减伤（REDUCE 阶段，MITIGATE 类别）。
-     * 把工作区 damage_reduce_add/mul（4 槽减伤）从同步 inline 结算迁入管线，
-     * 从而可被 damage_suppress_mask 按类别抑制（如沧岚"挡伤失效"）并可与其他 REDUCE 效果排序。
+     * 安装默认减伤（**两个阶段**：REDUCE_FLAT + REDUCE_PCT，均 MITIGATE 类别）。
+     *
+     * 官方减伤区固定顺序（L402）：「**点数减伤——百分比减伤——伤害锁定——伤害免疫**」→
+     * ① `REDUCE_FLAT` 读 `damage_reduce_flat`（点数，求和后从 final 扣，不为负）；
+     * ② `REDUCE_PCT` 读 `damage_reduce_add/mul`（加算求和钳 ±100 + 乘算连乘，
+     *    官方"通用减伤叠加超 100% 即失效"）。
+     * 两者分开是因为顺序可观测：(base-30)×0.5 ≠ base×0.5-30。
+     *
+     * MITIGATE 类别 → 可被 damage_suppress_mask 抑制（如沧岚"挡伤失效"）。
      * 每次攻击伤害结算前确保已安装（init_battle / clearAllEffects 后调用）。
      */
     void install_default_damage_reduction();
+
+    /**
+     * 安装默认**非通用增伤**（AMP_EXTRA 阶段，AMP 类别，**乘法**）。
+     * 官方 L352：「通用增伤……所有的通用增伤**加法**计算，而非通用增伤全部**乘法**计算」；
+     * 措辞判据是"**额外**提升X%"（693 圣光吟诵）。
+     *
+     * ⚠️ 为什么单开一个阶段而不是并进 AMP：阶段序就是机制——AMP_EXTRA 排在 AMP 之后、
+     *   而犀牛的受高伤检测（GUARD_DETECT）在链首 → **"693 增伤乱穿犀牛"**（L348）由此成立。
+     * AMP 类别 → 不被 damage_suppress_mask 抑制（增伤不是"挡伤"）。
+     * 每次攻击伤害结算前确保已安装（init_battle / clearAllEffects 后调用）。
+     */
+    void install_default_damage_amp_extra();
 
     /**
      * 安装默认挡伤（BLOCK 阶段，BLOCK 类别）。
@@ -654,10 +675,11 @@ public:
 
     /**
      * 安装默认增伤（AMP 阶段，AMP 类别）。
-     * 把 `ws.damage_add_pct[attacker]`（百分比增伤）与 `ws.damage_add_flat[attacker]`（固定值增伤）
-     * 接进伤害结算管线：final = final * (100 + pct) / 100 + flat。
+     * 把 `ws.damage_add_pct[attacker]`（**通用**增伤·加算）与 `ws.damage_add_flat[attacker]`
+     * （通用增伤·固定值）接进伤害结算管线：final = final * (100 + pct) / 100 + flat。
+     * 「额外提升X%」一族走 `install_default_damage_amp_extra`（乘法，另一个阶段）。
      *
-     * ⚠️ 为什么走 ws 而不是让效果直接注册管线回调（"下N回合伤害翻倍"类，如 776/693）：
+     * ⚠️ 为什么走 ws 而不是让效果直接注册管线回调（"下N回合伤害翻倍"类，如 776）：
      *   管线回调一旦注册就永久驻留，既不能随回合过期、也不能被断回合作废。
      *   放 ws 后由**回合效果**每回合写入（见 effect_set_damage_amp）：ws 每回合 reset 天然清空，
      *   效果走时点桶 → 断回合/切换作废免费获得。

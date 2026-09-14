@@ -108,8 +108,10 @@ BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robot
     , lastActionType(ws.lastActionType)
     , lastActionIndex(ws.lastActionIndex)
     , preemptive_right(ws.preemptive_right)
+    , damage_reduce_flat(ws.damage_reduce_flat)
     , damage_reduce_add(ws.damage_reduce_add)
     , damage_reduce_mul(ws.damage_reduce_mul)
+    , damage_add_extra_mul(ws.damage_add_extra_mul)
     , pendingDamage(ws.pendingDamage)
     , resolvedDamage(ws.resolvedDamage)
 {
@@ -134,15 +136,43 @@ void BattleContext::init_battle() {
     install_default_damage_reduction();
     install_default_damage_block();
     install_default_damage_amp();
+    install_default_damage_amp_extra();
 }
 
 void BattleContext::install_default_damage_reduction() {
     for (int owner = 0; owner < 2; ++owner) {
-        // 减伤只从"防御方"的槽位读取。管线在 REDUCE 阶段会先后走攻击方/防御方两个桶，
+        // 减伤只从"防御方"的槽位读取。管线会先后走攻击方/防御方两个桶，
         // 因此回调里用 resolvedDamage.defenderId 判断当前桶 owner 是否为防御方，是才施加。
         // MITIGATE 类别 → 可被 damage_suppress_mask 抑制（如沧岚"挡伤失效"）。
+        //
+        // ① REDUCE_FLAT：**点数减伤**——官方减伤区顺序的第一位（L402「点数减伤——百分比减伤」）。
+        //    先在裸伤上扣点数，再算百分比，与"反序"结果不同（(base-30)×0.5 vs base×0.5-30）。
         register_damage_effect(
-            DamagePhase::REDUCE,
+            DamagePhase::REDUCE_FLAT,
+            owner,
+            DamageEffectCategory::MITIGATE,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                const int defender = ctx->resolvedDamage.defenderId;
+                if (defender < 0 || defender > 1 || bucket_owner != defender) {
+                    return;
+                }
+                int flat_sum = 0;
+                for (int i = 0; i < 4; ++i) {
+                    flat_sum += ctx->damage_reduce_flat[defender][i];
+                }
+                if (flat_sum == 0) {
+                    return;
+                }
+                ctx->resolvedDamage.final = std::max(0, ctx->resolvedDamage.final - flat_sum);
+            }
+        );
+        // ② REDUCE_PCT：**百分比减伤**——加算槽求和（钳 ±100，官方"通用减伤叠加超 100% 即失效"）
+        //    + 乘算槽逐条连乘。实现在 Calculation::applyDamageReduction。
+        register_damage_effect(
+            DamagePhase::REDUCE_PCT,
             owner,
             DamageEffectCategory::MITIGATE,
             [](BattleContext* ctx, int bucket_owner) {
@@ -158,6 +188,44 @@ void BattleContext::install_default_damage_reduction() {
                     ctx->damage_reduce_add[defender],
                     ctx->damage_reduce_mul[defender]
                 );
+            }
+        );
+    }
+}
+
+// 非通用增伤（乘法通道）——官方 L352：「通用增伤……**所有的通用增伤加法计算，
+// 而非通用增伤全部乘法计算**」。措辞判据是"**额外**提升X%"（如 693 圣光吟诵）。
+// 单独一个阶段（AMP_EXTRA）且排在通用增伤（AMP）之后——这正是"693 增伤乱穿犀牛"的结构：
+// 犀牛的受高伤检测在链首（GUARD_DETECT），之后才被 693 抬起来的伤害它看不到。
+// AMP 类别 → **不被** damage_suppress_mask 抑制（增伤不是"挡伤"）。
+void BattleContext::install_default_damage_amp_extra() {
+    for (int owner = 0; owner < 2; ++owner) {
+        register_damage_effect(
+            DamagePhase::AMP_EXTRA,
+            owner,
+            DamageEffectCategory::AMP,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                DamageSnapshot& damage = ctx->resolvedDamage;
+                if (damage.attackerId < 0 || damage.attackerId > 1
+                    || bucket_owner != damage.attackerId) {
+                    return;
+                }
+                if (damage.final <= 0) {
+                    return;
+                }
+                for (int i = 0; i < 4; ++i) {
+                    const int v = ctx->damage_add_extra_mul[bucket_owner][i];
+                    if (v == 0) {
+                        continue;
+                    }
+                    damage.final = damage.final * (100 + v) / 100;
+                }
+                if (damage.final < 0) {
+                    damage.final = 0;
+                }
             }
         );
     }

@@ -11,19 +11,37 @@ class BattleContext;
  * DamagePhase - 伤害修正节点（有序）
  *
  * 伤害值在 workspace（resolvedDamage.final）中流经各节点，每个节点的效果读取/修改它。
- * 节点顺序决定机制胜负：
- *   - "靠后增伤击穿锁伤" = 那个增伤挂在 CAP 之后的节点；
+ * 节点顺序决定机制胜负——**顺序即机制**：
+ *   - "693 增伤乱穿犀牛" = 那个增伤挂在犀牛检测（GUARD_DETECT）**之后**的节点；
+ *   - "保底伤害不触发犀牛超350回满" = 同上，保底也在犀牛检测之后把伤害抬起来；
+ *   - "锁伤最后再拦一次" = 锁伤挂在保底之后的 CAP；
  *   - "无法被击穿的锁伤" = 那个锁伤挂在 FINAL_CORRECT（最终修正）。
  *
- * 顺序本身是游戏知识整理出的配置（像 FSM 状态序），此处为初始序，可按需调整。
+ * 顺序来自两条官方口径的合并（用户 2026-09-14 逐条确认）：
+ *   · 时点链（L345）：「犀牛魂印—通用增伤—693增伤—保底伤害—护盾（从先到后）」
+ *   · 减伤区固定顺序（L402）：「分出增伤区、减伤区，不再进行相互穿插。减伤顺序将固定为：
+ *     点数减伤——百分比减伤——伤害锁定——伤害免疫」
+ *   辅以 L254「坚硬是靠前的减伤，乘法计算，**时点早于保底伤害**」→ 保底在减伤之后。
+ *
+ * ⚠️ `kOrder` 是**一个可改常量**：实测口径若有出入，改一行顺序即可，不用动任何回调。
+ *
+ * ⚠️ **两处已记档的待做**（阶段在、生产者未做，别当成 bug）：
+ *   · `FLOOR` / `CAP` 目前**零注册**（保底/锁伤的具体效果还没实现）。实现**锁伤时必须查
+ *     `ws.attack_credential[attacker].ignore_damage_limit`（官方 697「无视伤害限制」）**——
+ *     该凭证现在写入完备却零消费，是死凭证。
+ *   · 护盾/护罩仍留在 `deal_damage`（**管线之后**）。官方 L269 是"体验服规划"、L347 的算例
+ *     又暗示护盾可能在 693 增伤之前，两处不一致 → 待实测后再决定是否挪进管线。
  */
 enum class DamagePhase {
-    AMP,           // 增伤（进攻）
-    REDUCE,        // 减伤（防御）
-    FLOOR,         // 保底（最低伤害）
-    CAP,           // 锁伤（最高伤害）
-    BLOCK,         // 挡伤/免伤归零（防御：次数免伤、"免疫下1次攻击伤害"）
-    DETECT,        // 挡伤检测/触发（如 受高伤回血、反伤）
+    GUARD_DETECT,  // 犀牛魂印：受高伤检测/挡伤/回满——**看到的必须是未增伤的值**（时点链第一位）
+    AMP,           // 通用增伤（加法）——"造成攻击伤害提升X%"一族
+    AMP_EXTRA,     // 非通用增伤（乘法）——"**额外**提升X%"一族（693；判据就是"额外"这个字）
+    REDUCE_FLAT,   // 点数减伤——"减伤N点"
+    REDUCE_PCT,    // 百分比减伤——加算槽求和(钳 ±100) + 乘算槽连乘
+    FLOOR,         // 保底伤害（最低伤害）——减伤之后、锁伤之前
+    CAP,           // 伤害锁定（最高伤害）——最后再拦一次；**697 凭证可穿**
+    BLOCK,         // 挡伤/免伤归零（防御：次数免伤、"免疫下1次攻击伤害"、概率挡伤）
+    DETECT,        // 受击检测/触发（反伤、附伤）
     FINAL_CORRECT, // 最终修正（归零/不可击穿的锁伤）
 };
 
@@ -56,11 +74,15 @@ struct DamageEffect {
  *
  * 每阶段每方一个效果桶；walk 按阶段序执行，读/写 ctx->resolvedDamage（伤害值）。
  * 执行前检查所属方的 damage_suppress_mask，被抑制的类别直接跳过。
- * 萨瑞卡式"中途检测+归零" = 在 DETECT 阶段读 resolvedDamage.final，> 阈值则置 0。
+ * 萨瑞卡式"受高伤检测+归零/回满" = 在 **GUARD_DETECT** 阶段读 resolvedDamage.final，> 阈值则处理
+ * ——放链首是为了让"之后才发生的增伤/保底"穿过它（官方"693 增伤乱穿犀牛"的成因）。
+ *
+ * ⚠️ 打盔（技能无效）时**管线整段不跑**（`handle_*_AttackDamage` 早退）→ 次数型减伤/免伤
+ *    天然**不被消耗**，与官方"打盔不会消耗点数减伤，既然不消耗那自然也不会触发"一致。
  */
 class DamagePipeline {
 public:
-    static constexpr int kPhaseCount = 7;
+    static constexpr int kPhaseCount = 10;
 
     DamagePipeline() = default;
     DamagePipeline(const DamagePipeline&) = delete;
@@ -89,14 +111,18 @@ public:
         }
     }
 
+    // ⚠️ **顺序即机制**：改这里就是改机制（见 DamagePhase 的长注释）。改一行即可，不用动回调。
     static constexpr DamagePhase kOrder[kPhaseCount] = {
-        DamagePhase::AMP,
-        DamagePhase::REDUCE,
-        DamagePhase::FLOOR,
-        DamagePhase::CAP,
-        DamagePhase::BLOCK,
-        DamagePhase::DETECT,
-        DamagePhase::FINAL_CORRECT,
+        DamagePhase::GUARD_DETECT,   // 犀牛魂印（看未增伤的值）
+        DamagePhase::AMP,            // 通用增伤（加法）
+        DamagePhase::AMP_EXTRA,      // 非通用增伤（乘法）——693
+        DamagePhase::REDUCE_FLAT,    // 点数减伤
+        DamagePhase::REDUCE_PCT,     // 百分比减伤
+        DamagePhase::FLOOR,          // 保底伤害
+        DamagePhase::CAP,            // 伤害锁定（末位再拦一次，697 凭证可穿）
+        DamagePhase::BLOCK,          // 伤害免疫/挡伤归零
+        DamagePhase::DETECT,         // 受击检测/触发（反伤、附伤）
+        DamagePhase::FINAL_CORRECT,  // 最终修正（不可击穿）
     };
 
 private:

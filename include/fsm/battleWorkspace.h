@@ -136,6 +136,9 @@ struct BattleWorkspace {
     bool action_start_abnormal_damage_pending[2];
 
     //========== 减伤槽位 ==========
+    // 官方减伤区顺序（L402）：「**点数减伤——百分比减伤——伤害锁定——伤害免疫**」。
+    // REDUCE_FLAT 阶段先扣点数，REDUCE_PCT 阶段再算百分比（加算求和钳 ±100 + 乘算连乘）。
+    int damage_reduce_flat[2][4];   // **点数**减伤（4槽位，求和后从 final 扣，不为负）
     int damage_reduce_add[2][4];    // 加算减伤百分比(4槽位)
     int damage_reduce_mul[2][4];    // 乘算减伤百分比(4槽位)
 
@@ -150,8 +153,14 @@ struct BattleWorkspace {
     //    （那场仗之后该技能永远必中）；而写在 on_selected 又会被 ROUND_START 的 ws reset 冲掉
     //    —— MOVE_RIGHT 是"reset 之后、出手之前"的唯一正确窗口。
     bool must_hit_grant[2];
-    float damage_add_pct[2];       // 伤害加成百分比
-    int   damage_add_flat[2];      // 伤害加成固定值
+    //========== 增伤两通道（官方 L352：**通用增伤加法、非通用增伤乘法**）==========
+    // 判据是措辞：「造成攻击伤害提升X%」= 通用 → 加法槽；「造成的攻击伤害**额外**提升X%」
+    // = 非通用 → 乘法槽。两者落在不同阶段（AMP / AMP_EXTRA），所以 693 排在通用增伤之后。
+    float damage_add_pct[2];        // 通用增伤·加算百分比（AMP 阶段求和后一次性施加）
+    int   damage_add_flat[2];       // 通用增伤·固定值
+    int   damage_add_extra_mul[2][4]; // **非通用增伤·乘算**（AMP_EXTRA 阶段逐槽 final*(100+v)/100）
+    // ⚠️ 全部靠 `reset()` 的 memset 每回合归零 → 回合类效果必须**每回合重写**
+    //    （见 effect_set_damage_amp 的套路：注册成 BATTLE_ROUND_START 回合桶效果）。
     numerical_properties battle_attrs[2];        // 本回合视角的数值属性，受到效果修正但不改变真实属性
     int  view_levels[2][6];         // 本回合能力提升/下降等级，受到视强为弱、示弱为强效果修正，但是不会改变真实能力上升/下降等级
     int view_elementalAttributes[2][2];
