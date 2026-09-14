@@ -38,7 +38,10 @@ class Calculation {
         }
         damage = (0.84 * Attack / Defense * power + 2) * restraint
                 * (217 + rand() % 39) / 255;
-        if(involve(ws.view_elementalAttributes[attacker], skill.element)) {
+        // 本系加成（×1.5）：判据是**技能真实系别** vs 攻击方精灵系别。
+        // ⚠️ "改系别只改克制、不改本系"是刻意的（改的是 `skill_element_view`，本系读 `skill.element`）；
+        //    要"获得本系加成"的（effect 2490）走 `ws.force_involve` 这个显式开关，别去动 involve 的入参。
+        if (ws.force_involve[attacker] || involve(ws.view_elementalAttributes[attacker], skill.element)) {
             damage *= 1.5; // Elemental advantage
         }
         return damage;

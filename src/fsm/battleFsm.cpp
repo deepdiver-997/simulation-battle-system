@@ -230,8 +230,15 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
     // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗 rand()。
     ctx->ws.combo_view[robot_id].materialize(skill.roll_combo_count());
     // 技能元素视图层：克制计算用的系别打底物化 skill.element，效果可改（"以XX系别算克制"）。
-    ctx->ws.skill_element_view[robot_id][0] = skill.element[0];
-    ctx->ws.skill_element_view[robot_id][1] = skill.element[1];
+    // ★ 若**选择期**（MOVE_RIGHT）授予了"以指定系别进行伤害结算"（effect 2490），用授予值打底——
+    //   否则这一行会把授予的系别冲掉（MOVE_RIGHT 早于 ON_SKILL_HIT）。同 `must_hit_grant` 的教训。
+    if (ctx->ws.skill_element_grant_valid[robot_id]) {
+        ctx->ws.skill_element_view[robot_id][0] = ctx->ws.skill_element_grant[robot_id][0];
+        ctx->ws.skill_element_view[robot_id][1] = ctx->ws.skill_element_grant[robot_id][1];
+    } else {
+        ctx->ws.skill_element_view[robot_id][0] = skill.element[0];
+        ctx->ws.skill_element_view[robot_id][1] = skill.element[1];
+    }
     const auto [result, flags] = skill.execute(ctx, robot_id, trigger_state);
     write_skill_resolution(ctx, robot_id, result, flags);
     // 变威力标记清零：`execute()` 里的**强制执行置 0**（query_usage ②.0）是引擎行为不是效果改写，

@@ -249,6 +249,20 @@ struct BattleWorkspace {
     // 克制（>1）保持克制（区别于硬设 restraint_view=1 会连克制也削）。伤害公式在 restraint 算好后判断。
     bool no_weakness[2]{};
 
+    // "以指定系别进行伤害结算"的**选择期授予**（effect 2490 一族）。
+    // ★ 为什么是"授予"而不是直接写 `skill_element_view`：选择期效果跑在 **MOVE_RIGHT**，
+    //   而 `resolve_skill_execution` 在 **ON_SKILL_HIT** 会把 `skill_element_view` **物化覆盖**成
+    //   `skill.element` —— 直接写视图会被冲掉（与 `must_hit_grant` 同构的教训）。
+    //   物化时若授予有效则用授予值打底；SKILL_EFFECT 时点的效果仍可在此基础上再改。
+    int  skill_element_grant[2][2]{};
+    bool skill_element_grant_valid[2]{};
+
+    // 本次攻击**强行获得本系加成**（"获得本系属性加成"，effect 2490）。
+    // ⚠️ `calculateDamage` 里 `involve()` 读的是**技能真实系别 `skill.element`**（刻意的设计：
+    //    改系别只改克制、不改本系）→ "改了系别就自动吃本系加成"是**拿不到**的，故另开这个显式开关。
+    //    选择期（MOVE_RIGHT）写、伤害公式读；ws 每回合 reset 天然清空。
+    bool force_involve[2]{};
+
     //========== 命中效果失效标记（③层） ==========
     // 消费点已收口到 `Skills::query_usage` ②.5（按技能类型分别消费 RuleCenter 的两类条目），
     // 结果模式记在这里供执行期读：

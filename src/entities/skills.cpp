@@ -283,6 +283,29 @@ bool Skills::loadSkills() {
             }
             continue;
         }
+        // 选择期"**此技能**微弱对手则…"一族（2490「先制+3、获得本系加成并以神灵系结算」；
+        // 同族的 785/2030 待确认口径后再接——785 原文是"若**自身**攻击对手时"，
+        // 指的是精灵系别还是技能系别尚未定）。
+        // ★ 判据必须用**技能槽位的静态系别**，不能读 `ws.skill_element_view`——视图会被
+        //   "以XX系别进行伤害结算"这类效果改写，读视图等于把改写后的系别喂回判定
+        //   （用户 2026-09-14 口径）。
+        // ★ 插件拿不到 core 内部的 `resolve_executing_skill`，所以**把技能静态系别追加进 args**
+        //   （args[2]/args[3]）由 core 喂过去 —— 不必为它开 CoreApi 新槽。
+        if (effect_record.effect_id == 2490) {
+            EffectArgs sel_args = build_effect_args_for_skill(effect_record);
+            if (sel_args.owned_int_args.size() < 4) {
+                sel_args.owned_int_args.resize(4, 0);
+            }
+            sel_args.owned_int_args[2] = element[0];
+            sel_args.owned_int_args[3] = element[1];
+            sel_args.refresh_views();
+            Effect sel = clone_effect(effect_record.effect_id, std::move(sel_args));
+            if (sel.logic) {
+                selection_effects_.push_back(
+                    SkillEffectNode(std::move(sel), State::BATTLE_FIRST_MOVE_RIGHT));
+            }
+            continue;
+        }
         // ── 认证数据层（custom_* 表）──────────────────────────────
         // ① override(官差纠偏, 待 seeds 落地后接 dispatch：ignore/dead_column/map_to/...)；
         // ② program(离线编码效果程序)：命中则用 JSON 加载器构造单元, 替代下方"注册函数→
