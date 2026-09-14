@@ -373,14 +373,21 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
     // 暴击：**只消费** query_usage 已掷好的结果（`ctx->crit_happened`），这里不再重掷。
     // 判定位必须在"技能无效"之前（只有 miss 能阻止暴击），而本函数在技能无效时根本不会
     // 被执行——所以掷点搬到了 query_usage 的 ①.5 步。
-    // 按暴击倍率放大 base（在减伤管线之前）。暴击抗性削减"加成"部分
-    // （如 2 倍暴击 + 50% 暴击抗性 → 1.5 倍）。
+    //
+    // ★ 施加顺序：**先按暴击系数放大整段伤害，再乘暴击抗性** —— 抗性乘的是**整段**，
+    //   **不是**只削"暴击加成的那部分"（用户 2026-09-14 纠正）：
+    //     原本 100 的伤害 → 暴击 ×2 = 200 → 35% 暴击抗性 → **200×0.65 = 130**
+    //     （**不是** 100 + 100×65% = 165）；100% 抗性 → 200×0 = **0**。
+    //   官方同源（L99《关于暴击对连击的影响》）：「这里的暴击系数×暴击抗性一般都是默认对手
+    //   35%拉满，可以折算为 **2×0.65=1.3**」。
+    //   与另两种伤害抗性**同一形状**（固定伤害抗性 35% → 200×65% = 130，见 deal_damage）。
+    //   两步各自取整（L99 的取整顺序："暴击系数计算后取整、抗性计算后取整"）。
     if (ctx->crit_happened[attacker_id]) {
         const int crit_mult = ctx->ws.cached_crit_damage[attacker_id];  // 默认 200（2 倍）
-        const int bonus = crit_mult - 100;
-        // 读 ws 有效视图（临时 buff 可修改暴击抗性）；基线由 sync_damage_resist_view 重基。
-        const int effective_bonus = bonus * (100 - ctx->ws.eff_crit_resist_pct[defender_id]) / 100;
-        snapshot.base = snapshot.base * (100 + effective_bonus) / 100;
+        snapshot.base = snapshot.base * crit_mult / 100;               // ① 暴击系数（整段放大）
+        // ② 暴击抗性：读 ws **有效视图**（临时 buff 可修改；基线由 sync_damage_resist_view 重基）
+        const int crit_resist = ctx->ws.eff_crit_resist_pct[defender_id];
+        snapshot.base = snapshot.base * (100 - crit_resist) / 100;     // 乘整段
         snapshot.isCrit = true;
     }
     // ★ 连击（"1回合做 x~y 次攻击"）：官方是**一次伤害公式 ×N**，不是 N 次独立结算
