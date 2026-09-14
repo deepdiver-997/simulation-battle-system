@@ -344,10 +344,10 @@ int seal_skill(BattleContext* ctx, int source, int target, int effect_id, bool a
     // 概率封属（如 effect 695「{0}回合内{1}%令对手使用的属性技能无效」）：
     // 概率**每次响应时**掷（不是授予时掷一次）——官方表现是"每回合都有机会封住"，
     // 而非"授予时决定这几回合封不封"。走 RuleTicket::condition（notify 逐条求值点）。
-    std::function<bool(BattleContext*, int, int)> condition = nullptr;
+    std::function<bool(BattleContext*, int, int, bool)> condition = nullptr;
     if (chance_pct < 100) {
         const int chance = chance_pct <= 0 ? 0 : chance_pct;
-        condition = [chance](BattleContext*, int, int) {
+        condition = [chance](BattleContext*, int, int, bool) {
             if (chance <= 0) {
                 return false;
             }

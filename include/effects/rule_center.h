@@ -119,7 +119,12 @@ struct RuleTicket {
     //           无念归空净(2006) 被穿消耗 / 遗颂(2269) 被穿保留。
     // 回合类不看这个：回合类被穿是否结束，取决于穿盔技能**有没有断回合效果**。
     bool consumed_when_pierced = false;
-    std::function<bool(BattleContext*, int attacker, int defender)> condition;  // 条件（nullptr=无条件）
+    // 条件（nullptr = 无条件）。**条件盔**的落点：条件不满足的条目在 notify 里被**跳过、不消耗**
+    // （854「令对手下1次使用的威力高于{0}的攻击技能无效」——对手用威力不够的技能时既不拦也不扣次数）。
+    // ⚠️ 签名带 **power（面板威力）** 与 **is_attribute_skill**：条件盔的典型判据就是"这次用的技能
+    //    威力够不够高"。传的是 `Skills::power`（**面板威力**），**不是** `ws.skill_power_view`——
+    //    官方口径：威力宝石/变威力类效果改的是视图，条件盔看的是面板（用户 2026-09-13）。
+    std::function<bool(BattleContext*, int user, int power, bool is_attribute_skill)> condition;
 
     // ── 消费 / 生命周期 ─────────────────────────────────
     int remaining_counts = 0;      // 次数（>0；响应即减，减到 0 注销）
@@ -262,7 +267,7 @@ public:
     int grant_seal(int source_owner, int source_slot, int source_effect_id, int target,
                     SealKind kind, int counts, int rounds, bool penetrable,
                     EffectScope scope = EffectScope::ON_STAGE,
-                    std::function<bool(BattleContext*, int, int)> condition = nullptr,
+                    std::function<bool(BattleContext*, int, int, bool)> condition = nullptr,
                     int source_valid_id = 0,
                     bool consumed_when_pierced = false) {
         // 允许次数型(counts>0)或回合型(rounds>0)，至少其一（回合型正常 counts=0）。
@@ -401,7 +406,7 @@ public:
                 ++it;
                 continue;
             }
-            if (t.condition && !t.condition(ctx, user, t.target)) {
+            if (t.condition && !t.condition(ctx, user, power, is_attribute_skill)) {
                 ++it;
                 continue;
             }
