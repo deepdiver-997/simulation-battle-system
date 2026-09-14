@@ -137,6 +137,7 @@ void BattleContext::init_battle() {
     install_default_damage_block();
     install_default_damage_amp();
     install_default_damage_amp_extra();
+    install_default_damage_guard_detect();
 }
 
 void BattleContext::install_default_damage_reduction() {
@@ -188,6 +189,41 @@ void BattleContext::install_default_damage_reduction() {
                     ctx->damage_reduce_add[defender],
                     ctx->damage_reduce_mul[defender]
                 );
+            }
+        );
+    }
+}
+
+// 链首受击快照（GUARD_DETECT 阶段）——把"增伤前"的伤害值记进 ws，供「受高伤/受低伤」一族魂印读。
+//
+// 为什么需要它（而不是让插件自己在攻击时点的桶里读 `resolvedDamage`）：
+//   攻击伤害时点（`BATTLE_*_ATTACK_DAMAGE`）的桶**只跑当回合 mover 那一侧** ——
+//   犀牛作为防守方、自己不是 mover 时根本不执行（谱尼虚无的注释早就点过这个坑）。
+//   而伤害管线是双方都走的（每阶段先攻击方桶、再防守方桶），所以 GUARD_DETECT 挂在管线上
+//   对"防守方"天然生效，且位置就在**增伤之前**（链首）。
+//
+// 为什么必须是"增伤前"：官方时点链是「犀牛魂印—通用增伤—693增伤—保底伤害—护盾」。
+//   693 增伤（AMP_EXTRA）落在犀牛检测**之后** → 它把实际伤害顶过 350 时犀牛看不到
+//   —— 这就是「693 增伤乱穿犀牛」（检测早于增伤）。
+// DETECT 类别 → 吃 `damage_suppress_mask`（"挡伤失效"也该废掉受高伤检测）。
+void BattleContext::install_default_damage_guard_detect() {
+    for (int owner = 0; owner < 2; ++owner) {
+        register_damage_effect(
+            DamagePhase::GUARD_DETECT,
+            owner,
+            DamageEffectCategory::DETECT,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                const DamageSnapshot& damage = ctx->resolvedDamage;
+                const int defender = damage.defenderId;
+                if (defender < 0 || defender > 1 || bucket_owner != defender) {
+                    return;   // 只记"我是本次攻击的防守方"的那一趟
+                }
+                const bool red = damage.isRed && damage.final > 0;
+                ctx->ws.guard_detect_damage[defender] = red ? damage.final : 0;
+                ctx->ws.guard_detect_happened[defender] = red;
             }
         );
     }

@@ -506,6 +506,7 @@ public:
         install_default_damage_block();
         install_default_damage_amp();
         install_default_damage_amp_extra();
+        install_default_damage_guard_detect();
     }
 
     //--- 回合类效果管理 ---
@@ -646,6 +647,18 @@ public:
      * 每次攻击伤害结算前确保已安装（init_battle / clearAllEffects 后调用）。
      */
     void install_default_damage_reduction();
+
+    /**
+     * 安装默认**链首受击快照**（GUARD_DETECT 阶段，DETECT 类别）。
+     * 把该阶段（伤害链**第一位**、增伤之前）的伤害值记进 `ws.guard_detect_damage[defender]`，
+     * 供「受高伤/受低伤」一族魂印读取（不灭地威·萨瑞卡 1217）。
+     *
+     * ⚠️ 必须由**管线**写而不是插件自己在攻击时点的桶里读：那些时点的桶只跑当回合 mover 一侧，
+     *    防守方魂印在自己不是 mover 时根本不执行。管线是双方都走的。
+     * DETECT 类别 → 吃 `damage_suppress_mask`（挡伤失效同样废掉受高伤检测）。
+     * 每次攻击伤害结算前确保已安装（init_battle / clearAllEffects 后调用）。
+     */
+    void install_default_damage_guard_detect();
 
     /**
      * 安装默认**非通用增伤**（AMP_EXTRA 阶段，AMP 类别，**乘法**）。
