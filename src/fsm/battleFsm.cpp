@@ -455,19 +455,22 @@ void apply_crit_defense_break(BattleContext* ctx, int attacker_id) {
 //   · 无相谛 2260：强制执行打盔把视图置 0 → 技能自己的"威力+170"把它改回来 → 隔着盔打出红伤
 //     （L390：「由于变威力结算过于靠后，因此可以隔着盔打出攻击伤害」）；
 //   · 魂印"每次使用威力递增"：改的是 skill 本体，下次物化才进视图（那是另一条路，不触发重算）。
-void apply_variable_power_recalc(BattleContext* ctx, int attacker_id) {
+// "本次技能是变威力技能吗"——三个触发源（官方都归在"变威力"名下）：
+//   ① 威力被效果改过（含改 0 点）；② 连击次数被效果改过；
+//   ③ **本次是多段**（N>1）——"n次连击"本身就在官方的变威力描述清单里（L453），
+//      且用户 2026-09-14 裁定连击走"破防 → 按归零双防重算单次 → ×N"这条流水线。
+// 抽成独立判断是为了让**技能无效的出口**也能用（见 handle_*_AttackDamage 的早退分支）。
+bool variable_power_requested(const BattleContext* ctx, int attacker_id) {
     if (!ctx || attacker_id < 0 || attacker_id > 1) {
-        return;
+        return false;
     }
-    // 三个触发源（官方都归在"变威力"名下）：
-    //   ① 威力被效果改过（含改 0 点）；② 连击次数被效果改过；
-    //   ③ **本次是多段**（N>1）——"n次连击"本身就在官方的变威力描述清单里（L453），
-    //      且用户 2026-09-14 裁定连击走"破防 → 按归零双防重算单次 → ×N"这条流水线。
-    const bool variable_power =
-        ctx->ws.skill_power_view[attacker_id].rewritten
+    return ctx->ws.skill_power_view[attacker_id].rewritten
         || ctx->ws.combo_view[attacker_id].rewritten
         || static_cast<int>(ctx->ws.combo_view[attacker_id]) > 1;
-    if (!variable_power) {
+}
+
+void apply_variable_power_recalc(BattleContext* ctx, int attacker_id) {
+    if (!variable_power_requested(ctx, attacker_id)) {
         return;
     }
     stage_simple_attack_damage(ctx, attacker_id);   // 第二次：以当前状态重算，覆盖第一次
@@ -521,6 +524,60 @@ void apply_resolved_damage(BattleContext* ctx) {
         << " 百分比伤害=" << percent_damage
         << " hp:" << hp_before << "->" << defender.hp;
     log_battle_line("INFO", oss.str());
+}
+
+// 攻击伤害的**收尾段**：变威力第二次结算 → 伤害管线 → 白板归零 → 落地。
+// 两条出口共用（正常出口 / 技能无效出口），区别只在之前有没有跑 ATTACK_DAMAGE 时点桶。
+void finish_attack_damage(BattleContext* ctx, int attacker_id) {
+    apply_variable_power_recalc(ctx, attacker_id);
+    // 伤害修正管线：按 DamagePhase 顺序执行双方伤害效果，读写 resolvedDamage
+    ctx->damage_pipeline_.run(ctx, attacker_id, 1 - attacker_id);
+    // 白板（③层 kFullNull）：命中效果失效且伤害归 0（保留伤害 kEffectsOnly 不动）
+    if (ctx->ws.hit_invalid_zero_damage[attacker_id]) {
+        ctx->resolvedDamage.final = 0;
+    }
+    apply_resolved_damage(ctx);
+}
+
+// 技能无效（盔/威/封属）的伤害出口 —— effect 2501「技能无效时，重新进行伤害结算且…」的落点。
+//
+// 官方 L95（薇尔诗·乐园之初诞）：
+//   「"乐园之初诞"中技能无效效果，**相当于打盔会重新计算攻击伤害，类似于变威力技能的重新计算**，
+//     但是技能效果还是无效，只有攻击伤害」
+// L390（索杰德尔）：「**变威力结算过于靠后，因此可以隔着盔打出攻击伤害**」
+//
+// 为什么单独立一个出口：技能无效时 `allowAttackDamagePipeline == false`，处理器**整段早退**
+//   （ATTACK_DAMAGE 时点桶不跑、伤害结算不跑）。但 SKILL_INVALID 分支的效果**照常注册**
+//   （`registerSkillEffects` 仍为 true）并在 `BATTLE_*_SKILL_EFFECT` 时点执行 —— 它可以在那里
+//   改写视图威力/连击数（写入即置"变威力"标记）。此时攻势伤害仍该落下来，否则那个改写石沉大海
+//   （2026-09-14 用户发现的断链）。
+//
+// ⚠️ 标记载体是 `ws.skill_power_view` / `ws.combo_view`，所以**用 `variable_power_requested` 判**：
+//    没有"靠后的变威力改写"时，无效就是无效、零伤害（打盔不会因为这条路白给伤害）。
+// ⚠️ 故意**不**跑 ATTACK_DAMAGE 时点桶——那些效果在技能无效时本就不该注册
+//    （对应官方"技能效果还是无效"）。
+// 技能无效（盔/威/封属/miss）出口的攻击伤害：**技能效果照旧无效，但攻击伤害可能仍要结算**。
+//
+// 官方 L95（effect 2501「乐园之初诞」）：
+//   「"乐园之初诞"中技能无效效果，**相当于打盔会重新计算攻击伤害，类似于变威力技能的重新计算**，
+//     但是技能效果还是无效，只有攻击伤害」
+// L390（索杰德尔）：「**由于变威力结算过于靠后，因此可以隔着盔打出攻击伤害**」
+//
+// 链路：query_usage ② 门判定被拦 → 返回 SKILL_INVALID（`allowAttackDamagePipeline=false`）
+//   → **SKILL_INVALID 分支照常注册**（`registerSkillEffects` 仍为 true）
+//   → `BATTLE_*_SKILL_EFFECT` 时点跑该分支的效果 → 效果改写 `ws.skill_power_view`（如 2501 按特攻翻倍）
+//   → 本函数：若"变威力"成立就补上伤害结算，让改写生效。
+//
+// ⚠️ 为什么以前是断的：早退出口在 `apply_variable_power_recalc` **之前**就 return 了，
+//    视图被改了也没人重算（2026-09-14 用户发现）。破防在早退出口已先行（`apply_crit_defense_break`）
+//    → 所以"变威力 + 暴击隔着盔"同样会无视对手双防。
+// ⚠️ 故意**不**跑 ATTACK_DAMAGE 时点桶：技能无效时那些效果本就不该注册（这是"技能效果还是无效"）。
+void run_attack_damage_from_invalid_skill(BattleContext* ctx, int attacker_id) {
+    if (!variable_power_requested(ctx, attacker_id)) {
+        return;   // 没有"靠后的变威力"改写 → 无效就是无效，零伤害
+    }
+    stage_simple_attack_damage(ctx, attacker_id);   // 第一次公式
+    finish_attack_damage(ctx, attacker_id);         // 里面会按标记做第二次（推翻第一次）
 }
 
 int resolve_pet_max_hp(const ElfPet& pet) {
@@ -1149,6 +1206,9 @@ void BattleFsm::handle_BattleFirstAttackDamage(BattleContext* battleContext) {
         clear_damage_snapshot(battleContext->pendingDamage);
         clear_damage_snapshot(battleContext->resolvedDamage);
         apply_crit_defense_break(battleContext, first_mover_id);   // 技能无效/被盔：照样破防
+        // ★ 技能效果无效 ≠ 攻击伤害一定为零：SKILL_EFFECT 时点写视图威力的效果（effect 2501）
+        //   会在这里被"变威力"检查点抓到 → 隔着盔重算并打出红伤（见函数注释）。
+        run_attack_damage_from_invalid_skill(battleContext, first_mover_id);
         battleContext->generateState();
         return;
     }
@@ -1159,14 +1219,7 @@ void BattleFsm::handle_BattleFirstAttackDamage(BattleContext* battleContext) {
     //   变威力会"推翻第一次、按重置后的双防重算第二次"，重算必须在破防之后。
     apply_crit_defense_break(battleContext, first_mover_id);
     battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_ATTACK_DAMAGE);
-    apply_variable_power_recalc(battleContext, first_mover_id);
-    // 伤害修正管线：按 DamagePhase 顺序执行双方伤害效果，读写 resolvedDamage
-    battleContext->damage_pipeline_.run(battleContext, first_mover_id, 1 - first_mover_id);
-    // 白板（③层 kFullNull）：命中效果失效且伤害归 0（保留伤害 kEffectsOnly 不动）
-    if (battleContext->ws.hit_invalid_zero_damage[first_mover_id]) {
-        battleContext->resolvedDamage.final = 0;
-    }
-    apply_resolved_damage(battleContext);
+    finish_attack_damage(battleContext, first_mover_id);
     battleContext->ws.has_attacked[first_mover_id] = true;
     battleContext->ws.skill_used[first_mover_id] = true;
     battleContext->generateState();
@@ -1262,6 +1315,8 @@ void BattleFsm::handle_BattleSecondAttackDamage(BattleContext* battleContext) {
         clear_damage_snapshot(battleContext->pendingDamage);
         clear_damage_snapshot(battleContext->resolvedDamage);
         apply_crit_defense_break(battleContext, second_mover_id);   // 技能无效/被盔：照样破防
+        // 同第一行动方：技能无效 ≠ 一定零伤害（effect 2501 的"重新进行伤害结算"）。
+        run_attack_damage_from_invalid_skill(battleContext, second_mover_id);
         battleContext->generateState();
         return;
     }
@@ -1270,14 +1325,7 @@ void BattleFsm::handle_BattleSecondAttackDamage(BattleContext* battleContext) {
     // ★ 暴击破防：同第一行动方——第一次公式算完就重置双防（为变威力重算让路）。
     apply_crit_defense_break(battleContext, second_mover_id);
     battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_ATTACK_DAMAGE);
-    apply_variable_power_recalc(battleContext, second_mover_id);
-    // 伤害修正管线：按 DamagePhase 顺序执行双方伤害效果，读写 resolvedDamage
-    battleContext->damage_pipeline_.run(battleContext, second_mover_id, 1 - second_mover_id);
-    // 白板（③层 kFullNull）：命中效果失效且伤害归 0（保留伤害 kEffectsOnly 不动）
-    if (battleContext->ws.hit_invalid_zero_damage[second_mover_id]) {
-        battleContext->resolvedDamage.final = 0;
-    }
-    apply_resolved_damage(battleContext);
+    finish_attack_damage(battleContext, second_mover_id);
     battleContext->ws.has_attacked[second_mover_id] = true;
     battleContext->ws.skill_used[second_mover_id] = true;
     battleContext->generateState();
