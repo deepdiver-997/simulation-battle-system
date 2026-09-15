@@ -8,7 +8,7 @@
 
 | `src/` 文件 | 实现谁 | 备注 |
 |------------|--------|------|
-| `effects/*.cpp` | `include/effects/*.h` | 各 effect 内核实现（effect/effect_meta/effect_unit/effect_unit_parser/pendingEffect/timed_bucket/damage_pipeline；**RuleCenter 为 header-only，无 .cpp**） |
+| `effects/*.cpp` | `include/effects/*.h` | 各 effect 内核实现（effect/effect_meta/effect_unit/effect_unit_parser/timed_bucket/damage_pipeline/pink_damage_pipeline；**RuleCenter 为 header-only，无 .cpp**） |
 | `entities/pet_factory.cpp` | `include/entities/pet_factory.h` | **DB/插件初始化**（相对路径 sqlite，见 CLAUDE.md §1） |
 | `entities/skills.cpp` | `include/entities/skills.h` | 技能加载（`loadSkills` 读 DB + 插件 + parser 接线） |
 | `entities/soul_mark_manager.cpp` | `include/entities/soul_mark_manager.h` | 魂印激活/钩子 |

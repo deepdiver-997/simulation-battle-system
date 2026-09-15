@@ -16,7 +16,6 @@
 #include <entities/seer-robot.h>
 #include <fsm/battleWorkspace.h>
 #include <effects/continuousEffect.h>
-#include <effects/pendingEffect.h>
 #include <effects/timed_bucket.h>
 #include <effects/rule_center.h>
 #include <effects/event_center.h>
@@ -201,8 +200,6 @@ public:
     TimedBucket updater_effects;
 
 
-    //--- 待注册效果 / 未来触发表 ---
-    std::unordered_map<State, std::array<std::vector<std::unique_ptr<PendingEffect>>, 2>> pending_effects;// 这个可以用TimedBucket替代吗？本质上是不可被断回合的回合类效果，或者说是触发器？可不可以用事件中心替代？会不会和事件中心共享一个过期版本号不好？
 
     //--- 网络缓冲 ---
     std::vector<char> m_buffer;
@@ -273,10 +270,8 @@ public:
     //--- 效果注册 ---
     void registerEffect(State trigger, int owner, std::unique_ptr<ContinuousEffect> effect,
                         EffectContainer container = EffectContainer::Skill);
-    void registerPendingEffect(State observeState, int owner, std::unique_ptr<PendingEffect> effect);
 
     //--- 效果执行 ---
-    void execute_pending_effects(int robotId, State state);
     void execute_registered_actions(int robotId, State state);
 
     // 回合首时点：执行更新器桶（刷新各魂印节点，once 复位）。由 FSM 在回合边界调用。
@@ -493,7 +488,6 @@ public:
         soul_mark_effects.clear();
         updater_effects.clear();
         rule_center_.clear_all();  // 免疫 + 盔/威/封属 + ③层命中失效 一次清
-        pending_effects.clear();
         penetration_grants[0].clear();
         penetration_grants[1].clear();
         attack_boost_grants[0].clear();

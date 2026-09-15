@@ -51,32 +51,20 @@ enum class SkillUsageResult {
 // SkillEffectNode - 技能分支中的单个注册节点
 //
 // effect 做什么，由 Effect 模板本身负责；
-// registerState / pendingObserveState 则属于 skill 调度层，决定“什么时候把 effect 挂出去”。
+// registerState 则属于 skill 调度层，决定“什么时候把 effect 挂出去”。
+//
+// ⚠️ 这里曾有一支 `usePendingTrigger / pendingObserveState` —— 把效果登记为"未来触发器"
+//    （`BattleContext::pending_effects`），等某个时点再落地。已删除（2026-09-15，用户口径）：
+//    它就是**高级监控**、不响应断回合，而**事件中心完全覆盖**了这个能力
+//    （`EventCenter` + `register_watcher`，「当X发生时再挂效果」是它的本职）；
+//    且 `resources/` 对它**零命中**——没有任何效果数据用过它，纯死重。
 struct SkillEffectNode {
     Effect effect;
     State registerState;
-    bool usePendingTrigger = false;
-    State pendingObserveState;
-    int pendingTtlRounds = -1;
-    bool pendingConsumeOnTrigger = true;
 
     SkillEffectNode(Effect effect_, State registerState_)
         : effect(effect_)
-        , registerState(registerState_)
-        , usePendingTrigger(false)
-        , pendingObserveState(registerState_) {}
-
-    SkillEffectNode(Effect effect_,
-                    State registerState_,
-                    State pendingObserveState_,
-                    int pendingTtlRounds_ = -1,
-                    bool pendingConsumeOnTrigger_ = true)
-        : effect(effect_)
-        , registerState(registerState_)
-        , usePendingTrigger(true)
-        , pendingObserveState(pendingObserveState_)
-        , pendingTtlRounds(pendingTtlRounds_)
-        , pendingConsumeOnTrigger(pendingConsumeOnTrigger_) {}
+        , registerState(registerState_) {}
 };
 
 class Skills {

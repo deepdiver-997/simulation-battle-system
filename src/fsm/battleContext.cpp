@@ -6,8 +6,6 @@
 
 namespace {
 
-using PendingBucket = std::unordered_map<State, std::array<std::vector<std::unique_ptr<PendingEffect>>, 2>>;
-
 constexpr std::array<State, 40> kLinearStateOrder = {
     State::GAME_START,
     State::OPERATION_ENTER_EXIT_STAGE,
@@ -68,29 +66,6 @@ const TimedBucket& bucket_for(const BattleContext* ctx, EffectContainer containe
 }
 
 // 时点桶的执行逻辑已移入 TimedBucket::execute_at（src/effects/timed_bucket.cpp）。
-
-void execute_pending_bucket_actions(PendingBucket& bucket, int robotId, State state, int roundCount, BattleContext* ctx) {
-    auto state_it = bucket.find(state);
-    if (state_it == bucket.end()) {
-        return;
-    }
-
-    auto& robotEffects = state_it->second[robotId];
-    for (auto it = robotEffects.begin(); it != robotEffects.end();) {
-        auto& effect = *it;
-        if (effect->isExpired(roundCount)) {
-            it = robotEffects.erase(it);
-            continue;
-        }
-
-        const PendingEffectDisposition disposition = effect->onState(ctx);
-        if (effect->isExpired(roundCount) || disposition == PendingEffectDisposition::Consume) {
-            it = robotEffects.erase(it);
-            continue;
-        }
-        ++it;
-    }
-}
 
 } // namespace
 
@@ -558,10 +533,6 @@ void BattleContext::registerEffect(State trigger, int owner, std::unique_ptr<Con
                                                 round_effect_valid_id[owner]);
 }
 
-void BattleContext::registerPendingEffect(State observeState, int owner, std::unique_ptr<PendingEffect> effect) {
-    pending_effects[observeState][owner].push_back(std::move(effect));
-}
-
 void BattleContext::clear_on_stage_abnormal_statuses(int robotId) {
     if (robotId < 0 || robotId > 1) {
         return;
@@ -646,25 +617,12 @@ bool BattleContext::has_active_abnormal_status(int robotId, int statusId) const 
     return roundCount < abnormal_status_end_round[robotId][statusId];
 }
 
-void BattleContext::execute_pending_effects(int robotId, State state) {
-    if (robotId == -1) {
-        execute_pending_effects(0, state);
-        execute_pending_effects(1, state);
-        return;
-    }
-
-    execute_pending_bucket_actions(pending_effects, robotId, state, roundCount, this);
-}
-
 void BattleContext::execute_registered_actions(int robotId, State state) {
     if (robotId == -1) {
         execute_registered_actions(0, state);
         execute_registered_actions(1, state);
         return;
     }
-
-    // 未来触发器先于正式效果运行，这样它可以在当前时点落地新的正式效果。
-    execute_pending_effects(robotId, state);
 
     // 魂印容器优先于技能容器执行。
     soul_mark_effects.execute_at(state, robotId, this);
@@ -1161,32 +1119,10 @@ std::string BattleContext::getFullStateJson() const {
         oss << "}";
     };
 
-    auto append_pending_table = [&](std::ostringstream& oss,
-                                     const PendingBucket& bucket) {
-        oss << "{";
-        bool first_state = true;
-        for (const auto& [state, per_player] : bucket) {
-            for (int p = 0; p < 2; ++p) {
-                if (per_player[p].empty()) continue;
-                if (!first_state) oss << ",";
-                first_state = false;
-                oss << "\"" << static_cast<int>(state) << "_p" << p << "\":{";
-                oss << "\"state\":" << static_cast<int>(state) << ",";
-                oss << "\"stateName\":\"" << state_name_cn(state) << "\",";
-                oss << "\"player\":" << p << ",";
-                oss << "\"count\":" << per_player[p].size();
-                oss << "}";
-            }
-        }
-        oss << "}";
-    };
-
     oss << "\"skillEffects\":";
     append_effect_table(oss, skills_effects);
     oss << ",\"soulMarkEffects\":";
     append_effect_table(oss, soul_mark_effects);
-    oss << ",\"pendingEffects\":";
-    append_pending_table(oss, pending_effects);
 
     // Operation log
     oss << "\"operationLog\":\"" << json_escape(operation_log_) << "\",";

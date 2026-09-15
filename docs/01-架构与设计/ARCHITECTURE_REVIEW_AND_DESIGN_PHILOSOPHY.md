@@ -109,8 +109,11 @@ BattleFsm 只通过 `control_block_->wait_for_input()` / `async_write()` 与外�
 ```
 skills_effects[State][side]     → 技能产生的效果，技能结算时注册
 soul_mark_effects[State][side]  → 魂印效果，初始化时注册
-pending_effects[State][side]    → 延迟/观察型效果，满足条件时触发
+updater_effects[State][side]    → 回合边界的魂印刷新器（保证进入选择期时本回合效果已就位）
 ```
+> ⚠️ 曾有的 `pending_effects`（延迟/观察型"未来触发器"）**已于 2026-09-15 删除**：
+> 它就是高级监控、不响应断回合，能力被**事件中心**（`EventCenter::register_watcher` + `emit`）
+> 完全覆盖，且资源端零命中。
 同一状态内，魂印效果先于技能效果结算。
 
 ---
@@ -127,7 +130,7 @@ pending_effects[State][side]    → 延迟/观察型效果，满足条件时触�
 | 原语层（异常施加/断回合等原子动作） | `include/primitives/battle_primitives.h` |
 | 效果基类 | `include/effects/effect.h` |
 | 持续效果 | `include/effects/continuousEffect.h` |
-| 延迟效果 | `include/effects/pendingEffect.h` |
+| 伤害修正管线 | `include/effects/damage_pipeline.h`, `pink_damage_pipeline.h` |
 | 精灵实体 | `include/entities/elf-pet.h` |
 | Mark 系统 | `include/entities/mark.h` |
 | 魂印定义 | `include/entities/soul_mark.h` |

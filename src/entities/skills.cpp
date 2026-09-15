@@ -809,7 +809,6 @@ void Skills::register_branch(BattleContext* ctx, int owner, SkillExecResult resu
         }
 
         const State register_state = state_for_owner(node.registerState, owner, ctx);
-        const State pending_observe_state = state_for_owner(node.pendingObserveState, owner, ctx);
         // one-shot (left_round==0) 归一化为本回合有效的 1 回合效果，否则立即过期永不执行
         const int duration = duration_for_effect(effect.left_round);
         // 回合数窗口：官方口径的**生效起点**（"N回合内"后出手顺延 / "下N回合"一律从下回合起算）。
@@ -823,36 +822,6 @@ void Skills::register_branch(BattleContext* ctx, int owner, SkillExecResult resu
         const int start_round = effect.left_round > 0
             ? ctx->round_effect_start_round(owner, duration, window_kind)
             : ctx->roundCount;
-
-        if (node.usePendingTrigger) {
-            ctx->registerPendingEffect(
-                pending_observe_state,
-                owner,
-                std::make_unique<FutureTrigger>(
-                    effect.id,
-                    owner,
-                    pending_observe_state,
-                    nullptr,
-                    [ctx, owner, registerState = register_state, effect, duration, start_round](BattleContext*) {
-                        ctx->registerEffect(
-                            registerState,
-                            owner,
-                            std::make_unique<ContinuousEffect>(
-                                effect,
-                                registerState,
-                                owner,
-                                duration,
-                                start_round   // 窗口起点在**注册时**算好（pending 触发时再算会错拍）
-                            )
-                        );
-                    },
-                    ctx->roundCount,
-                    node.pendingTtlRounds,
-                    node.pendingConsumeOnTrigger
-                )
-            );
-            continue;
-        }
 
         ctx->registerEffect(
             register_state,
