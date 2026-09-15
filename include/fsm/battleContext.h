@@ -70,6 +70,14 @@ public:
     // 断回合不递增此号 → 被断补偿监听器在断回合后仍然存活（等响应本次断）
     int watcher_valid_id[2]{1, 1};
 
+    //--- 伤害管线版本号（epoch，用于 O(1) 切换作废）---
+    // 管线桶**不在时点桶里**，所以必须自带这一层，否则注册进去的条目会一直留到
+    // `clearAllEffects`（用户 2026-09-15 发现的漏）。
+    // ⚠️ 与 `round_effect_valid_id` **分开**：断回合目前不清管线条目
+    //    （"断回合是否该解除此类技能免伤"口径未定，见 effect 525 的注释），
+    //    单独一个 epoch 让"切换作废"先正确落地。
+    int pipeline_valid_id[2]{1, 1};
+
     //--- 事件通道内核 ---
     // 全 context 唯一的事件中心。原语成功路径末尾 emit，FSM 在 State 桶后 drain 投递。
     // 断回合补偿 = 监听 EVENT_BREAK 的 watcher（经 register_break_callback 注册）。
@@ -449,6 +457,7 @@ public:
     void invalidate_on_stage_effects(int owner) {
         ++round_effect_valid_id[owner];
         ++watcher_valid_id[owner];
+        ++pipeline_valid_id[owner];   // 两条伤害管线的 ON_STAGE 条目一并作废（TEAM 保留）
         // ON_STAGE 回合效果已全部失效，清各桶计数器（epoch 递增后它们都会被 cleanup 移除）
         skills_effects.reset_round_count(owner);
         soul_mark_effects.reset_round_count(owner);
@@ -463,6 +472,11 @@ public:
         // ⚠️ 生命周期锚 source：封属/命中失效挂**施放方**，故清的是施放方换宠名下的；
         //    免疫挂被护方自身(source==target)。on_stage 尚未更新 → 正是下场槽。
         rule_center_.clear_on_stage(owner, on_stage[owner]);
+        // 事件中心：把刚被 `++watcher_valid_id` 作废的 ON_STAGE 监听器**当场摘掉**。
+        // ⚠️ 只递增版本号是**惰性**的（drain 会跳过、cleanup 会移除），但真正的移除发生在
+        //    回合扣减点 `cleanup_expired_effects` —— 中间隔着大半回合，期间这些死条目
+        //    还挂在表里。换宠是"强力清除源"，就地清干净（用户 2026-09-15 发现的漏）。
+        event_center_.cleanup(roundCount, watcher_valid_id);
         // 注：伤害抗性本体在 pet 上（跨切换保留），不在此清；ws 有效视图由
         //     调用方的 sync_workspace_from_on_stage → sync_damage_resist_view 从新精灵重基。
         pink_reduce_pct[owner] = 0;
@@ -638,8 +652,11 @@ public:
      * 被抑制的类别（所属方 damage_suppress_mask）在 walk 时自动跳过。
      */
     void register_damage_effect(DamagePhase phase, int owner, DamageEffectCategory category,
-                                std::function<void(BattleContext*, int)> fn) {
-        damage_pipeline_.register_effect(phase, owner, category, std::move(fn));
+                                std::function<void(BattleContext*, int)> fn,
+                                EffectScope scope = EffectScope::ON_STAGE) {
+        damage_pipeline_.register_effect(phase, owner, category, std::move(fn),
+                                         pipeline_valid_id[owner],
+                                         scope == EffectScope::TEAM);
     }
 
     //--- 粉伤管线便利方法 ---
@@ -653,8 +670,26 @@ public:
      * ⚠️ 与红伤不同，本管线**不消费 damage_suppress_mask**（粉伤侧无抑制口径，见头文件）。
      */
     void register_pink_damage_effect(PinkDamagePhase phase, int owner,
-                                     std::function<void(BattleContext*, int)> fn) {
-        pink_damage_pipeline_.register_effect(phase, owner, std::move(fn));
+                                     std::function<void(BattleContext*, int)> fn,
+                                     EffectScope scope = EffectScope::ON_STAGE) {
+        pink_damage_pipeline_.register_effect(phase, owner, std::move(fn),
+                                              pipeline_valid_id[owner],
+                                              scope == EffectScope::TEAM);
+    }
+
+    //--- 引擎默认回调（常驻，TEAM 绑定：**不受切换作废**）---
+    // ⚠️ 默认回调必须走 TEAM：它们只装一次（init_battle / clearAllEffects），
+    //    若是 ON_STAGE，第一次换宠就会把整条减免链作废掉（这是最容易踩的坑）。
+    template <typename Fn>
+    void register_default_damage_effect(DamagePhase phase, int owner,
+                                        DamageEffectCategory category, Fn&& fn) {
+        damage_pipeline_.register_effect(phase, owner, category, std::forward<Fn>(fn),
+                                         pipeline_valid_id[owner], /*team=*/true);
+    }
+    template <typename Fn>
+    void register_default_pink_effect(PinkDamagePhase phase, int owner, Fn&& fn) {
+        pink_damage_pipeline_.register_effect(phase, owner, std::forward<Fn>(fn),
+                                              pipeline_valid_id[owner], /*team=*/true);
     }
 
     /**

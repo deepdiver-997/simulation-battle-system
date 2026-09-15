@@ -151,7 +151,7 @@ void BattleContext::install_default_pink_mitigation() {
         // ① RESIST：**抗性免减粉伤** —— 链条第一位（流程图最左）。
         // ⚠️ 取整：官方算法是 `伤害量 − 伤害量×抗性`（乘法**向下**取整，L84），
         //    即 `final -= final * resist / 100`——写成"乘 (100-resist)/100"会因两次取整对不上。
-        register_pink_damage_effect(
+        register_default_pink_effect(
             PinkDamagePhase::RESIST,
             owner,
             [](BattleContext* ctx, int bucket_owner) {
@@ -185,7 +185,7 @@ void BattleContext::install_default_pink_mitigation() {
         //      其余各段照常落到本体。窗口型/永久型（counts=0）则每段都查、每段都免。
         //    ⚠️ 免疫与"抗性 100% / 效果减粉"在下游检测里**不做区分**（都只是把 final 削到 0）。
         //    ⚠️ 「免疫并**反弹**粉伤」**未做**——反弹量应取抗性后的值（即此刻的 final）。
-        register_pink_damage_effect(
+        register_default_pink_effect(
             PinkDamagePhase::IMMUNE,
             owner,
             [](BattleContext* ctx, int bucket_owner) {
@@ -208,7 +208,7 @@ void BattleContext::install_default_pink_mitigation() {
         );
         // ③ REDUCE_EXTRA：**百分比免减粉伤**（技能特效 + 魂印特效共用本阶段，乘法连乘）。
         //    排在抗性之后——L463 的乘算链 `×(1−抗性免减)×(1−技能特效免减)×(1−魂印特效免减)`。
-        register_pink_damage_effect(
+        register_default_pink_effect(
             PinkDamagePhase::REDUCE_EXTRA,
             owner,
             [](BattleContext* ctx, int bucket_owner) {
@@ -240,7 +240,7 @@ void BattleContext::install_default_pink_mitigation() {
         //      与图里这条分支"绕过护罩"的指向一致。
         //    ⚠️ 检测点本身**不改 final**（真伤的结算在管线之外，见 run_pink_damage）——
         //      这里只置 `to_true`；把扣血/发事件留在唯一出口，免得管线中途改道。
-        register_pink_damage_effect(
+        register_default_pink_effect(
             PinkDamagePhase::PINK_TO_TRUE_IMMUNE,
             owner,
             [](BattleContext* ctx, int bucket_owner) {
@@ -262,7 +262,7 @@ void BattleContext::install_default_pink_mitigation() {
         // ⑧ HOOD：**护罩免减粉伤**——**消费护罩**（流程图：算完抗性/免减/增粉/转护罩才扣护罩）。
         //    记 absorbed 供"护罩算不算受到伤害"判定；破罩发 EVENT_SHIELD_BROKEN。
         //    ⚠️ **扣体力不在这里**：管线只把值定形，扣血由 deal_damage 在管线之后统一做。
-        register_pink_damage_effect(
+        register_default_pink_effect(
             PinkDamagePhase::HOOD,
             owner,
             [](BattleContext* ctx, int bucket_owner) {
@@ -314,7 +314,7 @@ void BattleContext::install_default_damage_reduction() {
         //
         // ① REDUCE_FLAT：**点数减伤**——官方减伤区顺序的第一位（L402「点数减伤——百分比减伤」）。
         //    先在裸伤上扣点数，再算百分比，与"反序"结果不同（(base-30)×0.5 vs base×0.5-30）。
-        register_damage_effect(
+        register_default_damage_effect(
             DamagePhase::REDUCE_FLAT,
             owner,
             DamageEffectCategory::MITIGATE,
@@ -338,7 +338,7 @@ void BattleContext::install_default_damage_reduction() {
         );
         // ② REDUCE_PCT：**百分比减伤**——加算槽求和（钳 ±100，官方"通用减伤叠加超 100% 即失效"）
         //    + 乘算槽逐条连乘。实现在 Calculation::applyDamageReduction。
-        register_damage_effect(
+        register_default_damage_effect(
             DamagePhase::REDUCE_PCT,
             owner,
             DamageEffectCategory::MITIGATE,
@@ -374,7 +374,7 @@ void BattleContext::install_default_damage_reduction() {
 // DETECT 类别 → 吃 `damage_suppress_mask`（"挡伤失效"也该废掉受高伤检测）。
 void BattleContext::install_default_damage_guard_detect() {
     for (int owner = 0; owner < 2; ++owner) {
-        register_damage_effect(
+        register_default_damage_effect(
             DamagePhase::GUARD_DETECT,
             owner,
             DamageEffectCategory::DETECT,
@@ -402,7 +402,7 @@ void BattleContext::install_default_damage_guard_detect() {
 // AMP 类别 → **不被** damage_suppress_mask 抑制（增伤不是"挡伤"）。
 void BattleContext::install_default_damage_amp_extra() {
     for (int owner = 0; owner < 2; ++owner) {
-        register_damage_effect(
+        register_default_damage_effect(
             DamagePhase::AMP_EXTRA,
             owner,
             DamageEffectCategory::AMP,
@@ -438,7 +438,7 @@ void BattleContext::install_default_damage_block() {
         // 挡伤归零只对"防御方"生效。管线在 BLOCK 阶段先后走攻击方/防御方两个桶，
         // 因此回调里用 resolvedDamage.defenderId 判断当前桶 owner 是否为防御方。
         // BLOCK 类别 → 可被 damage_suppress_mask 抑制（蚀砚之泪≥4滴"挡伤失效"）。
-        register_damage_effect(
+        register_default_damage_effect(
             DamagePhase::BLOCK,
             owner,
             DamageEffectCategory::BLOCK,
@@ -478,7 +478,7 @@ void BattleContext::install_default_damage_amp() {
         // 因此回调里用 resolvedDamage.attackerId 判断当前桶 owner 是否为攻击方。
         // AMP 类别 → **不被** damage_suppress_mask 抑制（官方口径：增伤/减伤都不是"挡伤"，
         // "使对手挡伤失效"只废归零类，见 DamageEffectCategory）。
-        register_damage_effect(
+        register_default_damage_effect(
             DamagePhase::AMP,
             owner,
             DamageEffectCategory::AMP,

@@ -1,6 +1,7 @@
 #ifndef PINK_DAMAGE_PIPELINE_H
 #define PINK_DAMAGE_PIPELINE_H
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <vector>
@@ -155,12 +156,22 @@ public:
     PinkDamagePipeline(const PinkDamagePipeline&) = delete;
     PinkDamagePipeline& operator=(const PinkDamagePipeline&) = delete;
 
+    // valid_id / team：生命周期，语义与 `DamagePipeline::register_effect` 完全一致
+    //   （epoch 作废 + TEAM 免切换）。粉伤桶同样不在时点桶里，所以**必须**有这一层，
+    //   否则注册进来的条目会一直留到 clearAllEffects（用户 2026-09-15 发现的漏）。
     void register_effect(PinkDamagePhase phase, int owner,
-                         std::function<void(BattleContext*, int)> fn) {
+                         std::function<void(BattleContext*, int)> fn,
+                         int valid_id = 0, bool team = false) {
         if (owner < 0 || owner > 1) {
             return;
         }
-        buckets_[static_cast<int>(phase)][owner].push_back(std::move(fn));
+        auto& bucket = buckets_[static_cast<int>(phase)][owner];
+        bucket.erase(std::remove_if(bucket.begin(), bucket.end(),
+                                    [&](const PinkDamageEffect& e) {
+                                        return !e.team && e.valid_id != valid_id;
+                                    }),
+                     bucket.end());
+        bucket.push_back(PinkDamageEffect{std::move(fn), valid_id, team});
     }
 
     /**
@@ -192,9 +203,13 @@ public:
     };
 
 private:
+    struct PinkDamageEffect {
+        std::function<void(BattleContext*, int)> fn;
+        int valid_id = 0;
+        bool team = false;
+    };
     // [phase][owner] -> effects
-    std::array<std::array<std::vector<std::function<void(BattleContext*, int)>>, 2>,
-               kPhaseCount> buckets_{};
+    std::array<std::array<std::vector<PinkDamageEffect>, 2>, kPhaseCount> buckets_{};
 };
 
 #endif // PINK_DAMAGE_PIPELINE_H

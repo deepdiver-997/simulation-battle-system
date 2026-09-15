@@ -19,9 +19,13 @@ void PinkDamagePipeline::run(BattleContext* ctx, int actor, int target) {
             if (i == 1 && owner == actor) {
                 continue;  // actor == target：只跑一趟
             }
-            for (auto& fn : buckets_[static_cast<int>(phase)][owner]) {
-                if (fn) {
-                    fn(ctx, owner);
+            for (auto& e : buckets_[static_cast<int>(phase)][owner]) {
+                // 切换作废的条目跳过（惰性；真正移除在下次 register_effect 压实）。
+                if (!e.team && e.valid_id != ctx->pipeline_valid_id[owner]) {
+                    continue;
+                }
+                if (e.fn) {
+                    e.fn(ctx, owner);
                 }
             }
         }

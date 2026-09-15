@@ -1,6 +1,7 @@
 #ifndef DAMAGE_PIPELINE_H
 #define DAMAGE_PIPELINE_H
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <vector>
@@ -67,6 +68,16 @@ enum class DamageEffectCategory {
 struct DamageEffect {
     DamageEffectCategory category;
     std::function<void(BattleContext*, int owner)> fn;  // owner = 该效果所属方
+    // 生命周期（对齐 TimedBucket 的 epoch 做法）：
+    //   · `valid_id` = 注册时该方的 `BattleContext::pipeline_valid_id[owner]`。
+    //     不匹配 = 该方**切换过精灵** → 条目惰性失效，run 时跳过、注册时压实。
+    //   · `team == true` 的条目**不受切换影响**（队伍被动/绑定对手的印记类）。
+    // ⚠️ 这里用的是**独立的** `pipeline_valid_id`，**不**复用 `round_effect_valid_id`：
+    //    管线条目不在时点桶里，断回合（epoch 递增）目前**不会**清它们——
+    //    "断回合是否该解除此类技能免伤"口径未定（见 525 的注释），单独一个 epoch
+    //    让"切换作废"先正确落地，断回合那一轴保持原状、要改时改一行。
+    int valid_id = 0;
+    bool team = false;
 };
 
 /**
@@ -89,11 +100,19 @@ public:
     DamagePipeline& operator=(const DamagePipeline&) = delete;
 
     void register_effect(DamagePhase phase, int owner, DamageEffectCategory category,
-                         std::function<void(BattleContext*, int)> fn) {
+                         std::function<void(BattleContext*, int)> fn,
+                         int valid_id = 0, bool team = false) {
         if (owner < 0 || owner > 1) {
             return;
         }
-        buckets_[static_cast<int>(phase)][owner].push_back(DamageEffect{category, std::move(fn)});
+        auto& bucket = buckets_[static_cast<int>(phase)][owner];
+        // 压实：顺手清掉该桶里已被切换作废的旧条目（惰性作废 + 注册时回收，同 TimedBucket）。
+        bucket.erase(std::remove_if(bucket.begin(), bucket.end(),
+                                    [&](const DamageEffect& e) {
+                                        return !e.team && e.valid_id != valid_id;
+                                    }),
+                     bucket.end());
+        bucket.push_back(DamageEffect{category, std::move(fn), valid_id, team});
     }
 
     /**
