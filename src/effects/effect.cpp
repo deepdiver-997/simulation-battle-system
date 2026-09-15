@@ -7,6 +7,9 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <iostream>
+#include <mutex>
+#include <unordered_set>
 
 #if defined(_WIN32) || defined(_WIN64)
     #include <windows.h>
@@ -227,6 +230,20 @@ Effect EffectFactory::getEffect(int id, EffectArgs args) {
         }
     }
 
+    // ★ **启动审计**：数据（moves.side_effect / effect_icon.effect_id）引用了某个 effect id，
+    //   但插件里没有对应实现 → 这里原本是**静默**返回 fn == nullptr（调用方 `if (!effect.logic)
+    //   continue;` 直接跳过），症状是"技能看起来生效了、其实什么都没有"。改成每次遇到新 id
+    //   打一条到 stderr —— 把静默失效变成"开机就报"。同一个 id 只报一次，不刷屏。
+    // ⚠️ 用 `std::cerr` 而不是日志设施：本函数在插件加载期的极早阶段可能被调用。
+    if (fn == nullptr) {
+        static std::mutex missing_mutex;
+        static std::unordered_set<int> missing_reported;
+        std::lock_guard<std::mutex> guard(missing_mutex);
+        if (missing_reported.insert(id).second) {
+            std::cerr << "[effect] 未注册的 effect id = " << id
+                      << "（数据引用了它，但没有插件实现它）——效果将被静默跳过" << std::endl;
+        }
+    }
     Effect effect(id, 0, 0, 0, std::move(args), fn);
     return effect;
 }

@@ -106,6 +106,109 @@ public:
         const std::vector<std::pair<int, EffectFn>>& effects) = 0;
 };
 
+// ════════════════════════════════════════════════════════════════════
+// 静态自注册 —— 插件侧不再手写「中央注册清单」
+//
+// 用法（插件 .cpp 里，效果函数定义之后，文件作用域）：
+//     SKILL_EFFECT(816, effect_816_immunity_reflect_true);
+//     SOUL_MARK(1004, soulmark_canglan_apply_eternal_tears);
+//     SOUL_PROGRAM(1217, SoulMarkNodeRef(State::BATTLE_ROUND_START, &fn, false, false));
+//
+// 宏展开成一个**静态初始化对象**，在 `dlopen` 那一刻把条目塞进本 dylib 的表；
+// `plugin_register` 再一次性把整张表推给 registry。
+//
+// 为什么这么设计（而不是"core 侧按 `effect_<id>` 名字 dlsym"）：
+//   · 表由插件**推**、id 留在**编译期**——写错 id 直接编译不过；dlsym 是按字符串拉，
+//     名字打错只会让 `dlsym` 返回 null，变成**运行期静默失效**（本项目已被"静默早退"坑过两次）。
+//   · 不需要中央清单：写完函数写一行宏即可，改名/删除只动一处。
+//   · `extern "C"` 也省了：dlsym 路线要求每个函数都加，行数并不比现在少。
+//   · 别名（一个函数挂两个 id）照样支持：写两行宏。
+//
+// 为什么 init 符号**去不掉**：插件需要 `CoreApi*`（core→插件的函数指针表），
+// 而递"数据"只能靠一次调用。所以 `plugin_register` 必须留着，这里只是把它从
+// "逐个 register" 变成"推一张表"。
+//
+// ⚠️ 表是**每 dylib 一份**：`inline` 函数的函数内静态在各 .so/.dylib 里各有一份实例
+//    （插件之间不互相链接，正合需要）。
+// ⚠️ 静态初始化在 dlopen 时执行，**早于** core 调 `plugin_register` —— 顺序天然正确。
+// ⚠️ 宏参数要求是**函数名**（`&(fn)` 取地址）：传成员函数/空指针编译不过，比运行期跳过更早暴露。
+// ════════════════════════════════════════════════════════════════════
+namespace plugin_reg {
+
+struct SkillEffectEntry {
+    int id;
+    EffectFn fn;
+};
+struct SoulMarkEntry {
+    int id;
+    EffectFn fn;
+};
+struct SoulProgramEntry {
+    int id;
+    std::vector<SoulMarkNodeRef> nodes;
+};
+
+// 函数内静态：避开跨编译单元的静态初始化顺序问题。
+inline std::vector<SkillEffectEntry>& skill_effects() {
+    static std::vector<SkillEffectEntry> table;
+    return table;
+}
+inline std::vector<SoulMarkEntry>& soul_marks() {
+    static std::vector<SoulMarkEntry> table;
+    return table;
+}
+inline std::vector<SoulProgramEntry>& soul_programs() {
+    static std::vector<SoulProgramEntry> table;
+    return table;
+}
+
+inline bool add_skill_effect(int id, EffectFn fn) {
+    skill_effects().push_back(SkillEffectEntry{id, fn});
+    return true;
+}
+inline bool add_soul_mark(int id, EffectFn fn) {
+    soul_marks().push_back(SoulMarkEntry{id, fn});
+    return true;
+}
+inline bool add_soul_program(int id, std::vector<SoulMarkNodeRef> nodes) {
+    soul_programs().push_back(SoulProgramEntry{id, std::move(nodes)});
+    return true;
+}
+
+// 把本 dylib 的三张表一次性推给 registry（在 `plugin_register` 里调一次）。
+inline void flush(IEffectRegistry* registry) {
+    if (!registry) {
+        return;
+    }
+    for (const SkillEffectEntry& e : skill_effects()) {
+        registry->registerSkillEffect(e.id, e.fn);
+    }
+    for (const SoulMarkEntry& e : soul_marks()) {
+        registry->registerSoulMark(e.id, e.fn);
+    }
+    for (const SoulProgramEntry& e : soul_programs()) {
+        registry->registerSoulMarkProgram(e.id, e.nodes);
+    }
+}
+
+}  // namespace plugin_reg
+
+#define SKILL_EFFECT(id, fn)                                                        \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kSkillEffectReg_##fn = ::plugin_reg::add_skill_effect((id), &(fn)); \
+    }
+
+#define SOUL_MARK(id, fn)                                                           \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kSoulMarkReg_##fn = ::plugin_reg::add_soul_mark((id), &(fn)); \
+    }
+
+#define SOUL_PROGRAM(id, ...)                                                       \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kSoulProgramReg_##id =                              \
+        ::plugin_reg::add_soul_program((id), {__VA_ARGS__});                        \
+    }
+
 // Utility to convert effect ID to function name
 // Format: effect_{category}_{id}
 // category: "soulmark" for soul marks, "skill" for skills
