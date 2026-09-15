@@ -159,7 +159,9 @@ public:
     int  pink_reduce_pct[2]{}; // 减粉%（百分比免减，固定+百分比通用）
     // 注：**免疫粉伤**不再有独立字段——走 RuleCenter 的次数型免疫票据
     //     （`ImmunityType::PINK_DAMAGE`，由粉伤管线 IMMUNE 阶段消费），与「挡伤」同一条路。
-    bool pink_to_true[2]{};    // 粉转真：被免疫/抗性/减粉挡下时改以真实伤害结算
+    // 注：**粉转真没有全局开关**（曾有的 `pink_to_true[2]` 已删）——粉伤即时结算，
+    //     每个效果在自己的 `deal_pink_damage` 返回后读 `ctx->resolvedPink` 自行判定，
+    //     或往管线的两个 `PINK_TO_TRUE_*` 检测点注册条目。见 pink_damage_pipeline.h。
     int  heal_mod_pct[2]{};    // 恢复效果修正%（正=提升，负=降低；封回血=-100 等价），heal 原语应用
 
     //--- 反弹/转化异常（on-stage 作用域）---
@@ -480,7 +482,6 @@ public:
         // 注：伤害抗性本体在 pet 上（跨切换保留），不在此清；ws 有效视图由
         //     调用方的 sync_workspace_from_on_stage → sync_damage_resist_view 从新精灵重基。
         pink_reduce_pct[owner] = 0;
-        pink_to_true[owner] = false;
         heal_mod_pct[owner] = 0;             // 恢复效果修正不继承
         anomaly_conversion[owner].clear();   // 异常转化规则不继承（镜像：弹控已并入 RuleCenter REFLECT，随切回清）
         elf_element_view_bound_slot[owner] = -1;  // 新精灵下次 sync 重基系别
@@ -504,7 +505,6 @@ public:
         pp_reverse[0] = false;
         pp_reverse[1] = false;
         pink_reduce_pct[0] = pink_reduce_pct[1] = 0;
-        pink_to_true[0] = pink_to_true[1] = false;
         heal_mod_pct[0] = heal_mod_pct[1] = 0;
         anomaly_conversion[0].clear();
         anomaly_conversion[1].clear();

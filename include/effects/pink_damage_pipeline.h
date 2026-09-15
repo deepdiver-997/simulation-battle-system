@@ -50,11 +50,20 @@ struct PinkDamageResolved {
     int raw = 0;
     int final = 0;
     int absorbed = 0;
-    // **粉转真（免疫粉伤）**：本段被免疫/免减削到 0 → 改以真实伤害结算（直通护盾/护罩）。
-    // 由 `PINK_TO_TRUE_IMMUNE` 检测点置位，`run_pink_damage` 在管线跑完后消费。
-    bool to_true = false;
+    // **粉转真·真伤量**：本段要改以真实伤害结算的数值（0 = 不转）。
+    // 由注册在 `PINK_TO_TRUE_IMMUNE` / `PINK_TO_TRUE_UNHARMED` 检测点上的效果**自己**决定
+    // （等量 / 固定值 / 按阈值），`run_pink_damage` 在管线跑完后照它发真伤。
+    // ⚠️ **没有全局开关**（曾有一个 `ctx->pink_to_true[2]` bool，已删）：粉伤是**即时结算**的，
+    //    每个效果自己跑完管线的瞬间就能读到本结构——"谁转的、转多少、按什么判"全在调用方，
+    //    于是"上一个效果附带的粉转真串给下一个效果"结构上不可能发生。
+    int true_damage = 0;
     // **粉转护罩**：本段改以护罩结算（`PINK_TO_HOOD` 检测点）。**暂无生产者**。
     bool to_hood = false;
+    // 读法（效果在**自己的 deal_pink_damage 调用返回后**直接查，即时结算 = 结果就在眼前）：
+    //   `final > 0`              → 真的受到粉伤了（这一段结算到本体）
+    //   `final <= 0 && absorbed == 0` → 被免疫/抗性/免减挡下（**免疫型**粉转真的判据）
+    //   `absorbed > 0`           → 护罩参与了；`final <= 0` 即"护罩吃光 → 没受到"（**未受到型**）
+    //   `raw`                    → 本段原始量（转真按它转）
 };
 
 /**

@@ -235,27 +235,13 @@ void BattleContext::install_default_pink_mitigation() {
         //       要接的时候：把本段转成护罩（`to_hood`）+ 终止后续（护罩不再吃这段）。
         //
         // ⑥ PINK_TO_TRUE_IMMUNE：**粉转真（免疫粉伤）检测点** —— 挂在**护罩之前**。
-        //    判据：本段已被免疫/抗性/免减削到 0（`final <= 0`），且该方带"粉转真"状态。
-        //    ★ 因为检测点在护罩之前，转成真伤后**不消耗护罩**——真伤直通护盾/护罩，
-        //      与图里这条分支"绕过护罩"的指向一致。
-        //    ⚠️ 检测点本身**不改 final**（真伤的结算在管线之外，见 run_pink_damage）——
-        //      这里只置 `to_true`；把扣血/发事件留在唯一出口，免得管线中途改道。
-        register_default_pink_effect(
-            PinkDamagePhase::PINK_TO_TRUE_IMMUNE,
-            owner,
-            [](BattleContext* ctx, int bucket_owner) {
-                if (!ctx) {
-                    return;
-                }
-                PinkDamageResolved& r = ctx->resolvedPink;
-                if (r.target < 0 || r.target > 1 || bucket_owner != r.target) {
-                    return;
-                }
-                if (r.final <= 0 && ctx->pink_to_true[r.target]) {
-                    r.to_true = true;
-                }
-            }
-        );
+        //    ⚠️ **引擎不注册默认回调**（用户 2026-09-15 口径）：粉伤是**即时结算**的，
+        //       谁的效果谁在 `deal_pink_damage` 返回后直接读 `ctx->resolvedPink` 就能判
+        //       （`final <= 0 && absorbed == 0` = 被免疫/免减挡下），或往本阶段注册一条
+        //       带自己条件的条目。曾经这里有一个 `ctx->pink_to_true[2]` 全局 bool——
+        //       那会把一个效果附带的粉转真串给下一个无关的粉伤效果，已删。
+        //    ⚠️ 因为检测点在护罩之前，这里转出的真伤**不消耗护罩**（真伤直通护盾/护罩）。
+        //
         // ⑦ CAP：上限/锁伤（沧岚 2343「不超过此护盾的数值」）——**非流程图节点**，
         //    是本引擎为"受到的粉伤不超过X"一族留的槽；位置（护罩之前）待实测确认。
         //
@@ -297,8 +283,8 @@ void BattleContext::install_default_pink_mitigation() {
         //      · 只看体力有没有降（类1）→ 本段此刻 `final <= 0` 即"没受到"，效果自行决定补什么；
         //      · 连护罩一起看（类2）→ 读 `r.absorbed`；
         //      · "体力变化 < n 点则触发"（类3）→ 读 `r.final`。
-        //    ⚠️ 引擎自身**不在这里做任何事**——`pink_to_true` 是"免疫粉伤型"的状态（见 ⑥），
-        //       与"未受到粉伤型"是两回事，别混成一个开关。
+        //    ⚠️ 引擎自身**不在这里做任何事**——这里只是给效果留的挂钩；"免疫粉伤型"（见 ⑥）
+        //       与"未受到粉伤型"是两条不同的判据，别混成一个开关。
         //    ⚠️ 此刻**体力还没扣**（扣血在管线之后）——要按"实际掉血"判的效果请挂
         //       `EVENT_TAKE_PINK_DAMAGE`（它只在真的扣到本体时才发）。
         //
