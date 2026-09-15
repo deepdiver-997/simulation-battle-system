@@ -42,7 +42,13 @@ class BattleContext;
 // 免疫类型（原 immunity_center.h 迁入）。规则大类 IMMUNE 的 subtype。
 enum class ImmunityType {
     BREAK,       // 免断（本时点不可被断回合）
-    DAMAGE,      // 免伤
+    DAMAGE,      // 免伤（红伤：由伤害管线 BLOCK 阶段消费）
+    // 免粉（固定/百分比伤害）：由 **PinkDamagePipeline 的 IMMUNE 阶段**消费——**与"挡伤"同一条路**
+    //   （同一个 `grant_immunity` / `is_immune` / `consume_immune`，同一套 counts 语义）。
+    // ⚠️ **次数型免粉只挡一段**：多段粉是 N 次独立结算 → 只挡掉其中一次，
+    //    其余各段照常落到本体（用户 2026-09-15 口径；"1 次"就是字面意义的 1 段）。
+    //    窗口型/永久型（counts=0）则每段都查、每段都免。
+    PINK_DAMAGE,
     STAT_DROP,   // 免弱（能力下降免疫）
     ANOMALY,     // 异常免疫，用 anomaly_mask 细分（0 = 全异常免疫；否则按位）
     HEAL_BLOCK,  // 封回血（封锁体力回复，位覆盖时点仿魂免）

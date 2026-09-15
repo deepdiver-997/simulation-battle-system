@@ -251,15 +251,17 @@ static void run_pink_damage(BattleContext* ctx, int target, int amount,
     r.final = value;
     ctx->pink_damage_pipeline_.run(ctx, actor, target);
 
+    // **粉转真（免疫粉伤）**：`PINK_TO_TRUE_IMMUNE` 检测点（在**护罩之前**）置的位。
+    // 改以真实伤害结算——直通护盾/护罩、穿抗性/免疫；因为检测点在护罩之前，
+    // 这一段**不消耗护罩**（管线跑到检测点时护罩还没消费）。
+    // ⚠️ 与"粉转真（未受到粉伤）"是两回事：后者是护罩吃光后的免粉补偿，属效果侧
+    //    （挂 `PINK_TO_TRUE_UNHARMED` 阶段或 `EVENT_TAKE_PINK_DAMAGE`），引擎不代劳。
+    if (r.to_true) {
+        deal_damage(ctx, target, r.raw, DamageKind::TRUE, actor);
+        return;
+    }
     if (r.final <= 0) {
-        // 被免粉挡下（免疫 / 抗性 / 特效免减 / 上限削到 0）且该方带粉转真 → 改以真实伤害结算
-        // （直通护盾/护罩、穿抗性/免疫）。
-        // ⚠️ **护罩挡下不算免粉**：护罩是"吸收"，不是"免疫"——`absorbed > 0` 即排除。
-        //    这正是"护罩抵消粉伤后以为没受到伤害又追加一段真伤"那条口径的落点。
-        if (r.absorbed == 0 && ctx->pink_to_true[target]) {
-            deal_damage(ctx, target, r.raw, DamageKind::TRUE, actor);
-        }
-        return;  // 目标体力不变（免粉补偿一族在效果侧比较 HP）
+        return;  // 本体体力不变（没受到粉伤：不算"受到"）
     }
 
     // 扣血

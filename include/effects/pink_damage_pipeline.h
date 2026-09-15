@@ -49,6 +49,11 @@ struct PinkDamageResolved {
     int raw = 0;
     int final = 0;
     int absorbed = 0;
+    // **粉转真（免疫粉伤）**：本段被免疫/免减削到 0 → 改以真实伤害结算（直通护盾/护罩）。
+    // 由 `PINK_TO_TRUE_IMMUNE` 检测点置位，`run_pink_damage` 在管线跑完后消费。
+    bool to_true = false;
+    // **粉转护罩**：本段改以护罩结算（`PINK_TO_HOOD` 检测点）。**暂无生产者**。
+    bool to_hood = false;
 };
 
 /**
@@ -64,11 +69,16 @@ struct PinkDamageResolved {
  *       → 抗性免减粉伤
  *       → 免疫粉伤 / 免疫并反弹粉伤
  *       → 百分比免减粉伤
- *       → 粉伤提升 n%          ──┬─→ 粉转护罩（检测点）
- *       │                       └─→ 粉转真·免疫粉伤（检测点）
- *       → 护罩免减粉伤          ────→ 粉转真·未受到粉伤（检测点）
+ *       → 粉伤提升 n%   ──┬─→ 粉转护罩（检测点）
+ *       │                 └─→ 粉转真·免疫粉伤（检测点）
+ *       → 护罩免减粉伤   ────→ 粉转真·未受到粉伤（检测点）
  *       → 本次最终受到的粉伤
  *     另有「星皇之怒无视区间」横跨 免疫 → 百分比免减 → 粉伤提升 → 护罩（**不含抗性免减**）。
+ *
+ * ★ **两个粉转真的位置**（配图的箭头指向，别凭直觉排）：两个检测点都是**分支**，
+ *   「粉转真·免疫粉伤」挂在 **护罩之前**（被免疫/免减削到 0，根本没走到护罩）；
+ *   「粉转真·未受到粉伤」挂在 **护罩之后**（护罩吃完了才谈得上"没受到"）。
+ *   ——顺序反了语义就不成立，所以这里各给一个独立阶段，谁也别挤在 DETECT 里。
  *
  * ★ 与 L463 乘算链 `×(1−抗性免减)×(1−技能特效免减)×(1−魂印特效免减) − 护罩值` 一致
  *   （"百分比免减"= 特效免减；护罩最后）。
@@ -105,12 +115,15 @@ struct PinkDamageResolved {
  */
 enum class PinkDamagePhase {
     RESIST,        // 抗性免减（固定/百分比分型；逐段取整）—— **链条第一位**
-    IMMUNE,        // 免疫粉伤 / 免疫并反弹粉伤（`pink_immune`；排在抗性**之后**）
+    IMMUNE,        // 免疫粉伤 / 免疫并反弹粉伤（次数型免疫，与"挡伤"同一条 RuleCenter 路）
     REDUCE_EXTRA,  // 百分比免减——技能特效免减 + 魂印特效免减（**乘法**，与抗性连乘）
     AMP,           // 粉伤提升 n%——"受到的固定/百分比伤害提升X%"一族（加法与乘法由效果自定）
+    PINK_TO_HOOD,  // **粉转护罩 检测点** —— 把本段粉伤转成护罩。⚠️ **暂无生产者**，阶段先留着
+    PINK_TO_TRUE_IMMUNE,    // **粉转真（免疫粉伤）检测点** —— 被免疫/免减削到 0 → 转真伤
     CAP,           // 上限/锁伤——"受到的粉伤不超过X点"；沧岚 2343「不超过此护盾的数值」
-    HOOD,          // 护罩免减——**最后一步**（算完所有免减/增粉再扣护罩）
-    DETECT,        // 结算后检测——值已定形（护罩扣完），但**体力还没扣**
+    HOOD,          // 护罩免减粉伤——**消费护罩**（算完所有免减/增粉/转护罩之后）
+    PINK_TO_TRUE_UNHARMED,  // **粉转真（未受到粉伤）检测点** —— 护罩吃完仍无剩余落到本体
+    FINAL,         // 本次最终受到的粉伤（终点，读点）
 };
 
 /**
@@ -129,13 +142,14 @@ enum class PinkDamagePhase {
  *    宁可让类别字段先只作声明，也不要照搬红伤的掩码语义凭空发明一条机制。
  *    将来若拿到口径，在 `run` 里按 `category` 跳过即可（红伤 `DamagePipeline::run` 同款两行）。
  *
- * ⚠️ 目前**零注册**的阶段（阶段在、生产者未做，别当成 bug）：`AMP` / `CAP` / `DETECT`。
- *    它们的生产者是具体效果（增粉一族、锁粉一族、免粉补偿一族），
- *    凭空造 ws 字段等于替官方定语义——效果直接注册进桶即可（见 693 在红伤 AMP_EXTRA 的做法）。
+ * ⚠️ 目前**零注册**的阶段（阶段在、生产者未做，别当成 bug）：`PINK_TO_HOOD` / `CAP` / `FINAL`，
+ *    以及 `AMP` / `PINK_TO_TRUE_UNHARMED`（只有测试探针）。它们的生产者是具体效果
+ *    （增粉一族、锁粉一族、免粉补偿一族），凭空造 ws 字段等于替官方定语义——
+ *    效果直接注册进桶即可（见 693 在红伤 AMP_EXTRA 的做法）。
  */
 class PinkDamagePipeline {
 public:
-    static constexpr int kPhaseCount = 7;
+    static constexpr int kPhaseCount = 10;
 
     PinkDamagePipeline() = default;
     PinkDamagePipeline(const PinkDamagePipeline&) = delete;
@@ -165,13 +179,16 @@ public:
 
     // ⚠️ **顺序即机制**：改这里就是改机制（见 PinkDamagePhase 的长注释）。
     static constexpr PinkDamagePhase kOrder[kPhaseCount] = {
-        PinkDamagePhase::RESIST,        // 抗性免减（链条第一位）
+        PinkDamagePhase::RESIST,        // 抗性免减
         PinkDamagePhase::IMMUNE,        // 免疫粉伤 / 免疫并反弹
         PinkDamagePhase::REDUCE_EXTRA,  // 百分比免减（乘法）
         PinkDamagePhase::AMP,           // 粉伤提升 n%（**在免减之后**）
-        PinkDamagePhase::CAP,           // 上限/锁伤
-        PinkDamagePhase::HOOD,          // 护罩（最后一步）
-        PinkDamagePhase::DETECT,        // 结算后检测
+        PinkDamagePhase::PINK_TO_HOOD,          // 粉转护罩 检测点（暂无生产者）
+        PinkDamagePhase::PINK_TO_TRUE_IMMUNE,   // 粉转真·免疫粉伤 检测点
+        PinkDamagePhase::CAP,                   // 上限/锁伤
+        PinkDamagePhase::HOOD,                  // 护罩免减（消费护罩）
+        PinkDamagePhase::PINK_TO_TRUE_UNHARMED, // 粉转真·未受到粉伤 检测点
+        PinkDamagePhase::FINAL,                 // 本次最终受到的粉伤
     };
 
 private:

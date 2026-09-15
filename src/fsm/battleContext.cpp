@@ -178,10 +178,13 @@ void BattleContext::install_default_pink_mitigation() {
             }
         );
         // ② IMMUNE：**免疫粉伤 / 免疫并反弹粉伤** —— 排在抗性**之后**（流程图第二个框）。
-        //    ⚠️ 免疫与"抗性 100% / 效果减粉"在本管线里**不做区分**（用户 2026-09-15 口径：
-        //       对免粉补偿类检测三者等价，都只是把 final 削到 0）。分开成独立阶段是为了
-        //       (a) 结构上贴合流程图、(b) 给"免疫**并反弹**"留出落点（反弹量 = 抗性后的值）。
-        //    ⚠️ 「免疫并反弹粉伤」**未做**——需要"反弹"语义（现有只到削 0）。
+        //    ★ **免粉与"挡伤"走同一条路**（用户 2026-09-15 口径）：同一个 RuleCenter 免疫票据
+        //      （`ImmunityType::PINK_DAMAGE`）、同一个 `is_immune` / `consume_immune` 消费点，
+        //      与红伤 BLOCK 阶段的"次数型免伤"完全同构——不再另设 `pink_immune` 裸 bool。
+        //    ★ **次数型免粉只挡一段**：多段粉 = N 次独立结算 → 只消费掉票据的 1 次，
+        //      其余各段照常落到本体。窗口型/永久型（counts=0）则每段都查、每段都免。
+        //    ⚠️ 免疫与"抗性 100% / 效果减粉"在下游检测里**不做区分**（都只是把 final 削到 0）。
+        //    ⚠️ 「免疫并**反弹**粉伤」**未做**——反弹量应取抗性后的值（即此刻的 final）。
         register_pink_damage_effect(
             PinkDamagePhase::IMMUNE,
             owner,
@@ -193,9 +196,14 @@ void BattleContext::install_default_pink_mitigation() {
                 if (r.target < 0 || r.target > 1 || bucket_owner != r.target) {
                     return;
                 }
-                if (ctx->pink_immune[r.target]) {
-                    r.final = 0;
+                if (r.final <= 0) {
+                    return;
                 }
+                if (!ctx->is_immune(r.target, ImmunityType::PINK_DAMAGE, ctx->currentState)) {
+                    return;
+                }
+                ctx->consume_immune(r.target, ImmunityType::PINK_DAMAGE, ctx->currentState);
+                r.final = 0;
             }
         );
         // ③ REDUCE_EXTRA：**百分比免减粉伤**（技能特效 + 魂印特效共用本阶段，乘法连乘）。
@@ -220,7 +228,38 @@ void BattleContext::install_default_pink_mitigation() {
                 }
             }
         );
-        // ④ HOOD：**护罩免减粉伤**——**最后一步**（流程图最右：算完抗性/免减/增粉才扣护罩）。
+        // 从这里开始接下来应该是：粉伤提升n% -> 粉转护罩检测点（目前没有这个效果要实现但是最好留着这个阶段） -> 粉转真（未受到粉伤）检测点 -> 消费护罩 -> 粉转真（免疫粉伤）检测点 -> 最终粉伤
+        // 然后在抗性过后，后面的区间一直到最终粉伤都是星皇之怒二段无视的区间，也就是只用经过抗性减免就可以直接得到最终粉伤
+        // ⑤ PINK_TO_HOOD：**粉转护罩 检测点**（挂在"粉伤提升 n%"之后、护罩之前）。
+        //    ⚠️ **暂无生产者**——阶段先留着（用户 2026-09-15：目前没有这个效果要实现，但阶段要占位）。
+        //       要接的时候：把本段转成护罩（`to_hood`）+ 终止后续（护罩不再吃这段）。
+        //
+        // ⑥ PINK_TO_TRUE_IMMUNE：**粉转真（免疫粉伤）检测点** —— 挂在**护罩之前**。
+        //    判据：本段已被免疫/抗性/免减削到 0（`final <= 0`），且该方带"粉转真"状态。
+        //    ★ 因为检测点在护罩之前，转成真伤后**不消耗护罩**——真伤直通护盾/护罩，
+        //      与图里这条分支"绕过护罩"的指向一致。
+        //    ⚠️ 检测点本身**不改 final**（真伤的结算在管线之外，见 run_pink_damage）——
+        //      这里只置 `to_true`；把扣血/发事件留在唯一出口，免得管线中途改道。
+        register_pink_damage_effect(
+            PinkDamagePhase::PINK_TO_TRUE_IMMUNE,
+            owner,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                PinkDamageResolved& r = ctx->resolvedPink;
+                if (r.target < 0 || r.target > 1 || bucket_owner != r.target) {
+                    return;
+                }
+                if (r.final <= 0 && ctx->pink_to_true[r.target]) {
+                    r.to_true = true;
+                }
+            }
+        );
+        // ⑦ CAP：上限/锁伤（沧岚 2343「不超过此护盾的数值」）——**非流程图节点**，
+        //    是本引擎为"受到的粉伤不超过X"一族留的槽；位置（护罩之前）待实测确认。
+        //
+        // ⑧ HOOD：**护罩免减粉伤**——**消费护罩**（流程图：算完抗性/免减/增粉/转护罩才扣护罩）。
         //    记 absorbed 供"护罩算不算受到伤害"判定；破罩发 EVENT_SHIELD_BROKEN。
         //    ⚠️ **扣体力不在这里**：管线只把值定形，扣血由 deal_damage 在管线之后统一做。
         register_pink_damage_effect(
@@ -252,6 +291,18 @@ void BattleContext::install_default_pink_mitigation() {
                 }
             }
         );
+        // ⑨ PINK_TO_TRUE_UNHARMED：**粉转真（未受到粉伤）检测点** —— 挂在**护罩之后**。
+        //    ★ 位置不能提前：要判"有没有受到粉伤"，必须等护罩消费完（护罩吃光 → 没落到本体）。
+        //    ★ 这是个**给效果挂**的检测点（免粉补偿一族，L338 三类）：
+        //      · 只看体力有没有降（类1）→ 本段此刻 `final <= 0` 即"没受到"，效果自行决定补什么；
+        //      · 连护罩一起看（类2）→ 读 `r.absorbed`；
+        //      · "体力变化 < n 点则触发"（类3）→ 读 `r.final`。
+        //    ⚠️ 引擎自身**不在这里做任何事**——`pink_to_true` 是"免疫粉伤型"的状态（见 ⑥），
+        //       与"未受到粉伤型"是两回事，别混成一个开关。
+        //    ⚠️ 此刻**体力还没扣**（扣血在管线之后）——要按"实际掉血"判的效果请挂
+        //       `EVENT_TAKE_PINK_DAMAGE`（它只在真的扣到本体时才发）。
+        //
+        // ⑩ FINAL：**本次最终受到的粉伤**（终点读点）。
     }
 }
 

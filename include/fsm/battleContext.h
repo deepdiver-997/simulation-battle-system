@@ -148,8 +148,9 @@ public:
     // 注：**伤害抗性本体**（暴击/固定/百分比）已迁到 `ElfPet::damage_resist`（跨切换保留），
     //     计算时读 `ws.eff_*_resist_pct` 有效视图（见 BattleWorkspace 与 sync_damage_resist_view）。
     //     这里留的都是**效果授予的临时状态**，随切换作废是对的。
-    bool pink_immune[2]{};     // 免疫粉伤（固定/百分比伤害）
     int  pink_reduce_pct[2]{}; // 减粉%（百分比免减，固定+百分比通用）
+    // 注：**免疫粉伤**不再有独立字段——走 RuleCenter 的次数型免疫票据
+    //     （`ImmunityType::PINK_DAMAGE`，由粉伤管线 IMMUNE 阶段消费），与「挡伤」同一条路。
     bool pink_to_true[2]{};    // 粉转真：被免疫/抗性/减粉挡下时改以真实伤害结算
     int  heal_mod_pct[2]{};    // 恢复效果修正%（正=提升，负=降低；封回血=-100 等价），heal 原语应用
 
@@ -462,7 +463,6 @@ public:
         // ⚠️ 生命周期锚 source：封属/命中失效挂**施放方**，故清的是施放方换宠名下的；
         //    免疫挂被护方自身(source==target)。on_stage 尚未更新 → 正是下场槽。
         rule_center_.clear_on_stage(owner, on_stage[owner]);
-        pink_immune[owner] = false;          // 临时粉伤状态不继承给新精灵
         // 注：伤害抗性本体在 pet 上（跨切换保留），不在此清；ws 有效视图由
         //     调用方的 sync_workspace_from_on_stage → sync_damage_resist_view 从新精灵重基。
         pink_reduce_pct[owner] = 0;
@@ -489,7 +489,6 @@ public:
         ignore_pp[1] = false;
         pp_reverse[0] = false;
         pp_reverse[1] = false;
-        pink_immune[0] = pink_immune[1] = false;
         pink_reduce_pct[0] = pink_reduce_pct[1] = 0;
         pink_to_true[0] = pink_to_true[1] = false;
         heal_mod_pct[0] = heal_mod_pct[1] = 0;
