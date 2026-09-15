@@ -509,10 +509,16 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
                 return SkillUsageResult::MISS;
             }
         } else if (!cred.must_hit) {
+            // **属性攻击对自身必定 miss**（effect 86 圣洁）：被保护方置的 `attribute_must_miss`，
+            // 攻击方出手时查 `1 - owner`。⚠️ 是"必定 **miss**"（技能打空）不是"失效"——
+            // 所以走这条 miss 路径（照常 notify 消费对方的次数类盔，文档 §2.3），
+            // 而不是 SKILL_INVALID（那条会走补偿分支，语义不同）。
+            // ⚠️ 必中技能（cred.must_hit）**绕过**它——"必定miss"治不了必中，与失明的处理一致。
+            const bool attr_must_miss = is_attribute && ctx->ws.attribute_must_miss[1 - owner];
             const int accuracy = this->accuracy;
             const float dodge_chance = ctx->ws.dodge_rate[1 - owner];
             const int hit_chance = accuracy - static_cast<int>(dodge_chance * 100);
-            if ((std::rand() % 100) >= hit_chance) {
+            if (attr_must_miss || (std::rand() % 100) >= hit_chance) {
                 // miss 也照常 notify 中心：文档 §2.3「一旦本次技能命中失败（miss 类），
                 // 会消耗所有可响应的次数类效果」——狮盔会被响应并消耗，尽管技能是 miss 的。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -533,9 +539,12 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
     // 一次技能使用掷一次（多段/变威力共用结果）。暴击率 = 技能暴击率 × ws.crit_rate_mod；
     // crit_rate=0 的技能**永不必暴**（没有引爆效果就不会暴击）。
     if (!is_attribute) {
+        // `ws.must_crit` = "下N回合自身攻击技能**必定**致命一击"（effect 58 圣光气）。
+        // ⚠️ 必须单列一个开关：`crit_rate_mod` 是**乘算**修正，技能自身 `crit_rate == 0`
+        //    时 `0 × 任何数 = 0`，表达不了"必定"（`crit_rate==0` 就是"永不必暴"）。
         const float rate = critical_strike_rate * ctx->ws.crit_rate_mod[owner];
-        ctx->crit_happened[owner] =
-            rate >= 100.0f || (rate > 0.0f && (std::rand() % 10000) < static_cast<int>(rate * 100.0f));
+        ctx->crit_happened[owner] = ctx->ws.must_crit[owner] || rate >= 100.0f
+            || (rate > 0.0f && (std::rand() % 10000) < static_cast<int>(rate * 100.0f));
     }
 
     // ② 门判定（技能无效中心：盔 / 威 / 封属 / 封属·命中失效）。

@@ -153,6 +153,16 @@ struct BattleWorkspace {
     float dodge_rate[2];           // 闪避率
     float hit_rate_mod[2];         // 命中率修正倍率
     float crit_rate_mod[2];        // 暴击率修正（乘算；效果"下N回合暴击率提升"每回合写它）
+    // **必定致命一击**（"下N回合自身攻击技能必定打出致命一击"，effect 58 圣光气）。
+    // ⚠️ 为什么不能复用 `crit_rate_mod`：那是**乘算**修正，技能自身 `crit_rate == 0`
+    //    时 `0 × 任何数 = 0`——表达不了"必定"（`crit_rate==0` 就是"永不必暴"）。
+    // 每回合 reset → 效果用"回合类"在 ROUND_START 重写（"下N回合"的标准套路）。
+    bool must_crit[2];
+    // **属性攻击对自身必定 miss**（"N回合内属性攻击对自身必定miss"，effect 86 圣洁）。
+    // [被保护方]；攻击方出手时查 `attribute_must_miss[1 - attacker]`。
+    // ⚠️ 是"必定 **miss**"（技能打空），不是"失效"——miss 会照常消费对方的次数类盔
+    //    （文档 §2.3），而"失效"走 SKILL_INVALID 补偿分支，两者不可混。
+    bool attribute_must_miss[2];
     // 本回合效果授予的"必中"凭证（如 2000「对手处于能力提升则先制+1**且必中**」这类
     // **条件必中固有效果**）：效果体在 MOVE_RIGHT 时点置位（与条件先制同一个效果体），
     // `materialize_attack_credential` 再把它并进 `AttackCredential::must_hit`。
@@ -307,6 +317,8 @@ struct BattleWorkspace {
         for (int i = 0; i < 2; i++) {
             hit_rate_mod[i] = 1.0f;
             crit_rate_mod[i] = 1.0f;
+            must_crit[i] = false;
+            attribute_must_miss[i] = false;
             cached_crit_damage[i] = 200;  // 默认暴击2倍
             skill_exec_result[i] = SkillExecResult::SKILL_INVALID;
             skill_resolution_flags[i] = SkillResolutionFlags{false, false};
