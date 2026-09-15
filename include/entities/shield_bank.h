@@ -30,6 +30,18 @@ class ShieldBank {
 public:
     static constexpr int kMaxShields = 8;
 
+    // **魂印/专属盾的约定优先级** —— 高于一切普通来源（普通盾从 0 起往上排）。
+    // 用法：魂印赋予的"登场盾"用这个优先级登记，于是与其他护盾**叠加时优先被消耗**。
+    //
+    // 为什么不需要给 ShieldBank 加新结构（用户 2026-09-15 问）：
+    //   `{priority, quantity, source_id}` 三件套已经够了 ——
+    //   · "优先消耗"= `priority`（吸收时按最高优先级扣，现成）；
+    //   · "只对本盾生效"= `source_id`（条款只认自己那一笔，见 `quantity_of`）。
+    //   再加一层"专属盾"的概念只会多一份要和这三件套同步的状态。
+    // 约定：同一精灵的**魂印专属盾至多一个**（不同魂印/同魂印多次登场都用同一个 source_id +
+    //   `refresh_source`，而不是并排叠好几个）——否则"不超过此护盾的数值"会指向哪一笔变得含糊。
+    static constexpr int kSoulShieldPriority = 1000;
+
     /** 吸收 damage，从最高优先级开始扣；返回穿透（护盾没挡完的部分）。 */
     int absorb(int damage, int* broken_count = nullptr) {
         int broken = 0;
@@ -88,6 +100,19 @@ public:
         int t = 0;
         for (int i = 0; i < count_; ++i) {
             t += slots_[i].quantity;
+        }
+        return t;
+    }
+
+    /** 按**来源**读剩余护盾值（同 source_id 的多笔求和；没有则 0）。
+     *  用途："不超过**此**护盾的数值"这类**只认自己那一笔**的条款——不能读 `total()`，
+     *  否则别的来源叠上来会把上限一起抬高。 */
+    int quantity_of(int source_id) const {
+        int t = 0;
+        for (int i = 0; i < count_; ++i) {
+            if (slots_[i].source_id == source_id) {
+                t += slots_[i].quantity;
+            }
         }
         return t;
     }

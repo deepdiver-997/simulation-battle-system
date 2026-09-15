@@ -148,9 +148,7 @@ void BattleContext::install_default_pink_mitigation() {
         // 粉伤免减只从"承受方"桶读。run 每阶段按 {actor, target} 各走一趟，
         // 因此回调里用 resolvedPink.target 判断当前桶 owner 是否为承受方。
         //
-        // ① RESIST：免疫粉伤 → 该来源抗性%。**免疫与抗性在这里不做区分**——
-        //    用户 2026-09-15 口径：对"免粉补偿"检测而言两者等价（都只是把 final 削到 0），
-        //    检测侧只看体力有没有下降，不需要"是不是被挡下了"这个分类。
+        // ① RESIST：**抗性免减粉伤** —— 链条第一位（流程图最左）。
         // ⚠️ 取整：官方算法是 `伤害量 − 伤害量×抗性`（乘法**向下**取整，L84），
         //    即 `final -= final * resist / 100`——写成"乘 (100-resist)/100"会因两次取整对不上。
         register_pink_damage_effect(
@@ -167,10 +165,6 @@ void BattleContext::install_default_pink_mitigation() {
                 if (r.final <= 0) {
                     return;
                 }
-                if (ctx->pink_immune[r.target]) {
-                    r.final = 0;
-                    return;
-                }
                 // 抗性按来源分型：FIXED 走固定抗性、百分比走百分比抗性（官方：暴击/固定/百分比）。
                 // ⚠️ 读的是 ws **有效视图**而非 pet 本体——临时 buff 可修改抗性，
                 //    视图基线由 sync_damage_resist_view 在回合开始/换宠重基。
@@ -183,7 +177,28 @@ void BattleContext::install_default_pink_mitigation() {
                 }
             }
         );
-        // ② REDUCE_EXTRA：**特效免减**（技能特效 + 魂印特效共用本阶段，乘法连乘）。
+        // ② IMMUNE：**免疫粉伤 / 免疫并反弹粉伤** —— 排在抗性**之后**（流程图第二个框）。
+        //    ⚠️ 免疫与"抗性 100% / 效果减粉"在本管线里**不做区分**（用户 2026-09-15 口径：
+        //       对免粉补偿类检测三者等价，都只是把 final 削到 0）。分开成独立阶段是为了
+        //       (a) 结构上贴合流程图、(b) 给"免疫**并反弹**"留出落点（反弹量 = 抗性后的值）。
+        //    ⚠️ 「免疫并反弹粉伤」**未做**——需要"反弹"语义（现有只到削 0）。
+        register_pink_damage_effect(
+            PinkDamagePhase::IMMUNE,
+            owner,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                PinkDamageResolved& r = ctx->resolvedPink;
+                if (r.target < 0 || r.target > 1 || bucket_owner != r.target) {
+                    return;
+                }
+                if (ctx->pink_immune[r.target]) {
+                    r.final = 0;
+                }
+            }
+        );
+        // ③ REDUCE_EXTRA：**百分比免减粉伤**（技能特效 + 魂印特效共用本阶段，乘法连乘）。
         //    排在抗性之后——L463 的乘算链 `×(1−抗性免减)×(1−技能特效免减)×(1−魂印特效免减)`。
         register_pink_damage_effect(
             PinkDamagePhase::REDUCE_EXTRA,
@@ -205,7 +220,7 @@ void BattleContext::install_default_pink_mitigation() {
                 }
             }
         );
-        // ③ HOOD：护罩吸收——**最后一步**（L463「− 护罩值」：算完所有免减才扣护罩）。
+        // ④ HOOD：**护罩免减粉伤**——**最后一步**（流程图最右：算完抗性/免减/增粉才扣护罩）。
         //    记 absorbed 供"护罩算不算受到伤害"判定；破罩发 EVENT_SHIELD_BROKEN。
         //    ⚠️ **扣体力不在这里**：管线只把值定形，扣血由 deal_damage 在管线之后统一做。
         register_pink_damage_effect(
