@@ -21,6 +21,7 @@
 #include <effects/rule_center.h>
 #include <effects/event_center.h>
 #include <effects/damage_pipeline.h>
+#include <effects/pink_damage_pipeline.h>
 #include <entities/soul_mark.h>
 #include <fsm/state.h>
 
@@ -84,6 +85,11 @@ public:
     // 伤害值在 resolvedDamage 中流经 DamagePhase 节点，各阶段效果读写它。
     // 类别抑制（damage_suppress_mask）按效果类别跳过被抑制方的伤害效果。
     DamagePipeline damage_pipeline_;
+
+    //--- 粉伤结算管线（**独立于红伤管线**，见 effects/pink_damage_pipeline.h）---
+    // 每段粉伤（每次 deal_pink_damage）重置 resolvedPink 并跑一遍，当场落到体力。
+    // "多段粉逐段独立结算"= 每次调用各跑一遍，不累积不合并。
+    PinkDamagePipeline pink_damage_pipeline_;
 
     //--- 次数型穿透授予（挂在自己身上，"下1次攻击无视伤害限制"类）---
     // 跨回合持久；成功使用攻击技能后统一消费（每槽 remaining-1，0 移除）。
@@ -226,6 +232,7 @@ public:
     int (&damage_add_extra_mul)[2][4];
     DamageSnapshot& pendingDamage;
     DamageSnapshot& resolvedDamage;
+    PinkDamageResolved& resolvedPink;
 
     //--- 构造函数 ---
     BattleContext(IControlBlock* control_block, const SeerRobot robots[]);
@@ -507,6 +514,8 @@ public:
         install_default_damage_amp();
         install_default_damage_amp_extra();
         install_default_damage_guard_detect();
+        pink_damage_pipeline_.clear();
+        install_default_pink_mitigation();
     }
 
     //--- 回合类效果管理 ---
@@ -633,6 +642,36 @@ public:
                                 std::function<void(BattleContext*, int)> fn) {
         damage_pipeline_.register_effect(phase, owner, category, std::move(fn));
     }
+
+    //--- 粉伤管线便利方法 ---
+
+    /**
+     * 注册一个粉伤结算效果到指定阶段。
+     * fn 通过 ctx->resolvedPink 读取/修改当前结算值（resolvedPink.final）。
+     *
+     * ⚠️ owner 桶语义：增粉（AMP）挂**来源方**桶，其余（抗性/免减/上限/护罩）挂**承受方**桶。
+     *    需要用到的那一侧与 `resolvedPink.target/actor` 不符时回调里直接早退（默认回调就是这么写的）。
+     * ⚠️ 与红伤不同，本管线**不消费 damage_suppress_mask**（粉伤侧无抑制口径，见头文件）。
+     */
+    void register_pink_damage_effect(PinkDamagePhase phase, int owner,
+                                     std::function<void(BattleContext*, int)> fn) {
+        pink_damage_pipeline_.register_effect(phase, owner, std::move(fn));
+    }
+
+    /**
+     * 安装默认粉伤免减（**三个阶段**：RESIST + REDUCE_EXTRA + HOOD），全部只对**承受方**桶生效。
+     *
+     *   ① `RESIST`：免疫粉伤 → 该来源抗性%（固定走 `eff_fixed_resist_pct`、百分比走
+     *      `eff_percent_resist_pct` 有效视图，可被临时 buff 改）。取整按官方 `伤害量−伤害量×抗性`
+     *      （乘法向下取整，L84）。
+     *   ② `REDUCE_EXTRA`：**特效免减**（`pink_reduce_pct`），乘法、排在抗性之后（L463 的乘算链）。
+     *   ③ `HOOD`：护罩吸收 —— **最后一步**（算完所有免减再扣护罩），记 `absorbed` 并发破罩事件。
+     *      ⚠️ 扣体力**不在这里**：管线只是把值定形，扣血由 `deal_damage` 在管线之后统一做，
+     *        这样"体力有没有真降"才有唯一判据（免粉补偿一族靠它）。
+     *
+     * 每次粉伤结算前确保已安装（init_battle / clearAllEffects 后调用）。
+     */
+    void install_default_pink_mitigation();
 
     /**
      * 安装默认减伤（**两个阶段**：REDUCE_FLAT + REDUCE_PCT，均 MITIGATE 类别）。

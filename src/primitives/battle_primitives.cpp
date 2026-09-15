@@ -218,11 +218,79 @@ BreakResult break_round_effects(BattleContext* ctx, int target) {
 }
 
 // ----------------------------------------------------------------
+// 粉伤结算 — 一段粉伤走一遍 PinkDamagePipeline，当场落到体力
+//
+// 「多段粉」= **每次调用 = 一段**，逐段独立结算（各自取整/各自扣护罩/各自检测），
+// 不累积不合并 —— 官方算例是 `300×0.65` 各自取整后相加，而不是 `(300×4)×0.65`（L445）。
+// 所以引擎端没有"段计数"这种东西，`deal_pink_damage` 被调 N 次就是 N 段。
+//
+// 流程：PERCENT 换算 → 填 resolvedPink → 跑管线（增粉/抗性/特效免减/上限/护罩/检测）
+//       → 剩余 > 0 才扣体力 + 发事件。
+// ----------------------------------------------------------------
+static void run_pink_damage(BattleContext* ctx, int target, int amount,
+                            DamageKind kind, int actor) {
+    ElfPet& pet = ctx->getPet(target);
+
+    int value = amount;
+    if (kind == DamageKind::PERCENT) {
+        const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
+        value = max_hp > 0 ? max_hp * amount / 100 : 0;
+        if (value <= 0) {
+            return;
+        }
+    }
+    // PERCENT_VALUE：amount 已是具体伤害值（如"自身已损失体力50%"），不再换算——
+    // 但**档位**仍属百分比伤害（走百分比抗性/护罩）。
+
+    PinkDamageResolved& r = ctx->resolvedPink;
+    r = PinkDamageResolved{};
+    r.target = target;
+    r.actor = actor;
+    r.tier = (kind == DamageKind::FIXED) ? PinkDamageTier::FIXED : PinkDamageTier::PERCENT;
+    r.raw = value;    // 粉转真按**原始量**转（不是被免减后的量）
+    r.final = value;
+    ctx->pink_damage_pipeline_.run(ctx, actor, target);
+
+    if (r.final <= 0) {
+        // 被免粉挡下（免疫 / 抗性 / 特效免减 / 上限削到 0）且该方带粉转真 → 改以真实伤害结算
+        // （直通护盾/护罩、穿抗性/免疫）。
+        // ⚠️ **护罩挡下不算免粉**：护罩是"吸收"，不是"免疫"——`absorbed > 0` 即排除。
+        //    这正是"护罩抵消粉伤后以为没受到伤害又追加一段真伤"那条口径的落点。
+        if (r.absorbed == 0 && ctx->pink_to_true[target]) {
+            deal_damage(ctx, target, r.raw, DamageKind::TRUE, actor);
+        }
+        return;  // 目标体力不变（免粉补偿一族在效果侧比较 HP）
+    }
+
+    // 扣血
+    const int hp_before = pet.hp;
+    pet.hp -= r.final;
+    if (pet.hp < 0) {
+        pet.hp = 0;
+    }
+    const int actual_damage = hp_before - pet.hp;
+
+    // 粉伤事件：**只有真的结算到本体（体力下降）才发**。
+    // 经过护罩抵消后没有剩余 → 上面就 return 了，这里根本到不了。
+    // ⚠️ 这就是「免粉补偿」一类检测的全部依据（用户 2026-09-15 口径）：
+    //    检测体力和护罩是否变化的那一类（L338 类2）在管线 DETECT 阶段读 `resolvedPink.absorbed`，
+    //    只看体力的一类（类1）与本事件同构——本事件只是把"体力降了"这件事**类型化**，
+    //    免得 watcher 靠 `ev.state` 反推这是不是粉伤时点。
+    ctx->event_center_.emit(BattleEvent{EventType::EVENT_TAKE_PINK_DAMAGE, actor, target,
+                                        actual_damage, static_cast<int>(ctx->currentState)});
+    // 受到伤害事件（第三方"受到攻击伤害后/受高伤/受低伤"监听），amount = 实际扣血。
+    // 带上 emit 当时的 FSM 时点：watcher 在 drain 时才跑，那时 currentState 已经推进，
+    // 靠 ctx->currentState 判不出"是攻击伤害还是粉伤"（见 BattleEvent::state）。
+    ctx->event_center_.emit(BattleEvent{EventType::EVENT_TAKE_DAMAGE, actor, target,
+                                        actual_damage, static_cast<int>(ctx->currentState)});
+}
+
+// ----------------------------------------------------------------
 // deal_damage — 伤害原语（统一伤害入口）
 //
-// 流程：粉伤抗性（固定/百分比）→ 护盾/护罩吸收 → 扣血 → emit EVENT_TAKE_DAMAGE。
-// 护盾只响应红伤(NORMAL)、护罩只响应粉伤(FIXED/PERCENT)、真实伤害直通（官方护盾/护罩分离）。
-// 被击破时 emit EVENT_SHIELD_BROKEN（对应描述"护盾消失时XXX"，护罩破罩同事件）。
+// 粉伤（FIXED/PERCENT/PERCENT_VALUE）走 **PinkDamagePipeline**（见上），红伤(NORMAL)与本函数
+// 内联的护盾吸收，真实伤害(TRUE)直通（官方护盾/护罩分离）。
+// 护盾只响应红伤、护罩只响应粉伤；被击破时 emit EVENT_SHIELD_BROKEN。
 // 攻击方可设 ws.ignore_shield 使本次攻击无视护盾/护罩响应。
 // 所有伤害类机制都应走这里，避免效果函数直接改 hp 绕过管线。
 // ----------------------------------------------------------------
@@ -236,63 +304,25 @@ void deal_damage(BattleContext* ctx, int target, int amount,
         return;  // 目标已死亡
     }
 
-    int effective = amount;
-    // 粉转真时按原始量（PERCENT 已换算成具体数值）转，故保留 pre_resist。
-    int pre_resist = amount;
-    if (kind == DamageKind::PERCENT) {
-        const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
-        effective = max_hp > 0 ? max_hp * amount / 100 : 0;
-        if (effective <= 0) {
-            return;
-        }
-        pre_resist = effective;
-    }
-    // PERCENT_VALUE：amount 已是具体伤害值（如"自身已损失体力50%"），不再换算——
-    // 但**分档**仍属百分比伤害（走百分比抗性/护罩），见下方 kind 判定。
-
-    // 粉伤抗性层（固定/百分比伤害）：免疫粉伤 → 对应来源抗性% → 减粉% 逐级削减。
-    // 伤害抗性按来源分型：FIXED 走固定抗性、PERCENT 走百分比抗性（官方：暴击/固定/百分比）。
-    // ⚠️ 读的是 ws **有效视图**而非 pet 本体——临时 buff 可修改抗性（混元天尊死亡 buff
-    //    把己方精灵抗性视为 100%）。视图基线由 sync_damage_resist_view 在回合开始/换宠重基。
-    // 被挡下（<=0）且粉转真 → 改以真实伤害结算（直通护盾/护罩、穿抗性/免疫）。TRUE 绕过此层。
     if (kind == DamageKind::FIXED || kind == DamageKind::PERCENT
         || kind == DamageKind::PERCENT_VALUE) {
-        const int resist_pct =
-            kind == DamageKind::FIXED ? ctx->ws.eff_fixed_resist_pct[target]
-                                      : ctx->ws.eff_percent_resist_pct[target];
-        if (ctx->pink_immune[target]) {
-            effective = 0;
-        } else {
-            effective -= effective * resist_pct / 100;
-            effective -= effective * ctx->pink_reduce_pct[target] / 100;
-        }
-        if (effective <= 0) {
-            if (ctx->pink_to_true[target]) {
-                deal_damage(ctx, target, pre_resist, DamageKind::TRUE, actor);
-            }
-            return;  // 被免粉挡下：目标体力不变（免粉补偿一类在效果侧比较 HP）
-        }
+        run_pink_damage(ctx, target, amount, kind, actor);
+        return;
     }
 
-    // 护盾/护罩吸收：护盾只响应红伤(NORMAL)，护罩只响应粉伤(FIXED/PERCENT)，真实伤害直通。
+    // 护盾吸收：护盾只响应红伤(NORMAL)，真实伤害直通。
     // 攻击方可设 ws.ignore_shield[attacker] 使本次攻击无视护盾/护罩响应（如无极圣武魂印）。
     const bool ignore_bank = (actor >= 0 && actor <= 1 && ctx->ws.ignore_shield[actor]);
     int broken = 0;
-    int remaining = effective;
-    if (!ignore_bank) {
-        if (kind == DamageKind::NORMAL) {
-            remaining = pet.shield_bank_.absorb(effective, &broken);
-        } else if (kind == DamageKind::FIXED || kind == DamageKind::PERCENT
-                   || kind == DamageKind::PERCENT_VALUE) {
-            remaining = pet.hood_bank_.absorb(effective, &broken);
-        }
-        // DamageKind::TRUE：护盾/护罩均不响应，直通
+    int remaining = amount;
+    if (!ignore_bank && kind == DamageKind::NORMAL) {
+        remaining = pet.shield_bank_.absorb(amount, &broken);
     }
     if (broken > 0) {
         ctx->event_center_.emit(BattleEvent{EventType::EVENT_SHIELD_BROKEN, actor, target});
     }
     if (remaining <= 0) {
-        return;  // 护盾/护罩完全挡下
+        return;  // 护盾完全挡下
     }
 
     // 扣血
@@ -303,9 +333,6 @@ void deal_damage(BattleContext* ctx, int target, int amount,
     }
     const int actual_damage = hp_before - pet.hp;
 
-    // 受到伤害事件（第三方"受到攻击伤害后/受高伤/受低伤"监听），amount = 实际扣血。
-    // 带上 emit 当时的 FSM 时点：watcher 在 drain 时才跑，那时 currentState 已经推进，
-    // 靠 ctx->currentState 判不出"是攻击伤害还是粉伤"（见 BattleEvent::state）。
     ctx->event_center_.emit(BattleEvent{EventType::EVENT_TAKE_DAMAGE, actor, target,
                                         actual_damage, static_cast<int>(ctx->currentState)});
 }

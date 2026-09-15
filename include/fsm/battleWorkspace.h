@@ -4,6 +4,7 @@
 #include <cstring>
 #include <ostream>
 #include <effects/effect.h>
+#include <effects/pink_damage_pipeline.h>
 #include <entities/numerical-properties.h>
 
 // Forward declare instead of include to break circular dependency
@@ -130,6 +131,12 @@ struct BattleWorkspace {
     //========== 伤害计算 ==========
     DamageSnapshot pendingDamage;   // 加算减伤后
     DamageSnapshot resolvedDamage;  // 最终伤害
+
+    //========== 粉伤结算（独立管线）==========
+    // 粉伤不走 resolvedDamage —— 两者输入完全不同（粉伤没有攻击方/技能/克制/暴击）。
+    // 每段粉伤（每次 deal_pink_damage）重新填一次并跑一遍 PinkDamagePipeline。
+    // 全 POD，`ws.reset()` 的 memset 天然归零。
+    PinkDamageResolved resolvedPink;
 
     //========== 行动开始异常白字真伤（不可减免） ==========
     DamageSnapshot action_start_abnormal_damage[2];

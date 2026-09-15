@@ -114,6 +114,7 @@ BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robot
     , damage_add_extra_mul(ws.damage_add_extra_mul)
     , pendingDamage(ws.pendingDamage)
     , resolvedDamage(ws.resolvedDamage)
+    , resolvedPink(ws.resolvedPink)
 {
     init_battle();
 }
@@ -138,6 +139,105 @@ void BattleContext::init_battle() {
     install_default_damage_amp();
     install_default_damage_amp_extra();
     install_default_damage_guard_detect();
+    pink_damage_pipeline_.clear();
+    install_default_pink_mitigation();
+}
+
+void BattleContext::install_default_pink_mitigation() {
+    for (int owner = 0; owner < 2; ++owner) {
+        // 粉伤免减只从"承受方"桶读。run 每阶段按 {actor, target} 各走一趟，
+        // 因此回调里用 resolvedPink.target 判断当前桶 owner 是否为承受方。
+        //
+        // ① RESIST：免疫粉伤 → 该来源抗性%。**免疫与抗性在这里不做区分**——
+        //    用户 2026-09-15 口径：对"免粉补偿"检测而言两者等价（都只是把 final 削到 0），
+        //    检测侧只看体力有没有下降，不需要"是不是被挡下了"这个分类。
+        // ⚠️ 取整：官方算法是 `伤害量 − 伤害量×抗性`（乘法**向下**取整，L84），
+        //    即 `final -= final * resist / 100`——写成"乘 (100-resist)/100"会因两次取整对不上。
+        register_pink_damage_effect(
+            PinkDamagePhase::RESIST,
+            owner,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                PinkDamageResolved& r = ctx->resolvedPink;
+                if (r.target < 0 || r.target > 1 || bucket_owner != r.target) {
+                    return;
+                }
+                if (r.final <= 0) {
+                    return;
+                }
+                if (ctx->pink_immune[r.target]) {
+                    r.final = 0;
+                    return;
+                }
+                // 抗性按来源分型：FIXED 走固定抗性、百分比走百分比抗性（官方：暴击/固定/百分比）。
+                // ⚠️ 读的是 ws **有效视图**而非 pet 本体——临时 buff 可修改抗性，
+                //    视图基线由 sync_damage_resist_view 在回合开始/换宠重基。
+                const int resist_pct = (r.tier == PinkDamageTier::PERCENT)
+                    ? ctx->ws.eff_percent_resist_pct[r.target]
+                    : ctx->ws.eff_fixed_resist_pct[r.target];
+                r.final -= r.final * resist_pct / 100;
+                if (r.final < 0) {
+                    r.final = 0;
+                }
+            }
+        );
+        // ② REDUCE_EXTRA：**特效免减**（技能特效 + 魂印特效共用本阶段，乘法连乘）。
+        //    排在抗性之后——L463 的乘算链 `×(1−抗性免减)×(1−技能特效免减)×(1−魂印特效免减)`。
+        register_pink_damage_effect(
+            PinkDamagePhase::REDUCE_EXTRA,
+            owner,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                PinkDamageResolved& r = ctx->resolvedPink;
+                if (r.target < 0 || r.target > 1 || bucket_owner != r.target) {
+                    return;
+                }
+                if (r.final <= 0) {
+                    return;
+                }
+                r.final -= r.final * ctx->pink_reduce_pct[r.target] / 100;
+                if (r.final < 0) {
+                    r.final = 0;
+                }
+            }
+        );
+        // ③ HOOD：护罩吸收——**最后一步**（L463「− 护罩值」：算完所有免减才扣护罩）。
+        //    记 absorbed 供"护罩算不算受到伤害"判定；破罩发 EVENT_SHIELD_BROKEN。
+        //    ⚠️ **扣体力不在这里**：管线只把值定形，扣血由 deal_damage 在管线之后统一做。
+        register_pink_damage_effect(
+            PinkDamagePhase::HOOD,
+            owner,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                PinkDamageResolved& r = ctx->resolvedPink;
+                if (r.target < 0 || r.target > 1 || bucket_owner != r.target) {
+                    return;
+                }
+                if (r.final <= 0) {
+                    return;
+                }
+                // 攻击方可设 ws.ignore_shield[actor] 使本次伤害无视护盾/护罩响应（如无极圣武魂印）。
+                const int actor = r.actor;
+                if (actor >= 0 && actor <= 1 && ctx->ws.ignore_shield[actor]) {
+                    return;
+                }
+                int broken = 0;
+                const int remaining = ctx->getPet(r.target).hood_bank_.absorb(r.final, &broken);
+                r.absorbed += r.final - remaining;
+                r.final = remaining;
+                if (broken > 0) {
+                    ctx->event_center_.emit(
+                        BattleEvent{EventType::EVENT_SHIELD_BROKEN, actor, r.target});
+                }
+            }
+        );
+    }
 }
 
 void BattleContext::install_default_damage_reduction() {

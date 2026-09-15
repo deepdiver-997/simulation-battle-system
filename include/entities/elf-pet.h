@@ -31,7 +31,7 @@ enum class Gender {
 //    伤害计算一律读 ws 视图；ws 视图在回合开始 / 换宠时从本体重基。
 // 依据：docs/02-效果系统/官方机制理解与引擎缺口对照.md §一 粉伤抗性系统。
 struct DamageResist {
-    int crit_pct = 0;      // 暴击伤害抗性%（削减暴击加成部分）
+    int crit_pct = 0;      // 暴击伤害抗性%（**乘整段**：100 → 暴击×2 → 200 → ×(1−抗性)）
     int fixed_pct = 0;     // 固定伤害抗性%
     int percent_pct = 0;   // 百分比伤害抗性%
 };

@@ -38,6 +38,12 @@ enum class EventType {
     //   盔A被穿（监听器留下）→ 之后盔B生效 → A/B 两个监听器都触发 → 子句多触发一次。
     //   插件收到**自己 grant_id** 的结算信号时，无论 blocked 与否都该自删；blocked=false 就不执行子句。
     EVENT_SKILL_ARMOR_RESOLVED,
+    // 粉伤**结算到本体**（体力真的下降了）。amount = 实际扣血量。
+    // ⚠️ 经过护罩抵消后没有剩余就不发——"有没有受到粉伤"在这里就是字面意思：体力降没降。
+    //    要看护罩吃掉多少（L338 类2 的检测口径）在管线 DETECT 阶段读 `ctx->resolvedPink.absorbed`。
+    // ⚠️ **多段粉每段各发一次**（每次 deal_pink_damage 一段）——阈值类检测（箫澈 2099「受到粉伤
+    //    ≥300」）因此天然是"逐段判定"，不需要任何段计数逻辑。
+    EVENT_TAKE_PINK_DAMAGE,
 };
 
 /**

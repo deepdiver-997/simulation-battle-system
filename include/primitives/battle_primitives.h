@@ -101,10 +101,16 @@ enum class DamageKind {
 /**
  * deal_damage - 伤害原语：统一伤害入口。
  *
- * 流程：护盾吸收（按优先级）→ 扣血 → emit EVENT_TAKE_DAMAGE。
- * 护盾被击破时 emit EVENT_SHIELD_BROKEN。
+ * 流程（粉伤）：PERCENT 换算 → **PinkDamagePipeline**（增粉/抗性/特效免减/上限/护罩/检测，
+ *   见 effects/pink_damage_pipeline.h）→ 剩余 > 0 才扣血 → emit EVENT_TAKE_PINK_DAMAGE
+ *   + EVENT_TAKE_DAMAGE。
+ * 流程（红伤/真伤）：护盾吸收（按优先级，真伤直通）→ 扣血 → emit EVENT_TAKE_DAMAGE。
+ * 护盾/护罩被击破时 emit EVENT_SHIELD_BROKEN。
  * 所有伤害类机制（攻击管线、效果、固定/百分比伤害）都应走这里，
  * 避免效果函数直接改 hp 绕过管线。
+ *
+ * ⚠️ **一次调用 = 一段**："1回合做N次固定伤害"是 N 次调用、逐段独立结算（各自取整/各自扣护罩/
+ *    各自发事件），不是把 N 段合并成一个总量——官方算例 L445 逐段取整，合并会算错。
  *
  * @param target 承受方 (0/1)
  * @param amount 伤害量；PERCENT 时为占最大体力的百分比
