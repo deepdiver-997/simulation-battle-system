@@ -33,6 +33,7 @@ const CoreApi& core_api() {
         /*deal_pink_damage=*/&deal_pink_damage,
         /*pp_reduce=*/&pp_reduce,
         /*clear_stat_drops=*/&clear_stat_drops,
+        /*deal_true_damage=*/&deal_true_damage,
     };
     return api;
 }

@@ -339,6 +339,16 @@ void deal_damage(BattleContext* ctx, int target, int amount,
                                         actual_damage, static_cast<int>(ctx->currentState)});
 }
 
+// 真实伤害入口（插件可调）：走 deal_damage(TRUE)，返回"发生了什么"。
+FixedDamageResult deal_true_damage(BattleContext* ctx, int target, int amount, int actor) {
+    if (!ctx || target < 0 || target > 1 || amount <= 0) {
+        return FixedDamageResult::INVALID_PARAM;
+    }
+    deal_damage(ctx, target, amount, DamageKind::TRUE, actor);
+    return ctx->getPet(target).hp <= 0 ? FixedDamageResult::TARGET_DEFEATED
+                                       : FixedDamageResult::SUCCESS;
+}
+
 // 粉伤入口（插件可调）：走 deal_damage，返回"发生了什么"。
 FixedDamageResult deal_pink_damage(BattleContext* ctx, int target, int amount,
                                    DamageKind kind, int actor) {

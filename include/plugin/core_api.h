@@ -79,6 +79,10 @@ struct CoreApi {
     // 免弱/免消除强化都不该挡它）——与 clear_stat_boosts（查 STAT_CLEAR）故意不对称。
     // 返回清掉的项数。
     int (*clear_stat_drops)(BattleContext*, int target);
+    // 真实伤害（直通护盾/护罩、穿抗性/免疫）。**粉转真**一族用：
+    // "对手免疫固定伤害时额外附加等量的真实伤害"（1737）、"减少值低于阈值则附加真伤"（2077）。
+    // 效果侧读 `ctx->resolvedPink`（粉伤即时结算的结果）判定后再调本槽补真伤。
+    FixedDamageResult (*deal_true_damage)(BattleContext*, int target, int amount, int actor);
 };
 
 // sim_core 暴露的 CoreApi 单例（实际填充）。插件侧不调它；由 core 在初始化时传入。

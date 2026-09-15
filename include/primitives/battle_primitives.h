@@ -120,6 +120,7 @@ enum class DamageKind {
 void deal_damage(BattleContext* ctx, int target, int amount,
                  DamageKind kind = DamageKind::NORMAL, int actor = -1);
 
+
 // ----------------------------------------------------------------
 // 技能拦截（封属性/封攻击）
 // ----------------------------------------------------------------
@@ -353,6 +354,14 @@ FixedDamageResult fixed_damage(BattleContext* ctx, int target, int amount);
  */
 FixedDamageResult deal_pink_damage(BattleContext* ctx, int target, int amount,
                                    DamageKind kind, int actor = -1);
+/**
+ * deal_true_damage - 真实伤害入口（插件可调）：直通护盾/护罩、穿抗性/免疫。
+ *
+ * 用途：**粉转真**一族——"对手免疫固定伤害时额外附加等量的真实伤害"（1737）、
+ * "减少值低于阈值则附加真伤"（2077）、"未受到粉伤则附加真伤"。
+ * 效果侧读 `ctx->resolvedPink` 判定后调本函数补真伤。
+ */
+FixedDamageResult deal_true_damage(BattleContext* ctx, int target, int amount, int actor);
 
 // ----------------------------------------------------------------
 // 第二刀新原语（组合语法：无相谛 5 类条件模板）
