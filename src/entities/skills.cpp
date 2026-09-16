@@ -9,6 +9,7 @@
 #include <effects/effect_meta.h>
 #include <effects/effect_unit_parser.h>
 #include <effects/effect_unit_loader.h>
+#include <effects/trait_state.h>
 #include <fsm/battleContext.h>
 
 namespace {
@@ -515,10 +516,30 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             // 而不是 SKILL_INVALID（那条会走补偿分支，语义不同）。
             // ⚠️ 必中技能（cred.must_hit）**绕过**它——"必定miss"治不了必中，与失明的处理一致。
             const bool attr_must_miss = is_attribute && ctx->ws.attribute_must_miss[1 - owner];
-            const int accuracy = this->accuracy;
+            // 通用特性·精准（攻方 args[0]%）/ 回避（守方 args[0]%）——必修6：两者都**乘算**在
+            // 技能初始命中率上（90×1.1=99 / 90×0.9=81），且**都作用于属性技能**。
+            // ⚠️ 只有确实带该特性才改写（无特性者零行为、零 rand 消耗）。
+            int accuracy = this->accuracy;
+            if (const std::optional<EffectiveTrait> p =
+                    ctx->effective_common_trait(owner, TraitKind::Precision)) {
+                accuracy = accuracy * (100 + p->args[0]) / 100;
+            }
+            if (const std::optional<EffectiveTrait> e =
+                    ctx->effective_common_trait(1 - owner, TraitKind::Evasion)) {
+                accuracy = accuracy * (100 - e->args[0]) / 100;
+            }
             const float dodge_chance = ctx->ws.dodge_rate[1 - owner];
             const int hit_chance = accuracy - static_cast<int>(dodge_chance * 100);
-            if (attr_must_miss || (std::rand() % 100) >= hit_chance) {
+            // 通用特性·虚无：**有概率闪避对手攻击技能**（必修6：本质是闪避、不是挡伤）——
+            // 只对攻击技能生效；命中失败照走 miss 出口（含"miss 也消费次数类盔"的既有约定）。
+            bool void_miss = false;
+            if (!is_attribute) {
+                if (const std::optional<EffectiveTrait> v =
+                        ctx->effective_common_trait(1 - owner, TraitKind::VoidDodge)) {
+                    void_miss = trait_proc_roll(*v);   // ⚠️ rand 只在带虚无时消耗
+                }
+            }
+            if (attr_must_miss || void_miss || (std::rand() % 100) >= hit_chance) {
                 // miss 也照常 notify 中心：文档 §2.3「一旦本次技能命中失败（miss 类），
                 // 会消耗所有可响应的次数类效果」——狮盔会被响应并消耗，尽管技能是 miss 的。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -542,8 +563,21 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
         // `ws.must_crit` = "下N回合自身攻击技能**必定**致命一击"（effect 58 圣光气）。
         // ⚠️ 必须单列一个开关：`crit_rate_mod` 是**乘算**修正，技能自身 `crit_rate == 0`
         //    时 `0 × 任何数 = 0`，表达不了"必定"（`crit_rate==0` 就是"永不必暴"）。
-        const float rate = critical_strike_rate * ctx->ws.crit_rate_mod[owner];
-        ctx->crit_happened[owner] = ctx->ws.must_crit[owner] || rate >= 100.0f
+        float rate = critical_strike_rate * ctx->ws.crit_rate_mod[owner];
+        // 通用特性·会心（必修6 ①②）：**0 星（args[0]<=1）的 6.25%（1/16）与技能初始暴击率
+        // **加法**结算；**1-5 星是独立二次结算**（"只要有一个触发则当次攻击必定暴击"）。
+        // args[0]=75/88/100/120/140 → ×10 即万分数（75→750/10000=7.5%）。
+        bool crit_second_roll = false;
+        if (const std::optional<EffectiveTrait> h =
+                ctx->effective_common_trait(owner, TraitKind::CritBoost)) {
+            if (h->args[0] <= 1) {
+                rate += 6.25f;   // 0 星：加法（1/16）
+            } else {
+                crit_second_roll = (std::rand() % 10000) < h->args[0] * 10;   // 独立二次
+            }
+        }
+        ctx->crit_happened[owner] = ctx->ws.must_crit[owner] || crit_second_roll
+            || rate >= 100.0f
             || (rate > 0.0f && (std::rand() % 10000) < static_cast<int>(rate * 100.0f));
     }
 

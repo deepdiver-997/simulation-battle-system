@@ -101,6 +101,24 @@ enum class TraitKind {
                 //   ★ "强制残留体力，**不受削续航影响**"→ 直写 hp、不过 heal（不被封回血挡）。
     Revival,    // 回神（Eid 33/148）："体力降低到 1/{args[0]} 时有 n% 几率体力回满（0 体力也可以触发）"；
                 //   args[0]=阈值分母（DB 全为 8 → 1/8）、args[1]=概率。同样仅战斗阶段、同样直写 hp。
+    // ── 批次 B（2026-09-16）：命中/暴击族（必修6 的机制修正已并入注释）──
+    // ⚠️ 这一族**修正了三处望文生义**：免爆不是降暴击率而是**对暴击挡伤**；
+    //    虚无不是挡伤而是**概率闪避**；会心 0 星是**与初始暴击率加法**、1-5 星才是独立二次结算。
+    Precision,     // 精准（Eid 29）："所有技能命中率提升 n%"；args[0]=百分点（DB 5~10）。
+                   //   ★ 与技能初始命中率**乘法**（必修6：90×1.1=99）；**可作用于属性技能**。
+                   //   无概率掷点（是命中率修正，不是概率效果）。
+    Evasion,       // 回避（Eid 7）："被技能命中的几率减少 n%"；args[0]=百分点（DB 5~10）。
+                   //   ★ 与精准同款乘法（90×0.9=81）；★ 本质是**降低对手命中率**、不是概率效果
+                   //   （故不会被"概率提升"类效果推到 100%，必修6 ③）；也作用于属性技能。
+    CritBoost,     // 会心（Eid 30/146）："所有技能的致命一击率增加"；args[0]：**0 星=1（=1/16=6.25%）**、
+                   //   1-5 星 = 75/88/100/120/140（= 7.5/8.8/10/12/14%，×10 即万分数）。
+                   //   ★ 0 星与技能**初始暴击率加法**；1-5 星**独立二次结算**（必修6 ①②）。
+    CritImmunity,  // 免爆（Eid 64/150）："受到致命一击的概率降低"——⚠️ **实际是对暴击的挡伤**：
+                   //   "当回合免疫受到的暴击伤害"，**不是**降低暴击率（必修6）。args[0] 同会心编码。
+                   //   落点：BLOCK 阶段读 `DamageSnapshot::isCrit` → 掷点 → 本次伤害归 0。
+    VoidDodge,     // 虚无（Eid 61/149）：描述"n%几率完全抵挡一次伤害"，⚠️ **实际是有概率闪避
+                   //   对手攻击技能**（必修6：本质是闪避、不是挡伤）。args[0] 概率（见下混编说明）；
+                   //   只对**攻击技能**生效（"闪避对手攻击技能"）。
 };
 
 inline TraitKind trait_kind_from_name(const std::string& name) {
@@ -145,6 +163,21 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
     }
     if (name == "回神") {
         return TraitKind::Revival;
+    }
+    if (name == "精准") {
+        return TraitKind::Precision;
+    }
+    if (name == "回避") {
+        return TraitKind::Evasion;
+    }
+    if (name == "会心") {
+        return TraitKind::CritBoost;
+    }
+    if (name == "免爆") {
+        return TraitKind::CritImmunity;
+    }
+    if (name == "虚无") {
+        return TraitKind::VoidDodge;
     }
     return TraitKind::None;
 }
@@ -257,6 +290,18 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
     }
     if (t.kind == TraitKind::Revival) {
         return trait_survive_prob_permille(t.args[1]);   // ⚠️ 概率在 args[1]（args[0] 是 1/N 的分母）
+    }
+    if (t.kind == TraitKind::VoidDodge) {
+        // ⚠️ 同族混编编码（见 trait_survive_prob_permille 的说明）：必修6 给的实际值
+        //    1/1.3/1.5/2/2.5/3% 对应 DB args 1/13/15/20/25/30 → raw<10 按整百分点读。
+        return trait_survive_prob_permille(t.args[0]);
+    }
+    if (t.kind == TraitKind::CritImmunity) {
+        // 免爆：0 星 args=1 → 1/16 = 6.25% = 62.5‰；1-5 星 args=75..140 → ×10 即千分点（75→7.5%）。
+        if (t.args[0] <= 1) {
+            return 62;   // 6.25% 取整到千分点
+        }
+        return t.args[0] * 10;
     }
     return 0;
 }

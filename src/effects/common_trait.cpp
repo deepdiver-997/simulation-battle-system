@@ -135,6 +135,36 @@ void install_single_element_amp(BattleContext* ctx, int owner) {
     );
 }
 
+//---- 免爆（Eid 64/150）：BLOCK 阶段 · **对暴击的挡伤** ----
+// ⚠️ 必修6 修正了望文生义："免爆实际为**当回合免疫受到的暴击伤害**（对暴击进行一个挡伤效果），
+//    而不是降低暴击概率" → 不是改暴击率，是在伤害落地的挡伤位把这次**暴击伤害**归零。
+// 落点 BLOCK：与"免疫下1次攻击伤害"同阶段（唯一的归零位）。
+void install_crit_immunity(BattleContext* ctx, int owner) {
+    ctx->register_default_damage_effect(
+        DamagePhase::BLOCK,
+        owner,
+        DamageEffectCategory::MITIGATE,
+        [](BattleContext* c, int bucket_owner) {
+            DamageSnapshot& damage = c->resolvedDamage;
+            if (damage.defenderId != bucket_owner) {
+                return;   // 挡伤从"承受方"的桶读
+            }
+            if (!damage.isCrit || damage.final <= 0) {
+                return;   // 只对**暴击**伤害挡（非暴击照常）
+            }
+            const std::optional<EffectiveTrait> trait =
+                c->effective_common_trait(bucket_owner, TraitKind::CritImmunity);
+            if (!trait) {
+                return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
+            }
+            if (!trait_proc_roll(*trait)) {
+                return;
+            }
+            damage.final = 0;   // 挡下本次暴击伤害
+        }
+    );
+}
+
 //---- 吸收（Eid 60）：REDUCE_FLAT 阶段 · 点数减伤 ----
 // 必修6："受到攻击时 m% 几率使受到的伤害降低 n 点"、"减伤属于**减少裸伤**效果"；
 // 点数减伤是官方减伤区第一位（先扣点数、再算百分比）。
@@ -271,6 +301,7 @@ void install_common_trait_effects(BattleContext* ctx) {
         install_spirit(ctx, owner);
         install_single_element_amp(ctx, owner);
         install_absorb(ctx, owner);
+        install_crit_immunity(ctx, owner);
     }
 }
 
