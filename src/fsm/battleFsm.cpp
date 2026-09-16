@@ -566,6 +566,9 @@ void finish_attack_damage(BattleContext* ctx, int attacker_id) {
     // 走 force_hp_to_zero 原语。犀牛式回血挂 EVENT_TAKE_DAMAGE、drain 在状态桶之后
     // → 回血晚于归零）。0 星的"条件式红伤拉高"在管线的 TRAIT_REPLACE（链首）。
     trait_instant_kill_zero_hook(ctx, attacker_id);
+    // 通用特性·顽强/回神：**瞬杀归零之后**的存活判定（用户 2026-09-16 口径："看先后顺序
+    // 定实际效果，不要动不动就短路"）——先归零，再由本钩把 0 体力抬回。
+    trait_survive_lethal_hook(ctx, 1 - attacker_id);
 }
 
 // 技能无效（盔/威/封属）的伤害出口 —— effect 2501「技能无效时，重新进行伤害结算且…」的落点。

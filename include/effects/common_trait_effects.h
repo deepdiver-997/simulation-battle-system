@@ -55,4 +55,16 @@ void trait_passive_stat_drop_hook(BattleContext* ctx, int attacker_id);
  */
 void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id);
 
+/**
+ * 致死存活特性钩位（顽强 Eid 31/147 / 回神 Eid 33/148）：finish_attack_damage 里
+ * **在 `trait_instant_kill_zero_hook`（瞬杀归零）之后**调用——用户 2026-09-16 拍板的口径：
+ * "归零与强制保留/回满并不冲突，**看先后顺序定实际效果**，不要动不动就短路"
+ * → 先归零、再由本钩把 0 体力抬回（顽强→m 点；回神→满血）。口径若有变只需挪这一个调用点。
+ *
+ * 只读**被攻击方**的登场特性槽；仅**战斗阶段**触发（本钩在攻击伤害出口，回合结束的
+ * 粉伤/真伤路径不经过它——必修6 ①"回合结束后的致死伤害直接击杀"）。
+ * "强制残留体力不受削续航影响" → 直写 hp，不走 `heal`（不给封回血拦）。
+ */
+void trait_survive_lethal_hook(BattleContext* ctx, int defender_id);
+
 #endif // COMMON_TRAIT_EFFECTS_H

@@ -88,6 +88,19 @@ enum class TraitKind {
     // 已被官方废除、按"存在但无行为"处理（必修6：乱舞"依旧被废除"、0 星与白板无异；
     // 增伤 args 0/6/7/8/9/10 与"增加攻击目标数"args 全 0）→ 只登记 kind，行为 no-op。
     Unimplemented,
+    // ── 批次 C（2026-09-16）：致死/存活族 ──
+    // ★ 与 `force_hp_to_zero` 的关系（用户 2026-09-16 拍板）：**不加短路条件**——
+    //   归零与"强制残留/回满"并不冲突，**由先后顺序决定实际效果**：本族的钩位在
+    //   `trait_instant_kill_zero_hook`（瞬杀归零）**之后**，即"先归零、后判定存活"，
+    //   于是顽强把 0 体力抬回 m 点、回神抬回满血。将来若发现口径要改，只需挪这一个调用点。
+    //   （刻意不为它往归零原语里塞第三个短路分支——原语已有的两条短路是"转化/免疫"这类
+    //     语义性豁免，不是"后手补救"。）
+    Tenacious,  // 顽强（Eid 31/147）："受到致死攻击时有 n% 几率余下 m 点体力（0 体力也可以触发）"；
+                //   args[0]=概率（见 trait_survive_prob_permille 的混编说明）、args[1]=残留点数（1/1/1/1/2/2）。
+                //   ★ 仅**战斗阶段**触发（必修6 ①：回合结束后的致死伤害直接击杀，不触发）；
+                //   ★ "强制残留体力，**不受削续航影响**"→ 直写 hp、不过 heal（不被封回血挡）。
+    Revival,    // 回神（Eid 33/148）："体力降低到 1/{args[0]} 时有 n% 几率体力回满（0 体力也可以触发）"；
+                //   args[0]=阈值分母（DB 全为 8 → 1/8）、args[1]=概率。同样仅战斗阶段、同样直写 hp。
 };
 
 inline TraitKind trait_kind_from_name(const std::string& name) {
@@ -127,7 +140,26 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
         || name == "借风") {
         return TraitKind::PassiveStatBoost;
     }
+    if (name == "顽强") {
+        return TraitKind::Tenacious;
+    }
+    if (name == "回神") {
+        return TraitKind::Revival;
+    }
     return TraitKind::None;
+}
+
+// ★ 顽强/回神族的概率解码（**混编编码**，务必按族取值）：
+//   必修6 给出的实际值 = 3/3.5/4/5/6/7%；而 DB args = 3/35/40/50/60/70。
+//   → args < 10 按**整百分点**读（3 → 3%）；args ≥ 10 按**千分点**读（35 → 3.5%、70 → 7%）。
+//   ⚠️ 与瞬杀族**同数字不同义**（瞬杀 args=3 → 0.3%，本族 args=3 → 3%）——别共用一套换算。
+//   ⚠️ 0 星档是唯一有歧义处（若按瞬杀口径读则 0.3%）：本文按必修6 明写的"3%"取值，
+//      将来实测若推翻只需改本函数一处。
+inline int trait_survive_prob_permille(int raw) {
+    if (raw <= 0) {
+        return 0;
+    }
+    return raw < 10 ? raw * 10 : raw;
 }
 
 // ★ 被动属性族（Eid 34/35）的 args[0] → 引擎 stat 索引（`stat_change`/`stat_drop` 的能力下标：
@@ -219,6 +251,12 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
     }
     if (t.kind == TraitKind::PassiveStatDrop || t.kind == TraitKind::PassiveStatBoost) {
         return t.args[1] * 10;   // ⚠️ 概率在 args[1]（args[0] 是能力码）
+    }
+    if (t.kind == TraitKind::Tenacious) {
+        return trait_survive_prob_permille(t.args[0]);   // 概率在 args[0]、残留点数是 args[1]
+    }
+    if (t.kind == TraitKind::Revival) {
+        return trait_survive_prob_permille(t.args[1]);   // ⚠️ 概率在 args[1]（args[0] 是 1/N 的分母）
     }
     return 0;
 }

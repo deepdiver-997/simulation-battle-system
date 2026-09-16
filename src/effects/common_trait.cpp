@@ -220,6 +220,48 @@ void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id) {
 }
 
 
+//---- 顽强（Eid 31/147）/ 回神（Eid 33/148）：致死存活 ----
+// 钩位：finish_attack_damage 里**瞬杀归零之后**（用户 2026-09-16："看先后顺序定实际效果，
+// 不要动不动就短路"）→ 先归零、再判定留存/回满。
+// 必修6 口径：①仅**战斗阶段**触发（回合结束后的致死伤害直接击杀）——本钩只挂在攻击伤害
+// 出口，回合结束的粉/真伤路径不经过，天然满足；②"强制残留体力，**不受削续航影响**"
+// → 直写 hp（不过 heal，不被封回血挡）；③两者"0 体力也可以触发"。
+void trait_survive_lethal_hook(BattleContext* ctx, int defender_id) {
+    if (!ctx || defender_id < 0 || defender_id > 1) {
+        return;
+    }
+    // 本次攻击确实结算了伤害（防"对已倒地的目标再次进场"把尸体救活）
+    if (ctx->resolvedDamage.defenderId != defender_id || ctx->resolvedDamage.final <= 0) {
+        return;
+    }
+    ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
+    const EffectiveTrait& own = ctx->trait_state_[defender_id].own;
+    if (own.kind != TraitKind::Tenacious && own.kind != TraitKind::Revival) {
+        return;
+    }
+    if (ctx->is_trait_suppressed(defender_id, own.kind)) {
+        return;
+    }
+    if (own.kind == TraitKind::Tenacious) {
+        // "受到**致死**攻击时"：本次伤害后体力已 ≤0 才判定
+        if (defender.hp > 0 || !trait_proc_roll(own)) {
+            return;   // ⚠️ rand 只在致死时消耗
+        }
+        defender.hp = own.args[1] > 0 ? own.args[1] : 1;   // 余下 m 点（1/1/1/1/2/2）
+        return;
+    }
+    // 回神："体力降低到 1/{args[0]} 时回满"（DB 分母恒为 8）
+    const int denom = own.args[0] > 0 ? own.args[0] : 8;
+    const int max_hp = defender.numericalBase[NumericalPropertyIndex::HP];
+    if (max_hp <= 0 || defender.hp > max_hp / denom) {
+        return;
+    }
+    if (!trait_proc_roll(own)) {
+        return;
+    }
+    defender.hp = max_hp;
+}
+
 void install_common_trait_effects(BattleContext* ctx) {
     if (!ctx) {
         return;
