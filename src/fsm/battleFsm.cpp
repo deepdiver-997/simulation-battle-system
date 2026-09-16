@@ -1226,6 +1226,10 @@ void BattleFsm::handle_BattleFirstBeforeSkillHit(BattleContext* battleContext) {
     log("Battle: First Before Skill Hit.");
     const int first_mover_id = resolve_first_mover_id(battleContext);
     battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_BEFORE_SKILL_HIT);
+    // 被动属性提升特性（反击/抵抗/反攻/坚韧/借风）：**命中判定之前**赋予自身能力提升
+    //（必修6 ①"在技能命中时之前赋予"——先赋予后挨打，对方的消强/吸强才能作用于它；
+    //  ② 属性技能也会触发）。
+    trait_pre_hit_stat_boost_hook(battleContext, first_mover_id);
     battleContext->generateState();
 }
 
@@ -1237,6 +1241,8 @@ void BattleFsm::handle_BattleFirstOnSkillHit(BattleContext* battleContext) {
         battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_ON_SKILL_HIT);
         // 接触毒特性（主动毒+被动毒）：命中时、技能效果结算之前掷点施加（必修6）。
         trait_contact_poison_hook(battleContext, first_mover_id);
+        // 被动属性降低特性（反抗/反驳/忽略/草率/慌张）：受**特殊攻击**命中时令对方降 1 级。
+        trait_passive_stat_drop_hook(battleContext, first_mover_id);
     }
     battleContext->generateState();
 }
@@ -1338,6 +1344,8 @@ void BattleFsm::handle_BattleSecondBeforeSkillHit(BattleContext* battleContext) 
     log("Battle: Second Before Skill Hit.");
     const int second_mover_id = resolve_second_mover_id(battleContext);
     battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_BEFORE_SKILL_HIT);
+    // 被动属性提升特性：同上（先手方同款钩位）。
+    trait_pre_hit_stat_boost_hook(battleContext, second_mover_id);
     battleContext->generateState();
 }
 
@@ -1349,6 +1357,8 @@ void BattleFsm::handle_BattleSecondOnSkillHit(BattleContext* battleContext) {
         battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_ON_SKILL_HIT);
         // 接触毒特性（主动毒+被动毒）：命中时、技能效果结算之前掷点施加（必修6）。
         trait_contact_poison_hook(battleContext, second_mover_id);
+        // 被动属性降低特性（反抗/反驳/忽略/草率/慌张）：受**特殊攻击**命中时令对方降 1 级。
+        trait_passive_stat_drop_hook(battleContext, second_mover_id);
     }
     battleContext->generateState();
 }

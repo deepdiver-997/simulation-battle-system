@@ -100,7 +100,125 @@ void install_spirit(BattleContext* ctx, int owner) {
     );
 }
 
+//---- 单属性增伤 15 个（叶绿/流水/…/威严）：AMP_EXTRA 阶段 · 非通用增伤·乘法 ----
+// 必修6："某单属性技能造成的伤害额外提升 n%"、"对指定单属性有效，**双属性无效**"。
+// 参数：args[0]=官方属性 id（同 skill_types.id 与 Skills::element），args[1]=增伤百分点。
+// ⚠️ 未建模的官方怪癖：该增伤"时点过于靠前"，**会被变威力效果覆盖重写**（必修6 ①）——
+//    变威力二次结算会丢弃它，待有真实需求时再按"重算不施加"补。
+void install_single_element_amp(BattleContext* ctx, int owner) {
+    ctx->register_default_damage_effect(
+        DamagePhase::AMP_EXTRA,
+        owner,
+        DamageEffectCategory::AMP,
+        [](BattleContext* c, int bucket_owner) {
+            DamageSnapshot& damage = c->resolvedDamage;
+            if (damage.attackerId != bucket_owner) {
+                return;   // 增伤从"攻击方"的桶读
+            }
+            if (damage.final <= 0) {
+                return;
+            }
+            const std::optional<EffectiveTrait> trait =
+                c->effective_common_trait(bucket_owner, TraitKind::SingleElementAmp);
+            if (!trait || trait->args[1] <= 0) {
+                return;   // 先查特性（早退，不给无毒特性者增加行为）
+            }
+            // 单属性门：技能必须是**单一属性**，且首属性 = 特性指定属性
+            if (c->ws.skill_element_view[bucket_owner][0] != trait->args[0]) {
+                return;
+            }
+            if (c->ws.skill_element_view[bucket_owner][1] != 0) {
+                return;   // 双属性技能无效（必修6）
+            }
+            damage.final = damage.final * (100 + trait->args[1]) / 100;   // 乘法（非通用增伤）
+        }
+    );
+}
+
+//---- 吸收（Eid 60）：REDUCE_FLAT 阶段 · 点数减伤 ----
+// 必修6："受到攻击时 m% 几率使受到的伤害降低 n 点"、"减伤属于**减少裸伤**效果"；
+// 点数减伤是官方减伤区第一位（先扣点数、再算百分比）。
+void install_absorb(BattleContext* ctx, int owner) {
+    ctx->register_default_damage_effect(
+        DamagePhase::REDUCE_FLAT,
+        owner,
+        DamageEffectCategory::MITIGATE,
+        [](BattleContext* c, int bucket_owner) {
+            DamageSnapshot& damage = c->resolvedDamage;
+            if (damage.defenderId != bucket_owner) {
+                return;   // 减伤从"承受方"的桶读
+            }
+            if (!damage.isRed || damage.final <= 0) {
+                return;   // 只免红伤（"使受到的伤害降低"=攻击伤害）
+            }
+            const std::optional<EffectiveTrait> trait =
+                c->effective_common_trait(bucket_owner, TraitKind::Absorb);
+            if (!trait || trait->args[1] <= 0) {
+                return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
+            }
+            if (!trait_proc_roll(*trait)) {
+                return;
+            }
+            damage.final = std::max(0, damage.final - trait->args[1]);
+        }
+    );
+}
+
 }  // namespace
+
+//---- 被动属性降低 5 个（反抗/反驳/忽略/草率/慌张，Eid 34）----
+// "受到**特殊攻击**时有 n% 使对方 m 降低 1 个等级"。钩位：ON_SKILL_HIT（同上，需命中）。
+// ⚠️ args[0] 是**官方能力码**，与引擎 stat 索引不同序 → 必过 trait_stat_index_from_code
+//    （依据 DB intro：`34|1 5|反驳|…使对方**防御**降低1个等级` —— 透传会把防御/特攻互换）。
+// ⚠️ 走 `stat_drop`：这是"对手施予的弱化" → 查免弱 STAT_DROP（必修6 ① 也提到面对免弱精灵
+//    无法正常赋予）。
+void trait_passive_stat_drop_hook(BattleContext* ctx, int attacker_id) {
+    if (!ctx || attacker_id < 0 || attacker_id > 1) {
+        return;
+    }
+    if (ctx->ws.skill_exec_result[attacker_id] != SkillExecResult::HIT) {
+        return;   // 需要这次攻击命中
+    }
+    if (ctx->ws.skill_type_view[attacker_id] != static_cast<int>(SkillType::Special)) {
+        return;   // "受到**特殊攻击**时"——只认特攻
+    }
+    const int defender_id = 1 - attacker_id;
+    const EffectiveTrait& def_own = ctx->trait_state_[defender_id].own;
+    if (def_own.kind != TraitKind::PassiveStatDrop
+        || ctx->is_trait_suppressed(defender_id, def_own.kind)) {
+        return;
+    }
+    const int stat = trait_stat_index_from_code(def_own.args[0]);
+    if (stat < 0 || !trait_proc_roll(def_own)) {
+        return;   // ⚠️ rand 只在特性确在时消耗
+    }
+    (void)stat_drop(ctx, attacker_id, stat, 1);   // 使**对方**降 1 级
+}
+
+//---- 被动属性提升 5 个（反击/抵抗/反攻/坚韧/借风，Eid 35）----
+// "受到**任何攻击**时有 n% 使**自身** m 提升 1 个等级"。钩位：BEFORE_SKILL_HIT——
+// 必修6 ①："在技能**命中时之前**赋予能力提升，因此会被对方一些技能带有消强/吸强/反强补偿
+// 影响"（先赋予、后挨打，对方才能消掉它）。
+// 必修6 ②："**属性技能可以触发**该特性" → **不按技能类别门控**（也不要求命中：赋予发生在
+// 命中判定之前）。⚠️ 属**自身增益** → 走 stat_change（不查免弱，与 PassiveStatDrop 相对）。
+void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id) {
+    if (!ctx || actor_id < 0 || actor_id > 1) {
+        return;
+    }
+    // "受到攻击"= 对方出手，故读**被攻击方**（非出手方）的登场特性槽
+    const int defender_id = 1 - actor_id;
+    const EffectiveTrait& def_own = ctx->trait_state_[defender_id].own;
+    if (def_own.kind != TraitKind::PassiveStatBoost
+        || ctx->is_trait_suppressed(defender_id, def_own.kind)) {
+        return;
+    }
+    const int stat = trait_stat_index_from_code(def_own.args[0]);
+    if (stat < 0 || !trait_proc_roll(def_own)) {
+        return;   // ⚠️ rand 只在特性确在时消耗
+    }
+    (void)stat_change(ctx, defender_id, stat, 1);   // 使**自身**升 1 级
+}
+
 
 void install_common_trait_effects(BattleContext* ctx) {
     if (!ctx) {
@@ -109,6 +227,8 @@ void install_common_trait_effects(BattleContext* ctx) {
     for (int owner = 0; owner < 2; ++owner) {
         install_hardness(ctx, owner);
         install_spirit(ctx, owner);
+        install_single_element_amp(ctx, owner);
+        install_absorb(ctx, owner);
     }
 }
 

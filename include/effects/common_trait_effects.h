@@ -37,4 +37,22 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id);
  */
 void trait_contact_poison_hook(BattleContext* ctx, int attacker_id);
 
+/**
+ * 被动属性降低钩位（反抗/反驳/忽略/草率/慌张，Eid 34）：同 ON_SKILL_HIT 钩位。
+ * "受到**特殊攻击**时有 args[1]% 使**对方** m 降低 1 个等级"（m 由 args[0] 官方能力码
+ * 经 trait_stat_index_from_code 重映射——官方码序与引擎 stat 索引不同序）。
+ * 走 `stat_drop`（对手施予的弱化 → 查免弱 STAT_DROP）。
+ */
+void trait_passive_stat_drop_hook(BattleContext* ctx, int attacker_id);
+
+/**
+ * 被动属性提升钩位（反击/抵抗/反攻/坚韧/借风，Eid 35）：挂 **BEFORE_SKILL_HIT**。
+ * "受到**任何攻击**时有 args[1]% 使**自身** m 提升 1 个等级"。
+ * ★ 必修6 ①：赋予发生在**命中判定之前**（"因此会被对方一些技能带有消强/吸强/反强补偿影响"）
+ *   → 故挂 BEFORE_SKILL_HIT 而非命中后；也不要求命中。
+ * ★ 必修6 ②：**属性技能可以触发** → 不按技能类别门控。
+ * 属**自身增益** → 走 stat_change（不查免弱，与 PassiveStatDrop 相对）。
+ */
+void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id);
+
 #endif // COMMON_TRAIT_EFFECTS_H

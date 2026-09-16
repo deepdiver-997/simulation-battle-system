@@ -56,6 +56,38 @@ enum class TraitKind {
     ActivePoisonPhysical,  // 静电 / 颤栗（主动毒·物理）
     ActivePoisonSpecial,   // 火热 / 极寒（主动毒·特殊）
     PassivePoison,         // 带电 / 高热 / 冰冷 / 阴森（被动毒·受物攻弹给攻方，裸施加）
+    // ── 批次 A（2026-09-16，必修6《精灵特性》口径）──
+    // ⚠️ 全族的**官方描述数值都是错的**（必修6 逐族给了实际内置值）；好在本项目用的
+    //    `new_se.args` 里存的**就是修正后的实际值**（逐星级一行），故本层直读 args，
+    //    只有"坚硬"一处 DB 也错（用 trait_hardness_pct 语料修正表）。
+    SingleElementAmp,      // 单属性增伤 15 个（叶绿/流水/炎火/飞空/蓄电/机能/碎裂/平衡/冰霜/
+                           //      魔幻/战意/光环/黑夜/奇异/威严）：
+                           //      args[0]=官方属性 id（1 草=叶绿 … 15 龙=威严，同 skill_types.id
+                           //      与 `Skills::element` 命名空间）；args[1]=增伤百分点（DB 5~10）。
+                           //      ★ 落地在 AMP_EXTRA（"**额外**提升"=非通用增伤·乘法，同 693 与精神）；
+                           //      ★ **双属性技能无效**（必修6："对指定单属性有效，双属性无效"）→
+                           //        skill_element_view[1] 必须为 0；
+                           //      ⚠️ 未建模的官方怪癖：该增伤"时点过于靠前"，
+                           //        **会被变威力效果覆盖重写**（必修6 ①，经典威严王之哈莫）——
+                           //        变威力重算会丢弃本增伤，待有需求时按"重算时不再施加"实现。
+    Absorb,                // 吸收（Eid 60）：args[0]=触发概率**百分点**（5~14）、args[1]=**点数**（35~70）；
+                           //      落地 REDUCE_FLAT（"减伤属于减少裸伤效果"=点数减伤，官方减伤区第一位），
+                           //      受击时掷点 → final -= 点数。
+    PassiveStatDrop,       // 被动属性降低 5 个（反抗/反驳/忽略/草率/慌张，Eid 34）：
+                           //      "受到**特殊攻击**时有 n% 使对方 m 降低 1 个等级"。
+                           //      args[0]=能力码、args[1]=概率百分点（5~14）。
+                           //      ⚠️ **args[0] 与引擎 stat 索引不同序**（见 trait_stat_index_from_code）；
+                           //      ⚠️ 走 `stat_drop`（对手施予的弱化 → 查免弱 STAT_DROP）。
+    PassiveStatBoost,      // 被动属性提升 5 个（反击/抵抗/反攻/坚韧/借风，Eid 35）：
+                           //      "受到**任何攻击**时有 n% 使**自身** m 提升 1 个等级"。
+                           //      args[0]=能力码、args[1]=概率百分点。
+                           //      ★ 时点（必修6 ①）："在技能**命中时之前**赋予能力提升，因此会被
+                           //        对方一些技能带有消强/吸强/反强补偿影响" → 挂 BEFORE_SKILL_HIT；
+                           //      ★ 必修6 ②："**属性技能可以触发**该特性" → 不按技能类别门控；
+                           //      ⚠️ 走 `stat_change`（**自身增益**，不查免弱——与 PassiveStatDrop 相对）。
+    // 已被官方废除、按"存在但无行为"处理（必修6：乱舞"依旧被废除"、0 星与白板无异；
+    // 增伤 args 0/6/7/8/9/10 与"增加攻击目标数"args 全 0）→ 只登记 kind，行为 no-op。
+    Unimplemented,
 };
 
 inline TraitKind trait_kind_from_name(const std::string& name) {
@@ -77,7 +109,45 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
     if (name == "带电" || name == "高热" || name == "冰冷" || name == "阴森") {
         return TraitKind::PassivePoison;
     }
+    // 批次 A：单属性增伤 15 个（属性 id 从 args[0] 读，名字只用于定型）
+    if (name == "叶绿" || name == "流水" || name == "炎火" || name == "飞空"
+        || name == "蓄电" || name == "机能" || name == "碎裂" || name == "平衡"
+        || name == "冰霜" || name == "魔幻" || name == "战意" || name == "光环"
+        || name == "黑夜" || name == "奇异" || name == "威严") {
+        return TraitKind::SingleElementAmp;
+    }
+    if (name == "吸收") {
+        return TraitKind::Absorb;
+    }
+    if (name == "反抗" || name == "反驳" || name == "忽略" || name == "草率"
+        || name == "慌张") {
+        return TraitKind::PassiveStatDrop;
+    }
+    if (name == "反击" || name == "抵抗" || name == "反攻" || name == "坚韧"
+        || name == "借风") {
+        return TraitKind::PassiveStatBoost;
+    }
     return TraitKind::None;
+}
+
+// ★ 被动属性族（Eid 34/35）的 args[0] → 引擎 stat 索引（`stat_change`/`stat_drop` 的能力下标：
+//   0=攻击 1=特攻 2=防御 3=特防 4=速度）。
+// ⚠️ **两者不同序，必须重映射**——依据是数据库 `new_se.intro`（本项目"最终以数据库为准"）：
+//   `34|1 5|反驳|受到特殊攻击时有5%几率使对方**防御**降低1个等级`
+//   `34|2 5|忽略|受到特殊攻击时有5%几率使对方**特攻**降低1个等级`
+//   即官方码序 = 0攻击 / 1防御 / 2特攻 / 3特防 / 4速度；引擎码序 = 0攻击 / 1特攻 / 2防御 / …
+//   → 直接透传会把"防御"和"特攻"互换（这类静默错位最难查，故单列成函数 + 证词）。
+// 注：Eid 26（数值提升，stat=2）又是第三套码序（1防御/2特防/3攻击/4特攻/5速度），
+//     本函数**只管 Eid 34/35**，别的族用前先各自核对 intro。
+inline int trait_stat_index_from_code(int code) {
+    switch (code) {
+        case 0: return 0;   // 攻击
+        case 1: return 2;   // 防御
+        case 2: return 1;   // 特攻
+        case 3: return 3;   // 特防
+        case 4: return 4;   // 速度
+        default: return -1;
+    }
 }
 
 // 一次查询拿到的"生效特性"（本体或复制条目的解析结果）。
@@ -91,6 +161,12 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
 //     0-5 星 = 3/4/5/6/7/8%，与瞬杀的千分点口径不同！）、args[1] = 施加的异常码
 //     （battle_effects 命名空间=引擎 AbnormalStatusId：带电/静电 0 麻痹 / 阴森/颤栗 6 害怕 /
 //     高热/火热 2 烧伤 / 冰冷/极寒 5 冻伤）。
+//   - SingleElementAmp：args[0] = 官方属性 id、args[1] = 增伤百分点（无概率掷点）。
+//   - Absorb：args[0] = 概率百分点、args[1] = 减伤点数。
+//   - PassiveStatDrop / PassiveStatBoost：args[0] = **官方能力码**（须过
+//     trait_stat_index_from_code 重映射）、args[1] = 概率百分点。
+//   ⚠️ 概率的**存放位置逐族不同**（毒在 args[0]、被动属性在 args[1]），故 trait_proc_permille
+//      按 kind 分支取——不要写统一的 "args[0]" 假设。
 struct EffectiveTrait {
     TraitKind kind = TraitKind::None;
     int idx = 0;              // new_se.idx（本体行；复制条目带来源行 id）
@@ -138,17 +214,34 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
         || t.kind == TraitKind::PassivePoison) {
         return t.args[0] * 10;   // 必修6：args[0] 是百分点（3~8）→ 千分点
     }
+    if (t.kind == TraitKind::Absorb) {
+        return t.args[0] * 10;   // 概率在 args[0]
+    }
+    if (t.kind == TraitKind::PassiveStatDrop || t.kind == TraitKind::PassiveStatBoost) {
+        return t.args[1] * 10;   // ⚠️ 概率在 args[1]（args[0] 是能力码）
+    }
     return 0;
 }
 
-// 触发掷点：被取消触发条件（proc_forced）→ 必发；否则 rand()%1000 < 千分点。
+// 触发掷点：被取消触发条件（proc_forced）→ 必发；概率 ≥1000‰（=100%）→ 必发**且不消耗
+// rand()**；否则 rand()%1000 < 千分点。
 // 引擎既有随机都走 std::rand（暴击掷点/连击掷点/伤害浮动），保持同源。
+// ⚠️ 100% 档**短路不消耗**是刻意为之，与本仓库既有的"不调用=不消耗"契约一致
+//    （参见 skills.h 连击区间退化 / battleFsm.cpp 无连击模板 / 暴击率 0 短路）——
+//    否则一次"必发"掷点会推动全局随机序列，使无关的伤害浮动/闪避判定整体错位
+//    （2026-09-16 已因此发生过 4 个场景的回归）。
 inline bool trait_proc_roll(const EffectiveTrait& t) {
     if (t.proc_forced) {
         return true;
     }
     const int permille = trait_proc_permille(t);
-    return permille > 0 && (std::rand() % 1000) < permille;
+    if (permille <= 0) {
+        return false;
+    }
+    if (permille >= 1000) {
+        return true;   // 100%：不消耗 rand()
+    }
+    return (std::rand() % 1000) < permille;
 }
 
 // 复制来的特性条目（天女式）。生命周期锚**来源方**（仿 RuleCenter 的 source 锚）：
