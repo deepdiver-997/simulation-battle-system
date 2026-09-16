@@ -49,7 +49,6 @@ public:
            CommonTrait common_trait,
            numerical_properties numerical_base,
            int initial_hp,
-           std::array<int, 6> levels,
            int shield,
            int cover,
            bool is_locked,
@@ -62,7 +61,6 @@ public:
         , numericalBase(numerical_base)
         , numericalProperties(numerical_base)
         , hp(numericalProperties[NumericalPropertyIndex::HP])
-        , levels(std::move(levels))
         , speed_priority(0)
         , shield(shield)
         , cover(cover)
@@ -82,7 +80,6 @@ public:
         , numericalBase(other.numericalBase)
         , numericalProperties(other.numericalProperties)
         , hp(numericalProperties[NumericalPropertyIndex::HP])
-        , levels(other.levels)
         , speed_priority(other.speed_priority)
         , shield(other.shield)
         , cover(other.cover)
@@ -104,7 +101,6 @@ public:
         , numericalBase(other.numericalBase)
         , numericalProperties(other.numericalProperties)
         , hp(numericalProperties[NumericalPropertyIndex::HP])
-        , levels(std::move(other.levels))
         , speed_priority(other.speed_priority)
         , shield(other.shield)
         , cover(other.cover)
@@ -128,7 +124,6 @@ public:
         commonTrait = other.commonTrait;
         numericalBase = other.numericalBase;
         numericalProperties = other.numericalProperties;
-        levels = other.levels;
         speed_priority = other.speed_priority;
         shield = other.shield;
         cover = other.cover;
@@ -154,7 +149,6 @@ public:
         commonTrait = std::move(other.commonTrait);
         numericalBase = other.numericalBase;
         numericalProperties = other.numericalProperties;
-        levels = std::move(other.levels);
         speed_priority = other.speed_priority;
         shield = other.shield;
         cover = other.cover;
@@ -180,7 +174,9 @@ public:
     DamageResist damage_resist;   // 本体伤害抗性（暴击/固定/百分比；跨切换保留，计算走 ws 视图）
     numerical_properties numericalBase, numericalProperties;
     int& hp = numericalProperties[NumericalPropertyIndex::HP];
-    std::array<int, 6> levels{};
+    // ⚠️ 能力等级**不在 pet 上**（2026-09-16 改造）：等级只在"在场期间"有意义、换宠即清，
+    //    权威状态在 `BattleContext::ability_levels`（on-stage 作用域），回合内视图是
+    //    `ws.view_levels`。见 battleContext.h 的字段注释与 perform_switch 的清除点。
     int speed_priority = 0;
     int shield = 0;      // 旧字段，暂留（未参与伤害计算）
     int cover = 0;

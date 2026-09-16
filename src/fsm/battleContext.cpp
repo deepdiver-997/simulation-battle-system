@@ -766,8 +766,8 @@ std::string BattleContext::getStateJson() const {
     oss << "\"hp\":" << pet0.hp << ",";
     oss << "\"maxHp\":" << pet0.numericalBase[NumericalPropertyIndex::HP] << ",";
     oss << "\"levels\":[";
-    for (int i = 0; i < 6; ++i) {
-        oss << pet0.levels[i];
+    for (int i = 0; i < kAbilityLevelSlotCount; ++i) {
+        oss << ability_levels[0][i];   // 等级本体在 context（不再读 pet）
         if (i < 5) oss << ",";
     }
     oss << "],";
@@ -787,8 +787,8 @@ std::string BattleContext::getStateJson() const {
     oss << "\"hp\":" << pet1.hp << ",";
     oss << "\"maxHp\":" << pet1.numericalBase[NumericalPropertyIndex::HP] << ",";
     oss << "\"levels\":[";
-    for (int i = 0; i < 6; ++i) {
-        oss << pet1.levels[i];
+    for (int i = 0; i < kAbilityLevelSlotCount; ++i) {
+        oss << ability_levels[1][i];   // 同上
         if (i < 5) oss << ",";
     }
     oss << "],";
@@ -892,7 +892,10 @@ std::string BattleContext::getFullStateJson() const {
             << "\"hp\":" << pet.numericalBase[NumericalPropertyIndex::HP]
             << "},";
         oss << "\"levels\":[";
-        for (int i = 0; i < 6; ++i) { oss << pet.levels[i]; if (i < 5) oss << ","; }
+        for (int i = 0; i < kAbilityLevelSlotCount; ++i) {
+            oss << ability_levels[robot_id][i];   // 等级本体在 context（见字段注释）
+            if (i < 5) oss << ",";
+        }
         oss << "],";
         oss << "\"elementalAttributes\":[" << pet.elementalAttributes[0] << "," << pet.elementalAttributes[1] << "],";
         oss << "\"soulSeal\":" << pet.soulSeal << ",";

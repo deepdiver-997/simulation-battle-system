@@ -267,7 +267,11 @@ void sync_workspace_from_on_stage(BattleContext* ctx) {
     for (int robot_id = 0; robot_id < 2; ++robot_id) {
         const ElfPet& pet = ctx->seerRobot[robot_id].elfPets[ctx->on_stage[robot_id]];
         ctx->ws.battle_attrs[robot_id] = pet.numericalProperties;
-        std::copy(std::begin(pet.levels), std::end(pet.levels), std::begin(ctx->ws.view_levels[robot_id]));
+        // 能力等级视图重基：**源是 context 的本体**（`ability_levels`，on-stage 作用域）
+        // ——2026-09-16 起等级不再存在 pet 上（换宠清除，见 battleContext.h 的字段注释）。
+        for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
+            ctx->ws.view_levels[robot_id][i] = ctx->ability_levels[robot_id][i];
+        }
         // 精灵系别半持久化视图：绑定的精灵槽变化（开战首回合 -1 / 换宠）→ 从 pet 重基，
         // 否则保留（同精灵跨回合改系别效果存活）；每回合把视图写入 workspace。
         if (ctx->elf_element_view_bound_slot[robot_id] != ctx->on_stage[robot_id]) {
@@ -305,6 +309,9 @@ void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
     }
     // ② 清旧宠异常状态
     ctx->clear_on_stage_abnormal_statuses(robot_id);
+    // ② 清旧宠**能力等级**（本体在 context，on-stage 作用域）：用户 2026-09-16 拍板
+    //    "等级提升/下降只在在场期间有意义，切换清除等级状态" → 与清异常同点、同语义。
+    ctx->clear_ability_levels(robot_id);
     // ②' 清旧宠"本次上场"私有槽（on_stage_storage）：下场即失效——"每次使用递增"这类
     //     计数官方实测下场不保留（用户 2026-09-13）。soulmark_storage（下场保留）不动。
     old_pet.on_stage_storage.clear();

@@ -41,10 +41,11 @@ bool SeerRobot::use_medicine(BattleContext* ctx, int robot_id, int medicine_inde
             sk.pp = std::min(sk.maxPP, sk.pp + amount);
         }
     };
-    auto clear_drops = [&pet]() {  // 解除能力下降：负等级清零
-        for (auto& lv : pet.levels) {
-            if (lv < 0) {
-                lv = 0;
+    auto clear_drops = [ctx, robot_id]() {  // 解除能力下降：负等级清零（本体在 context）
+        for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
+            if (ctx->ability_levels[robot_id][i] < 0) {
+                ctx->ability_levels[robot_id][i] = 0;
+                ctx->ws.view_levels[robot_id][i] = 0;   // 视图同步（公式读它）
             }
         }
     };

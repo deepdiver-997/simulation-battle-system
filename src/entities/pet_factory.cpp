@@ -116,7 +116,7 @@ ElfPet PetFactory::create_pet(const BattlePetMessage& message) {
     const numerical_properties numerical_base = create_numerical_base(*monster, message.numerical_base);
     const int hp = numerical_base[NumericalPropertyIndex::HP];
     const std::array<int, 2> element = {monster->type, monster->secondary_type};
-    const std::array<int, 6> levels = {0, 0, 0, 0, 0, 0};
+    // 能力等级不再随 pet 构造（迁到 BattleContext::ability_levels，见 elf-pet.h 注释）
 
     return ElfPet(
         monster->id,
@@ -128,7 +128,6 @@ ElfPet PetFactory::create_pet(const BattlePetMessage& message) {
         create_common_trait_for_pet(message.common_trait_id),
         numerical_base,
         hp,
-        levels,
         0,
         0,
         false,

@@ -503,8 +503,7 @@ StatChangeResult stat_change(BattleContext* ctx, int target, int stat, int delta
     if (!ctx || target < 0 || target > 1 || stat < 0 || stat >= 6) {
         return StatChangeResult::INVALID_PARAM;
     }
-    ElfPet& pet = ctx->getPet(target);
-    int& level = pet.levels[stat];
+    int& level = ctx->ability_levels[target][stat];   // 本体在 context（on-stage 作用域）
     const int new_level = level + delta;
     if (new_level > 6 || new_level < -6) {
         return StatChangeResult::AT_CAP;  // 到上限/下限，不变更
@@ -575,11 +574,11 @@ int clear_stat_boosts(BattleContext* ctx, int target) {
     if (ctx->is_immune(target, ImmunityType::STAT_CLEAR, ctx->currentState)) {
         return 0;
     }
-    ElfPet& pet = ctx->getPet(target);
+    int* levels = ctx->ability_levels[target];
     int cleared = 0;
-    for (int i = 0; i < static_cast<int>(pet.levels.size()); ++i) {
-        if (pet.levels[i] > 0) {  // 只清提升（正等级），不动弱化/负等级
-            pet.levels[i] = 0;
+    for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
+        if (levels[i] > 0) {  // 只清提升（正等级），不动弱化/负等级
+            levels[i] = 0;
             // 本体/视图同步：视图是伤害公式的读取源，不同步会让本次消强在伤害上"没发生"
             // （反例：INT_MAX 那次本体/视图分裂）。
             ctx->ws.view_levels[target][i] = 0;
@@ -596,11 +595,11 @@ int clear_stat_drops(BattleContext* ctx, int target) {
     // ⚠️ 与 clear_stat_boosts 不对称：**故意不查任何免疫**。
     //   清弱化对目标有利——免弱(STAT_DROP) 挡"施加弱化"、免消除强化(STAT_CLEAR) 护"提升"，
     //   都不该挡"把弱化拿掉"（用户 2026-09-13 口径："清理弱化什么都不用查"）。
-    ElfPet& pet = ctx->getPet(target);
+    int* levels = ctx->ability_levels[target];
     int cleared = 0;
-    for (int i = 0; i < static_cast<int>(pet.levels.size()); ++i) {
-        if (pet.levels[i] < 0) {  // 只清弱化（负等级），不动提升/正等级
-            pet.levels[i] = 0;
+    for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
+        if (levels[i] < 0) {  // 只清弱化（负等级），不动提升/正等级
+            levels[i] = 0;
             ctx->ws.view_levels[target][i] = 0;   // 本体/视图同步（同 clear_stat_boosts）
             ++cleared;
         }
@@ -619,11 +618,11 @@ bool crit_defense_break(BattleContext* ctx, int defender, int skill_type) {
     // ⚠️ 故意**不查任何免疫**：暴击破防是暴击自带规则，不是"消除强化效果"，
     //    免消除强化(STAT_CLEAR) 与它无关（用户 2026-09-13 口径）。
     const int stat = skill_type + 2;
-    ElfPet& pet = ctx->getPet(defender);
-    if (pet.levels[stat] <= 0) {
+    int& level = ctx->ability_levels[defender][stat];
+    if (level <= 0) {
         return false;   // 没有正等级可破（负等级/零不动）
     }
-    pet.levels[stat] = 0;
+    level = 0;
     ctx->ws.view_levels[defender][stat] = 0;   // 本体/视图同步（同其它能力等级通道）
     return true;
 }
@@ -640,21 +639,21 @@ int transfer_stat_boosts(BattleContext* ctx, int from, int to) {
     if (ctx->is_immune(from, ImmunityType::STAT_CLEAR, ctx->currentState)) {
         return 0;
     }
-    ElfPet& src = ctx->getPet(from);
-    ElfPet& dst = ctx->getPet(to);
+    int* src_levels = ctx->ability_levels[from];
+    int* dst_levels = ctx->ability_levels[to];
     int moved = 0;
-    for (int i = 0; i < static_cast<int>(src.levels.size()); ++i) {
-        const int lv = src.levels[i];
+    for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
+        const int lv = src_levels[i];
         if (lv <= 0) {
             continue;  // 只转化提升，不动弱化
         }
-        src.levels[i] = 0;
+        src_levels[i] = 0;
         ctx->ws.view_levels[from][i] = 0;
-        int gained = dst.levels[i] + lv;
+        int gained = dst_levels[i] + lv;
         if (gained > 6) {
             gained = 6;   // 能力等级上限 +6（与 stat_change 一致）
         }
-        dst.levels[i] = gained;
+        dst_levels[i] = gained;
         ctx->ws.view_levels[to][i] = gained;
         ++moved;
     }
@@ -672,8 +671,7 @@ StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount) {
     }
     // ⚠️ 此处**不查** STAT_CLEAR（免消除强化）：那个护的是"已有的提升被消除/吸取"，
     //    弱化是往下压，原理不同，可以穿过强化保护（用户 2026-09-13 定）。
-    ElfPet& pet = ctx->getPet(target);
-    int& level = pet.levels[stat];
+    int& level = ctx->ability_levels[target][stat];
     if (level <= -6) {
         return StatDropResult::AT_FLOOR;  // 已到底，不越界
     }
@@ -691,12 +689,12 @@ StatReversalResult stat_reversal(BattleContext* ctx, int target) {
     }
     // TODO（禁止反转，用户约定）：若 target 身上存在"禁止反转下降"的回合类规则
     //   （RuleCenter 回合类查询效果命中），应返回 BLOCKED 使反转失败。当前未接入，留作未来查询。
-    ElfPet& pet = ctx->getPet(target);
+    int* levels = ctx->ability_levels[target];
     bool any_reversed = false;
-    for (int i = 0; i < 6; ++i) {
-        if (pet.levels[i] < 0) {    // 只反下降（负等级）
-            pet.levels[i] = -pet.levels[i];   // 下降 → 提升
-            ctx->ws.view_levels[target][i] = pet.levels[i];  // 同步 ws 视图（见 stat_change 注释）
+    for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
+        if (levels[i] < 0) {    // 只反下降（负等级）
+            levels[i] = -levels[i];   // 下降 → 提升
+            ctx->ws.view_levels[target][i] = levels[i];  // 同步 ws 视图（见 stat_change 注释）
             any_reversed = true;
         }
     }
@@ -713,12 +711,12 @@ StatReversalResult stat_boost_reversal(BattleContext* ctx, int target) {
         return StatReversalResult::BLOCKED;
     }
     // ⚠️ 不查 STAT_CLEAR（免消除强化）：反转是"把提升压成下降"，与弱化同理可穿强化保护。
-    ElfPet& pet = ctx->getPet(target);
+    int* levels = ctx->ability_levels[target];
     bool any_reversed = false;
-    for (int i = 0; i < 6; ++i) {
-        if (pet.levels[i] > 0) {   // 只反提升（正等级）
-            pet.levels[i] = -pet.levels[i];   // 提升 → 下降（等量）
-            ctx->ws.view_levels[target][i] = pet.levels[i];
+    for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
+        if (levels[i] > 0) {   // 只反提升（正等级）
+            levels[i] = -levels[i];   // 提升 → 下降（等量）
+            ctx->ws.view_levels[target][i] = levels[i];
             any_reversed = true;
         }
     }

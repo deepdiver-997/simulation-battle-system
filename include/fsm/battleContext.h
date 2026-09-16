@@ -209,6 +209,32 @@ public:
     //--- 反弹/转化异常（on-stage 作用域）---
     std::array<std::map<int, int>, 2> anomaly_conversion;  // [目标] 入异常 id → 出异常 id（单跳转换），apply_anomaly 内查询
 
+    //--- 能力等级（本体；**on-stage 作用域，换宠清空**）---
+    // ★ 2026-09-16 用户拍板：等级**只在在场期间有意义**，"切换清除等级状态"——
+    //   原先放在 `ElfPet::levels`（精灵本体、跨切换保留）是设计失误：换宠不清、跨对局残留
+    //   （`clearAllEffects` 也不清 pet.levels，训练模式复用同一批 pet 对象时会被上一局污染）。
+    // 现在的归属：**权威状态在本容器**，随上下场清（与 `abnormal_status_end_round` 同类语义）；
+    //   `ws.view_levels` 仍是**回合内视图**（伤害公式读它，每回合从本容器重基，
+    //   见 battleFsm.cpp 的 view 同步点）——本体/视图分离不变，只是"本体"从 pet 换到了 context。
+    // 索引：0=攻击 1=特攻 2=防御 3=特防 4=速度 5=体力（同 stat_change 的 stat 参数）。
+    // ⚠️ 不要与官方数据的能力码混用（官方码序逐族不同，见 trait_state.h 的
+    //    trait_stat_index_from_code 说明）。
+    static constexpr int kAbilityLevelSlotCount = 6;   // 与 stat 参数域一致（0..5）
+    int ability_levels[2][kAbilityLevelSlotCount]{};
+
+    int& ability_level(int side, int stat) { return ability_levels[side][stat]; }
+    int ability_level(int side, int stat) const { return ability_levels[side][stat]; }
+    /** 换宠/开战清除：一方 6 项等级全归 0，并同步 ws 视图（视图是公式读取源）。 */
+    void clear_ability_levels(int side) {
+        if (side < 0 || side > 1) {
+            return;
+        }
+        for (int i = 0; i < kAbilityLevelSlotCount; ++i) {
+            ability_levels[side][i] = 0;
+            ws.view_levels[side][i] = 0;
+        }
+    }
+
     //--- 场下源抑制场域（薇尔诗 2513，双方通用）---
     // "自身存活于出战阵容时，双方场下的精灵无法指定场上精灵为效果对象"（effect_icon 2098）。
     // 不分敌我——薇尔诗在任一方存活即全场生效（档案 §4.2.3 定：context 全局，非 per-owner）。
@@ -568,6 +594,10 @@ public:
         install_default_pink_mitigation();
         trait_state_[0].clear();
         trait_state_[1].clear();
+        // 能力等级本体（on-stage 作用域）：新对局必须清零——否则复用同一批 pet 对象的场景
+        // （训练模式/连续对局）会把上一局的强化带进来。
+        clear_ability_levels(0);
+        clear_ability_levels(1);
         hp_zero_converted[0] = hp_zero_converted[1] = false;
         plugin_storage.clear();
         invalid_skill_damage_hooks.clear();
