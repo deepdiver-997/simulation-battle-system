@@ -1299,6 +1299,9 @@ void BattleFsm::handle_BattleFirstAfterAction(BattleContext* battleContext) {
     const int first_mover_id = resolve_first_mover_id(battleContext);
     consume_selected_skill_pp(battleContext, first_mover_id);
     battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_AFTER_ACTION);
+    // 通用特性·强攻/强念的**保底红伤**：这里是命中/被盔/Miss/白板四个分支唯一的公共收口
+    //（伤害管线在 miss/被盔时整段不跑，故不能在管线里做——见 common_trait_effects.h）。
+    trait_extra_damage_hook(battleContext, first_mover_id);
     battleContext->generateState();
 }
 
@@ -1413,6 +1416,9 @@ void BattleFsm::handle_BattleSecondAfterAction(BattleContext* battleContext) {
     const int second_mover_id = resolve_second_mover_id(battleContext);
     consume_selected_skill_pp(battleContext, second_mover_id);
     battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_AFTER_ACTION);
+    // 通用特性·强攻/强念的**保底红伤**：这里是命中/被盔/Miss/白板四个分支唯一的公共收口
+    //（伤害管线在 miss/被盔时整段不跑，故不能在管线里做——见 common_trait_effects.h）。
+    trait_extra_damage_hook(battleContext, second_mover_id);
     battleContext->generateState();
 }
 

@@ -276,6 +276,17 @@ struct EffectiveTrait {
     int args[2] = {0, 0};     // 官方 args 前两个参数（语义按 kind，见上）
     bool proc_forced = false; // 触发条件被取消（天女式复制升级）：概率触发 → 必发
     bool copied = false;      // true = 复制来的（生命周期锚来源方，见 TraitOverlay）
+    // ── 天女式复制升级的三个覆写（图鉴全文口径，2026-09-17）──
+    // 「百天浮世络：…自身拥有对方的通用特性，**以此法获得的特性触发概率提升至 99%**
+    //   且**取消攻击技能类型要求**」；专栏补充"默认为 **5 星**特性（不论对手星级）"。
+    // 概率 99% ≠ 必发，故不能借用 proc_forced，单列一个覆盖值（千分点；-1 = 不覆盖）。
+    int  proc_override_permille = -1;
+    // 取消"攻击技能类型要求" = **不再区分物理/特殊**（专栏明确："而不是取消技能类型限制"
+    // → 仍限攻击技能，属性技能照旧不触发）。
+    bool any_attack_type = false;
+    // 复制来的"毒"走**现代**异常通道（用户 2026-09-16 口径：游戏实测——复制的毒施加走
+    // 现代异常效果、会被现代弹控/抗性响应，已不是主动毒）。
+    bool modern_anomaly_channel = false;
 };
 
 inline EffectiveTrait effective_trait_from_common(const CommonTrait& trait) {
@@ -308,6 +319,9 @@ inline int trait_hardness_pct(int star_level) {
 
 // 概率触发类特性的触发概率（千分点；无概率触发机制的 kind 恒 0 = 只能靠 proc_forced）。
 inline int trait_proc_permille(const EffectiveTrait& t) {
+    if (t.proc_override_permille >= 0) {
+        return t.proc_override_permille;   // 天女式复制：概率被覆写（99% = 990‰）
+    }
     if (t.kind == TraitKind::InstantKill) {
         return t.args[0];
     }

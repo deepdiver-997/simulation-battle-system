@@ -68,10 +68,14 @@ void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id);
 void trait_survive_lethal_hook(BattleContext* ctx, int defender_id);
 
 /**
- * 强攻(62)/强念(63) 的 **miss 分支**钩位：攻击技能 miss 时追加伤害照常扣血
- * （必修6 ②"攻击技能 miss 了也可以扣除对手体力"）。
- * 调用点：`Skills::execute` 的 miss 出口——**只对 MISS**；被盔/封技（SEALED）技能没打出去，不适用。
+ * 强攻(62)/强念(63) 的**保底红伤**钩位（用户 2026-09-17 口径）：
+ * "只要触发了，一定会增加那么多点**红伤**——正常命中、Miss、被盔/龙威、命中效果失效都算"。
+ *
+ * 调用点：`handle_BattleFirst/SecondAfterAction`（**四个分支唯一的公共收口**）。
+ * ⚠️ 不能只放伤害管线：`handle_*_AttackDamage` 在 miss/被盔/龙威/封属时**整段早退**、
+ *    管线不跑；"命中效果失效·白板"虽跑管线但伤害会在管线**之后**被归零——两者都会吃掉加成。
+ * 结算形态：`deal_damage(NORMAL)` 独立一段红伤（"保底"语义 → 不并入管线、不吃该次攻击的增减伤）。
  */
-void trait_extra_damage_on_miss_hook(BattleContext* ctx, int attacker_id);
+void trait_extra_damage_hook(BattleContext* ctx, int attacker_id);
 
 #endif // COMMON_TRAIT_EFFECTS_H
