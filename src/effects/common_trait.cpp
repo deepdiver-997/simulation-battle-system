@@ -141,11 +141,14 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
     (void)force_hp_to_zero(ctx, defender_id, attacker_id);
 }
 
-//---- 主动异常特性（静电/颤栗/火热/极寒，"主动毒"）：命中时施加给对手 ----
+//---- 接触毒特性（静电/颤栗/火热/极寒 主动毒 + 带电/高热/冰冷/阴森 被动毒）----
 // 钩位：BATTLE_FIRST/SECOND_ON_SKILL_HIT 的注册桶之后、技能效果结算（SKILL_EFFECT）之前
 // ——必修6："需要（自身）技能命中才可以触发"；被盔技能 SKILL_INVALID（不计为命中，
 // 必修3）时 handler 连注册桶一起跳过，钩子自然不触发。
-void trait_active_poison_hook(BattleContext* ctx, int attacker_id) {
+//
+// ⚠️ 只认**本体槽**（天女式复制毒不经特性节点——见 trait_state.h 的架构拍板：
+// 复制毒走现代异常效果，由天女魂印自己注册效果到本时点、调 apply_anomaly）。
+void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
     if (!ctx || attacker_id < 0 || attacker_id > 1) {
         return;
     }
@@ -153,48 +156,43 @@ void trait_active_poison_hook(BattleContext* ctx, int attacker_id) {
         return;   // 必修6 ②③：需要技能命中（miss 不触发）
     }
     const int skill_type = ctx->ws.skill_type_view[attacker_id];
-    TraitKind want = TraitKind::None;
-    if (skill_type == static_cast<int>(SkillType::Physical)) {
-        want = TraitKind::ActivePoisonPhysical;   // 静电/颤栗：只认物理攻击
-    } else if (skill_type == static_cast<int>(SkillType::Special)) {
-        want = TraitKind::ActivePoisonSpecial;    // 火热/极寒：只认特殊攻击
-    } else {
-        return;   // 属性技能不触发（"物理攻击或者特殊攻击"）
+    if (skill_type != static_cast<int>(SkillType::Physical)
+        && skill_type != static_cast<int>(SkillType::Special)) {
+        return;   // 属性技能不触发（"物理攻击或者特殊攻击"/"受到普通攻击"）
     }
-    std::optional<EffectiveTrait> trait = ctx->effective_common_trait(attacker_id, want);
-    if (!trait) {
-        // proc_forced（天女复制升级"取消攻击技能类型要求"）的复制条目可跨物/特类别触发：
-        // 按本次技能类别没查到时，再查另一类别下的复制条目（本体条目不走这条路）。
-        const TraitKind other_kind = (want == TraitKind::ActivePoisonPhysical)
-                                         ? TraitKind::ActivePoisonSpecial
-                                         : TraitKind::ActivePoisonPhysical;
-        std::optional<EffectiveTrait> other =
-            ctx->effective_common_trait(attacker_id, other_kind);
-        if (other && other->copied && other->proc_forced) {
-            trait = other;
-        } else {
-            return;
+    const bool is_physical = (skill_type == static_cast<int>(SkillType::Physical));
+    const int defender_id = 1 - attacker_id;
+
+    // ── 主动毒：攻方本体槽，物/特类别匹配后令**守方**中招（主动毒通道）──
+    // ⚠️ `std::rand()` 只在**确实要施加**时才消耗（duration 的计算放在分支内）——
+    //    本仓库的伤害/命中断言依赖既有 rand 序列（场景 013/031/053/054 都因此抓过），
+    //    无条件掷点会给所有场景移位。
+    const EffectiveTrait& atk_own = ctx->trait_state_[attacker_id].own;
+    const TraitKind active_want = is_physical ? TraitKind::ActivePoisonPhysical
+                                              : TraitKind::ActivePoisonSpecial;
+    if (atk_own.kind == active_want && !ctx->is_trait_suppressed(attacker_id, atk_own.kind)
+        && is_valid_abnormal_status_id(atk_own.args[1]) && trait_proc_roll(atk_own)) {
+        const ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
+        if (defender.hp > 0) {
+            const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
+            (void)apply_anomaly_ancient(ctx, defender_id, atk_own.args[1], duration,
+                                        attacker_id);
         }
     }
-    if (!trait_proc_roll(*trait)) {
-        return;
-    }
-    if (!is_valid_abnormal_status_id(trait->args[1])) {
-        return;
-    }
-    const int defender_id = 1 - attacker_id;
-    ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
-    if (defender.hp <= 0) {
-        return;
-    }
-    // 通道：本体条目 = 主动毒（古早通道：无视 Modern 免疫/弹控/抗性/转化）；
-    // 天女式复制条目 = 现代通道（妙时天女专栏："通过此方式获得的异常特性所附加异常
-    // 会走正常的免控流程"）。
-    // 必修6：赋予回合随机 2~3。
-    const int duration = 2 + std::rand() % 2;
-    if (trait->copied) {
-        (void)apply_anomaly(ctx, defender_id, trait->args[1], duration, attacker_id);
-    } else {
-        (void)apply_anomaly_ancient(ctx, defender_id, trait->args[1], duration, attacker_id);
+
+    // ── 被动毒：守方本体槽，"受到普通攻击（=物攻，用户 2026-09-16 确认）"时令**攻方**中招。
+    //    遗留裸施加：apply_anomaly_raw 什么都不检测（免疫/弹控/抗性/转化全穿）。
+    if (is_physical) {
+        const EffectiveTrait& def_own = ctx->trait_state_[defender_id].own;
+        if (def_own.kind == TraitKind::PassivePoison
+            && !ctx->is_trait_suppressed(defender_id, def_own.kind)
+            && is_valid_abnormal_status_id(def_own.args[1]) && trait_proc_roll(def_own)) {
+            const ElfPet& attacker = ctx->seerRobot[attacker_id].elfPets[ctx->on_stage[attacker_id]];
+            if (attacker.hp > 0) {
+                const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
+                (void)apply_anomaly_raw(ctx, attacker_id, def_own.args[1], duration,
+                                        defender_id);
+            }
+        }
     }
 }

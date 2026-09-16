@@ -47,7 +47,10 @@ enum class ApplyAnomalyResult {
 // 效果的实现**选择调用哪个原语来表达，这是认证数据层的解释，不是官方数据的事实。
 enum class AnomalyChannel {
     Modern = 0,   // 现代施加（参数化模板族，主流）：全检查链
-    Ancient = 1,  // 古早施加（"命中后令对方XX"族 + 特性接触施加 = 主动毒）：只被古代层免疫挡
+    Ancient = 1,  // 古早施加（"命中后令对方XX"族 + 特性主动毒 = 主动毒）：只被古代层免疫挡
+    Raw = 2,      // 遗留裸施加（特性被动毒专用，2026-09-16 用户拍板）：**什么都不检测**——
+                  // 免疫（含 Ancient 层/老魂免 Mark 0）/弹控/抗性/转化全穿，直接落地。
+                  // 比 Ancient 更早的遗留机制（带电/高热/冰冷/阴森"受到普通攻击时"）。
 };
 
 /**
@@ -93,6 +96,23 @@ ApplyAnomalyResult apply_anomaly_ancient(BattleContext* ctx,
                                          int anomaly_id,
                                          int duration_rounds = -1,
                                          int actor = -1);
+
+/**
+ * apply_anomaly_raw - **遗留裸施加原语**（AnomalyChannel::Raw，特性被动毒专用）。
+ * 带电/高热/冰冷/阴森（Eid 6 家族，"受到普通攻击时有 n% 使对方XX"）专用入口。
+ *
+ * 与前两个原语的差异（2026-09-16 用户拍板）：**什么都不检测**——免疫（含 Ancient 层/
+ * Mark 0 老魂免）/弹控/异常抗性/转化异常全部穿透，校验参数与目标存活后直接落地
+ * （同种异常仍按"回合长者覆盖"合并、成功路径照常 emit 事件）。返回值只会是
+ * SUCCESS / DURATION_EXTENDED / TARGET_DEFEATED / INVALID_PARAM。
+ *
+ * @param actor 施放方（0/1），被动毒传异常来源方（守方）；未知传 -1
+ */
+ApplyAnomalyResult apply_anomaly_raw(BattleContext* ctx,
+                                     int target,
+                                     int anomaly_id,
+                                     int duration_rounds = -1,
+                                     int actor = -1);
 
 /** 便捷函数：尝试施加异常，成功返回 true。 */
 inline bool try_apply_anomaly(BattleContext* ctx,

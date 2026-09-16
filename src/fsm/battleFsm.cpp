@@ -1235,8 +1235,8 @@ void BattleFsm::handle_BattleFirstOnSkillHit(BattleContext* battleContext) {
     resolve_skill_execution(battleContext, first_mover_id, State::BATTLE_FIRST_ON_SKILL_HIT);
     if (battleContext->ws.skill_exec_result[first_mover_id] != SkillExecResult::SKILL_INVALID) {
         battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_ON_SKILL_HIT);
-        // 主动异常特性（静电/颤栗/火热/极寒）：命中时、技能效果结算之前掷点施加（必修6）。
-        trait_active_poison_hook(battleContext, first_mover_id);
+        // 接触毒特性（主动毒+被动毒）：命中时、技能效果结算之前掷点施加（必修6）。
+        trait_contact_poison_hook(battleContext, first_mover_id);
     }
     battleContext->generateState();
 }
@@ -1347,8 +1347,8 @@ void BattleFsm::handle_BattleSecondOnSkillHit(BattleContext* battleContext) {
     resolve_skill_execution(battleContext, second_mover_id, State::BATTLE_SECOND_ON_SKILL_HIT);
     if (battleContext->ws.skill_exec_result[second_mover_id] != SkillExecResult::SKILL_INVALID) {
         battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_ON_SKILL_HIT);
-        // 主动异常特性（静电/颤栗/火热/极寒）：命中时、技能效果结算之前掷点施加（必修6）。
-        trait_active_poison_hook(battleContext, second_mover_id);
+        // 接触毒特性（主动毒+被动毒）：命中时、技能效果结算之前掷点施加（必修6）。
+        trait_contact_poison_hook(battleContext, second_mover_id);
     }
     battleContext->generateState();
 }

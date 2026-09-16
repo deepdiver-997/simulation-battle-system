@@ -36,6 +36,7 @@ const CoreApi& core_api() {
         /*deal_true_damage=*/&deal_true_damage,
         /*force_hp_to_zero=*/&force_hp_to_zero,
         /*apply_anomaly_ancient=*/&apply_anomaly_ancient,
+        /*apply_anomaly_raw=*/&apply_anomaly_raw,
     };
     return api;
 }

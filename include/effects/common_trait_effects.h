@@ -25,13 +25,16 @@ void install_common_trait_effects(BattleContext* ctx);
 void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id);
 
 /**
- * 主动异常特性钩位（静电/颤栗/火热/极寒，"主动毒"）：handle_BattleFirst/SecondOnSkillHit
- * 在命中判定（resolve_skill_execution）之后、**技能效果结算（SKILL_EFFECT）之前**调用——
- * 必修6："需要（自身）技能命中才可以触发"（miss 不触发；被盔 SKILL_INVALID 不计为命中）。
- * 静电/颤栗只认物理攻击、火热/极寒只认特殊攻击；命中后掷 args[0]%（3~8 百分点），
- * 令对手 args[1] 号异常（2~3 回合）。本体走 apply_anomaly_ancient（主动毒通道）；
- * 天女式复制条目走 apply_anomaly（妙时天女：复制的特性毒走正常免控流程）。
+ * 接触毒特性钩位（主动毒：静电/颤栗/火热/极寒；被动毒：带电/高热/冰冷/阴森）：
+ * handle_BattleFirst/SecondOnSkillHit 在命中判定（resolve_skill_execution）之后、
+ * **技能效果结算（SKILL_EFFECT）之前**调用——必修6："需要（自身）技能命中才可以触发"
+ * （miss 不触发；被盔 SKILL_INVALID 不计为命中）。
+ * 主动毒：攻方本体槽，静电/颤栗只认物理、火热/极寒只认特殊，命中后掷 args[0]%
+ * （3~8 百分点）令**守方**中 args[1]（2~3 回合），走 apply_anomaly_ancient（主动毒通道）。
+ * 被动毒：守方本体槽，攻方**物理**攻击命中时（"受到普通攻击"=物攻，用户 2026-09-16 确认）
+ * 掷点令**攻方**中 args[1]，走 apply_anomaly_raw（遗留裸施加，什么都不检测）。
+ * ⚠️ 只认本体槽——天女式复制毒不经特性节点（见 trait_state.h 架构拍板）。
  */
-void trait_active_poison_hook(BattleContext* ctx, int attacker_id);
+void trait_contact_poison_hook(BattleContext* ctx, int attacker_id);
 
 #endif // COMMON_TRAIT_EFFECTS_H

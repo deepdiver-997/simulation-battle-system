@@ -93,6 +93,10 @@ struct CoreApi {
     // 与特性接触施加（Eid 6/66/67）专用；现代施加（参数化族，如 2189）仍走上面 apply_anomaly。
     ApplyAnomalyResult (*apply_anomaly_ancient)(BattleContext*, int target, int anomaly_id,
                                                 int duration_rounds, int actor);
+    // 遗留裸施加（特性被动毒专用）：什么都不检测（免疫含 Ancient 层/Mark 0/弹控/抗性/转化
+    // 全穿），校验后直接落地。"受到普通攻击（物攻）时 n% 使对方XX"（带电/高热/冰冷/阴森）。
+    ApplyAnomalyResult (*apply_anomaly_raw)(BattleContext*, int target, int anomaly_id,
+                                            int duration_rounds, int actor);
 };
 
 // sim_core 暴露的 CoreApi 单例（实际填充）。插件侧不调它；由 core 在初始化时传入。

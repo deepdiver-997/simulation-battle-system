@@ -37,18 +37,25 @@ enum class TraitKind {
                   //      可被"秒杀转化/免疫"短路（原语查标记，见 battle_primitives.h）
     Hardness,     // 坚硬：受伤减 n%（红伤管线 REDUCE_TRAIT 阶段，非通用减伤、乘法、早于保底）
     Spirit,       // 精神：特殊攻击伤害 +n%（AMP_EXTRA 阶段，非通用增伤、乘法、按技能类别门控）
-    // ── 主动异常特性（"主动毒"，2026-09-16 接线；必修6《精灵特性》）──
-    // 静电/颤栗（Eid 66 家族）：**物理攻击**命中时 args[0]% 令对手 args[1] 号异常（0=麻痹/6=害怕）；
-    // 火热/极寒（Eid 67 家族）：**特殊攻击**命中时同上（2=烧伤/5=冻伤）。
-    // 触发门：技能命中（HIT）+ 物/特类别匹配；赋予 2~3 回合；走 apply_anomaly_ancient
-    // （主动毒通道——无视 Modern 层免疫/弹控/抗性/转化）。
-    // ⚠️ 天女式**复制**条目例外（妙时天女专栏）："通过此方式获得的异常特性所附加异常
-    //    会走正常的免控流程" → copied=true 改走**现代通道**；proc_forced=true 同时
-    //    取消"物/特类别要求"（必修6："不再区分攻击技能的特殊攻击和物理攻击"）。
+    // ── 接触毒特性（2026-09-16 接线；必修6《精灵特性》+ 用户拍板）──
+    // 主动毒：静电/颤栗（Eid 66 家族）= **物理攻击**命中时 args[0]% 令对手 args[1] 号异常
+    // （0=麻痹/6=害怕）；火热/极寒（Eid 67 家族）= **特殊攻击**命中（2=烧伤/5=冻伤）。
+    // 触发门：技能命中（HIT）+ 物/特类别匹配；赋予 2~3 回合；本体走 apply_anomaly_ancient
+    // （主动毒通道——无视 Modern 层免疫/弹控/抗性/转化，Ancient 层免疫/老魂免能挡）。
+    // 被动毒：带电/高热/冰冷/阴森（Eid 6 家族）= **受到普通攻击（=物攻，用户 2026-09-16
+    // 确认）命中时** args[0]% 令**攻方**中 args[1]。遗留机制的遗留机制：走 apply_anomaly_raw
+    // **裸施加**（什么都不检测——免疫/弹控/抗性/转化全穿，用户 2026-09-16 拍板）。
+    // ⚠️ 天女式复制条目**不经本特性节点触发**（用户 2026-09-16 架构拍板）：游戏实测——
+    //    复制的主动/被动毒虽然"取消触发条件（物/特攻都行）"，但施加走**现代异常效果**
+    //    （会被现代弹控、异常抗性响应），不再是主动毒 → 语义上已不是"特性施加"。
+    //    落地方案：天女魂印把**行为保持**的特性（瞬杀等）拷到 context 槽（copy_common_trait，
+    //    特性时点自动检测）；把**行为改变**的毒拷到 pet 容器 + 注册**不可清除**的效果到
+    //    ON_SKILL_HIT 时点、直接调 apply_anomaly（现代原语）。故本族钩子只认**本体槽**。
     //    ⚠️ 别给 Eid 6/66/67 写 custom_effect_overrides 行——这些 effect_info id 与
     //    moves 用的同 id 不同义（effect_info 6=反弹伤害文本）。
-    ActivePoisonPhysical,  // 静电 / 颤栗
-    ActivePoisonSpecial,   // 火热 / 极寒
+    ActivePoisonPhysical,  // 静电 / 颤栗（主动毒·物理）
+    ActivePoisonSpecial,   // 火热 / 极寒（主动毒·特殊）
+    PassivePoison,         // 带电 / 高热 / 冰冷 / 阴森（被动毒·受物攻弹给攻方，裸施加）
 };
 
 inline TraitKind trait_kind_from_name(const std::string& name) {
@@ -67,6 +74,9 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
     if (name == "火热" || name == "极寒") {
         return TraitKind::ActivePoisonSpecial;
     }
+    if (name == "带电" || name == "高热" || name == "冰冷" || name == "阴森") {
+        return TraitKind::PassivePoison;
+    }
     return TraitKind::None;
 }
 
@@ -77,9 +87,10 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
 //   - Hardness：**不读 args**（官方读数错误）——用 trait_hardness_pct 的语料修正表。
 //   - Spirit：args[0] = 官方 Category 代码（2=特殊攻击，与 map_skill_type 的 1物理/2特殊/4属性 一致）、
 //     args[1] = 增伤百分比。
-//   - ActivePoisonPhysical/Special：args[0] = 触发概率**百分点**（必修6：0-5 星 = 3/4/5/6/7/8%，
-//     与瞬杀的千分点口径不同！）、args[1] =施加的异常码（battle_effects 命名空间=引擎
-//     AbnormalStatusId：静电 0 麻痹 / 颤栗 6 害怕 / 火热 2 烧伤 / 极寒 5 冻伤）。
+//   - ActivePoisonPhysical/Special、PassivePoison：args[0] = 触发概率**百分点**（必修6：
+//     0-5 星 = 3/4/5/6/7/8%，与瞬杀的千分点口径不同！）、args[1] = 施加的异常码
+//     （battle_effects 命名空间=引擎 AbnormalStatusId：带电/静电 0 麻痹 / 阴森/颤栗 6 害怕 /
+//     高热/火热 2 烧伤 / 冰冷/极寒 5 冻伤）。
 struct EffectiveTrait {
     TraitKind kind = TraitKind::None;
     int idx = 0;              // new_se.idx（本体行；复制条目带来源行 id）
@@ -123,7 +134,8 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
         return t.args[0];
     }
     if (t.kind == TraitKind::ActivePoisonPhysical
-        || t.kind == TraitKind::ActivePoisonSpecial) {
+        || t.kind == TraitKind::ActivePoisonSpecial
+        || t.kind == TraitKind::PassivePoison) {
         return t.args[0] * 10;   // 必修6：args[0] 是百分点（3~8）→ 千分点
     }
     return 0;
