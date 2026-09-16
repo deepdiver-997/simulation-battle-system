@@ -37,6 +37,18 @@ enum class TraitKind {
                   //      可被"秒杀转化/免疫"短路（原语查标记，见 battle_primitives.h）
     Hardness,     // 坚硬：受伤减 n%（红伤管线 REDUCE_TRAIT 阶段，非通用减伤、乘法、早于保底）
     Spirit,       // 精神：特殊攻击伤害 +n%（AMP_EXTRA 阶段，非通用增伤、乘法、按技能类别门控）
+    // ── 主动异常特性（"主动毒"，2026-09-16 接线；必修6《精灵特性》）──
+    // 静电/颤栗（Eid 66 家族）：**物理攻击**命中时 args[0]% 令对手 args[1] 号异常（0=麻痹/6=害怕）；
+    // 火热/极寒（Eid 67 家族）：**特殊攻击**命中时同上（2=烧伤/5=冻伤）。
+    // 触发门：技能命中（HIT）+ 物/特类别匹配；赋予 2~3 回合；走 apply_anomaly_ancient
+    // （主动毒通道——无视 Modern 层免疫/弹控/抗性/转化）。
+    // ⚠️ 天女式**复制**条目例外（妙时天女专栏）："通过此方式获得的异常特性所附加异常
+    //    会走正常的免控流程" → copied=true 改走**现代通道**；proc_forced=true 同时
+    //    取消"物/特类别要求"（必修6："不再区分攻击技能的特殊攻击和物理攻击"）。
+    //    ⚠️ 别给 Eid 6/66/67 写 custom_effect_overrides 行——这些 effect_info id 与
+    //    moves 用的同 id 不同义（effect_info 6=反弹伤害文本）。
+    ActivePoisonPhysical,  // 静电 / 颤栗
+    ActivePoisonSpecial,   // 火热 / 极寒
 };
 
 inline TraitKind trait_kind_from_name(const std::string& name) {
@@ -49,6 +61,12 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
     if (name == "精神") {
         return TraitKind::Spirit;
     }
+    if (name == "静电" || name == "颤栗" || name == "战栗") {
+        return TraitKind::ActivePoisonPhysical;
+    }
+    if (name == "火热" || name == "极寒") {
+        return TraitKind::ActivePoisonSpecial;
+    }
     return TraitKind::None;
 }
 
@@ -59,6 +77,9 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
 //   - Hardness：**不读 args**（官方读数错误）——用 trait_hardness_pct 的语料修正表。
 //   - Spirit：args[0] = 官方 Category 代码（2=特殊攻击，与 map_skill_type 的 1物理/2特殊/4属性 一致）、
 //     args[1] = 增伤百分比。
+//   - ActivePoisonPhysical/Special：args[0] = 触发概率**百分点**（必修6：0-5 星 = 3/4/5/6/7/8%，
+//     与瞬杀的千分点口径不同！）、args[1] =施加的异常码（battle_effects 命名空间=引擎
+//     AbnormalStatusId：静电 0 麻痹 / 颤栗 6 害怕 / 火热 2 烧伤 / 极寒 5 冻伤）。
 struct EffectiveTrait {
     TraitKind kind = TraitKind::None;
     int idx = 0;              // new_se.idx（本体行；复制条目带来源行 id）
@@ -100,6 +121,10 @@ inline int trait_hardness_pct(int star_level) {
 inline int trait_proc_permille(const EffectiveTrait& t) {
     if (t.kind == TraitKind::InstantKill) {
         return t.args[0];
+    }
+    if (t.kind == TraitKind::ActivePoisonPhysical
+        || t.kind == TraitKind::ActivePoisonSpecial) {
+        return t.args[0] * 10;   // 必修6：args[0] 是百分点（3~8）→ 千分点
     }
     return 0;
 }

@@ -24,4 +24,14 @@ void install_common_trait_effects(BattleContext* ctx);
  */
 void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id);
 
+/**
+ * 主动异常特性钩位（静电/颤栗/火热/极寒，"主动毒"）：handle_BattleFirst/SecondOnSkillHit
+ * 在命中判定（resolve_skill_execution）之后、**技能效果结算（SKILL_EFFECT）之前**调用——
+ * 必修6："需要（自身）技能命中才可以触发"（miss 不触发；被盔 SKILL_INVALID 不计为命中）。
+ * 静电/颤栗只认物理攻击、火热/极寒只认特殊攻击；命中后掷 args[0]%（3~8 百分点），
+ * 令对手 args[1] 号异常（2~3 回合）。本体走 apply_anomaly_ancient（主动毒通道）；
+ * 天女式复制条目走 apply_anomaly（妙时天女：复制的特性毒走正常免控流程）。
+ */
+void trait_active_poison_hook(BattleContext* ctx, int attacker_id);
+
 #endif // COMMON_TRAIT_EFFECTS_H

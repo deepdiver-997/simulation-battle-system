@@ -140,3 +140,61 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
     // 高伤+瞬杀同时触发时犀牛最后仍满血（用户 2026-09-15/16 实测口径）。
     (void)force_hp_to_zero(ctx, defender_id, attacker_id);
 }
+
+//---- 主动异常特性（静电/颤栗/火热/极寒，"主动毒"）：命中时施加给对手 ----
+// 钩位：BATTLE_FIRST/SECOND_ON_SKILL_HIT 的注册桶之后、技能效果结算（SKILL_EFFECT）之前
+// ——必修6："需要（自身）技能命中才可以触发"；被盔技能 SKILL_INVALID（不计为命中，
+// 必修3）时 handler 连注册桶一起跳过，钩子自然不触发。
+void trait_active_poison_hook(BattleContext* ctx, int attacker_id) {
+    if (!ctx || attacker_id < 0 || attacker_id > 1) {
+        return;
+    }
+    if (ctx->ws.skill_exec_result[attacker_id] != SkillExecResult::HIT) {
+        return;   // 必修6 ②③：需要技能命中（miss 不触发）
+    }
+    const int skill_type = ctx->ws.skill_type_view[attacker_id];
+    TraitKind want = TraitKind::None;
+    if (skill_type == static_cast<int>(SkillType::Physical)) {
+        want = TraitKind::ActivePoisonPhysical;   // 静电/颤栗：只认物理攻击
+    } else if (skill_type == static_cast<int>(SkillType::Special)) {
+        want = TraitKind::ActivePoisonSpecial;    // 火热/极寒：只认特殊攻击
+    } else {
+        return;   // 属性技能不触发（"物理攻击或者特殊攻击"）
+    }
+    std::optional<EffectiveTrait> trait = ctx->effective_common_trait(attacker_id, want);
+    if (!trait) {
+        // proc_forced（天女复制升级"取消攻击技能类型要求"）的复制条目可跨物/特类别触发：
+        // 按本次技能类别没查到时，再查另一类别下的复制条目（本体条目不走这条路）。
+        const TraitKind other_kind = (want == TraitKind::ActivePoisonPhysical)
+                                         ? TraitKind::ActivePoisonSpecial
+                                         : TraitKind::ActivePoisonPhysical;
+        std::optional<EffectiveTrait> other =
+            ctx->effective_common_trait(attacker_id, other_kind);
+        if (other && other->copied && other->proc_forced) {
+            trait = other;
+        } else {
+            return;
+        }
+    }
+    if (!trait_proc_roll(*trait)) {
+        return;
+    }
+    if (!is_valid_abnormal_status_id(trait->args[1])) {
+        return;
+    }
+    const int defender_id = 1 - attacker_id;
+    ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
+    if (defender.hp <= 0) {
+        return;
+    }
+    // 通道：本体条目 = 主动毒（古早通道：无视 Modern 免疫/弹控/抗性/转化）；
+    // 天女式复制条目 = 现代通道（妙时天女专栏："通过此方式获得的异常特性所附加异常
+    // 会走正常的免控流程"）。
+    // 必修6：赋予回合随机 2~3。
+    const int duration = 2 + std::rand() % 2;
+    if (trait->copied) {
+        (void)apply_anomaly(ctx, defender_id, trait->args[1], duration, attacker_id);
+    } else {
+        (void)apply_anomaly_ancient(ctx, defender_id, trait->args[1], duration, attacker_id);
+    }
+}
