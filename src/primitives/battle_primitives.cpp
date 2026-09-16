@@ -36,9 +36,9 @@ void emit_anomaly_events(BattleContext* ctx, int target, int anomaly_id, int act
 } // namespace
 
 // ----------------------------------------------------------------
-// apply_anomaly — 施加异常状态的统一入口
+// apply_anomaly — 施加异常状态的统一入口（双通道，2026-09-16）
 //
-// 施加流程（按顺序执行的检查链）：
+// Modern 通道检查链（按顺序执行）：
 //   [Step 1] 参数校验
 //   [Step 2] 目标存活检查
 //   [Step 3] 免疫检查 — 免疫内核 is_immune(ANOMALY) + Mark ID 0 兜底
@@ -46,6 +46,10 @@ void emit_anomaly_events(BattleContext* ctx, int target, int anomaly_id, int act
 //   [Step 5] 控场替换 — 已有控场则清除旧控场，施加新控场
 //   [Step 6] 特殊阻止检查（预留：抗性/装备/场地/保护机制）
 //   [Step 7] 执行施加 — 写入 abnormal_status_end_round，成功路径 emit 事件
+// （实际实现里 [3] 免疫 → 弹控反弹 → [4] 抗性 → [5] 魂免 → [6] 转化 → 落地。）
+//
+// Ancient 通道（apply_anomaly_ancient，主动毒）：只查 ImmunityTier::Ancient 免疫
+//（次免/魂免两段 + Mark 0），跳过 抗性/转化、不触发弹控，其余同。
 //
 // 为什么集中在一个函数？
 //   1. 异常免疫机制多种多样，分散在各处极易遗漏
@@ -61,12 +65,18 @@ static int resolve_anomaly_conversion(BattleContext* ctx, int target, int incomi
 }
 
 // 内部实现。reflect_depth = 反弹深度（0=原生施加；1=反弹回来：不再反弹、不过抗性）。
+// channel = 施加通道（Modern=全检查链；Ancient=主动毒：只查古代层免疫、跳抗性/转化、不反弹）。
 static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
                                              int target,
                                              int anomaly_id,
                                              int duration_rounds,
                                              int actor,
-                                             int reflect_depth) {
+                                             int reflect_depth,
+                                             AnomalyChannel channel) {
+    // 古早施加对现代免疫/弹控不可见 → 查询时按层级过滤（-1 = 不限层级）。
+    const int tier_filter =
+        (channel == AnomalyChannel::Ancient)
+            ? static_cast<int>(ImmunityTier::Ancient) : -1;
     // [1] 参数校验
     if (target < 0 || target > 1) {
         return ApplyAnomalyResult::INVALID_PARAM;
@@ -86,11 +96,15 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     }
 
     // 弹控：目标免疫时把异常反弹给施放方。最多反弹 1 次（depth==1 不再弹）——防双方弹控打乒乓球。
+    // ⚠️ 古早施加（主动毒）不触发弹控（"所有的技能弹控不能免疫主动毒，包含魂印弹控也不能"）
+    //    → Ancient 通道免疫命中直接 TARGET_IMMUNE。
     const auto reflect = [&]() -> ApplyAnomalyResult {
-        if (reflect_depth == 0 && ctx->rule_center_.has_reflect(target)
+        if (channel == AnomalyChannel::Modern && reflect_depth == 0
+            && ctx->rule_center_.has_reflect(target)
             && actor >= 0 && actor != target) {
             apply_anomaly_impl(ctx, actor, anomaly_id, duration_rounds,
-                               /*actor=*/target, /*reflect_depth=*/1);
+                               /*actor=*/target, /*reflect_depth=*/1,
+                               /*channel=*/AnomalyChannel::Modern);
             return ApplyAnomalyResult::REFLECTED;
         }
         return ApplyAnomalyResult::TARGET_IMMUNE;
@@ -102,20 +116,23 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     // ⚠️ 官方规则（docs/02-效果系统/官方机制理解与引擎缺口对照.md §二，idx=418 第2条）：
     //    **存在回合类免控/弹控时，次免依旧正常消耗** —— 故"是窗口条目挡下的"也要扣
     //    次数型条目（consume_immune 会跳过 counts==0 的窗口条目继续扫）。
-    if (ctx->is_immune_effect(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id)) {
+    if (ctx->is_immune_effect(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
+                              tier_filter)) {
         // 被弹回来的异常（reflect_depth>0）**不消耗**——"被弹回来的异常不属于精灵受到异常"
         // （idx=375）；但它仍可**被**次免免疫（照常走本分支挡下，只是不扣次数）。
         if (reflect_depth == 0) {
             ctx->consume_immune(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
-                                /*soul_filter=*/0);
+                                /*soul_filter=*/0, tier_filter);
         }
         return reflect();
     }
 
     // [4] 异常抗性 roll（弹回的异常不过抗性——depth>0 跳过；官方必修3/选修7）。
+    // ⚠️ 古早施加（主动毒）也**无视异常抗性**（语料主动毒口径）→ Ancient 通道跳过。
     // 抗性成功：直写附加"免疫异常"异常(21, 2回合)——**击穿魂免**（不走免疫检查）；
     // 先走转化（攻击方可预置 conversion[target][21]=Y 把抵抗结果直接转成 Y）。
-    if (reflect_depth == 0 && pet.resistance.isResistantTo(anomaly_id)) {
+    if (channel == AnomalyChannel::Modern && reflect_depth == 0
+        && pet.resistance.isResistantTo(anomaly_id)) {
         const int resolved = resolve_anomaly_conversion(
             ctx, target, static_cast<int>(AbnormalStatusId::AbnormalImmunity));
         ctx->set_abnormal_status_end_round(target, resolved, ctx->roundCount + 2);
@@ -124,18 +141,23 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     }
 
     // [5] 魂免（soul=true）—— 抗性判定失败后才查（官方优先级）。同样挡下后消费次数型。
-    if (ctx->is_immune_soul(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id)
+    // Mark 0 = 老魂免兜底，属**古代层**（官方"带补丁"名单的机制化）→ 古早施加照常被它挡。
+    if (ctx->is_immune_soul(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
+                            tier_filter)
         || has_mark(pet.marks, 0)) {
         if (reflect_depth == 0) {  // 弹回的异常不消耗（同 [3]）
             ctx->consume_immune(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
-                                /*soul_filter=*/1);
+                                /*soul_filter=*/1, tier_filter);
         }
         return reflect();
     }
 
     // [6] 转化（单跳）：入→出，直接施加（绕过抗性/免疫的转换路径）。
-    const int resolved = resolve_anomaly_conversion(ctx, target, anomaly_id);
-    const bool converted = (resolved != anomaly_id);
+    // ⚠️ 古早施加（主动毒）无视转化异常 → Ancient 通道直通。
+    const int resolved = (channel == AnomalyChannel::Ancient)
+                             ? anomaly_id
+                             : resolve_anomaly_conversion(ctx, target, anomaly_id);
+    const bool converted = (channel == AnomalyChannel::Modern && resolved != anomaly_id);
 
     // [7] 同种异常 — 回合覆盖
     bool already_has_same = ctx->has_active_abnormal_status(target, resolved);
@@ -173,14 +195,24 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     return converted ? ApplyAnomalyResult::CONVERTED : ApplyAnomalyResult::SUCCESS;
 }
 
-// 公开入口：原生施加（reflect_depth=0）。
+// 公开入口：现代施加（reflect_depth=0）。
 ApplyAnomalyResult apply_anomaly(BattleContext* ctx,
                                  int target,
                                  int anomaly_id,
                                  int duration_rounds,
                                  int actor) {
     return apply_anomaly_impl(ctx, target, anomaly_id, duration_rounds, actor,
-                              /*reflect_depth=*/0);
+                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Modern);
+}
+
+// 公开入口：古早施加（主动毒；reflect_depth=0，Ancient 通道不反弹、depth 恒 0）。
+ApplyAnomalyResult apply_anomaly_ancient(BattleContext* ctx,
+                                         int target,
+                                         int anomaly_id,
+                                         int duration_rounds,
+                                         int actor) {
+    return apply_anomaly_impl(ctx, target, anomaly_id, duration_rounds, actor,
+                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Ancient);
 }
 
 // ----------------------------------------------------------------

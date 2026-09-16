@@ -88,6 +88,11 @@ struct CoreApi {
     // 目标方 hp_zero_converted 标记或来源方瞬杀特性被抑制 → 短路（不归零、CONVERTED）。
     // 返回结算结果。通用特性·瞬杀与技能/魂印秒杀效果的统一落点（咤咒怨/琉梦检测挂事件）。
     HpZeroResult (*force_hp_to_zero)(BattleContext*, int target, int actor);
+    // 古早异常施加（主动毒）：只查 ImmunityTier::Ancient 免疫（次免/魂免两段 + Mark 0 老魂免），
+    // 跳过抗性/转化、不触发弹控。古早"命中后{0}%令对方XX"模板族（10/11/12/14/15/114）
+    // 与特性接触施加（Eid 6/66/67）专用；现代施加（参数化族，如 2189）仍走上面 apply_anomaly。
+    ApplyAnomalyResult (*apply_anomaly_ancient)(BattleContext*, int target, int anomaly_id,
+                                                int duration_rounds, int actor);
 };
 
 // sim_core 暴露的 CoreApi 单例（实际填充）。插件侧不调它；由 core 在初始化时传入。

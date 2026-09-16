@@ -634,13 +634,16 @@ public:
     /**
      * 授予免疫。coverage 用 state_coverage_bit / coverage_all / coverage_union 构造。
      * @param source_id 0 = 新建; >0 = 复用更新（快照程序每回合 re-grant 同句柄）
+     * @param tier 免疫层级（ImmunityTier）：Ancient=古代层（官方"带补丁"老免控，两种施加都挡，
+     *             如 effect 48）；Modern=现代层（默认，只挡现代施加）。古早施加原语只查 Ancient。
      * @return source_id（revoke 用）
      */
     int grant_immunity(int owner, ImmunityType type, uint64_t coverage,
                        uint64_t anomaly_mask = 0, int duration_rounds = 0, int source_id = 0,
                        bool soul_immunity = false,
                        EffectScope scope = EffectScope::ON_STAGE,
-                       int counts = 0, int source_effect_id = -1) {
+                       int counts = 0, int source_effect_id = -1,
+                       ImmunityTier tier = ImmunityTier::Modern) {
         // 免疫单对象：source==target==被护方 owner。转发 RuleCenter（覆盖键含 subtype=type，
         // 免异常+免弱不同 type 各占一条）。
         // counts>0 = 次数型（"免疫下N次某威胁"）：查询命中后由 consume_immune 扣一次，扣到 0 注销。
@@ -648,7 +651,8 @@ public:
         //   需要"窗口类免控 + 次数型次免"并存时，各传自己的 effect_id 才各占一条。
         return rule_center_.grant_immune(owner, static_cast<int>(type), coverage, anomaly_mask,
                                          duration_rounds, roundCount, source_id, soul_immunity,
-                                         scope, /*source_slot=*/-1, counts, source_effect_id);
+                                         scope, /*source_slot=*/-1, counts, source_effect_id,
+                                         static_cast<int>(tier));
     }
 
     void revoke_immunity(int owner, int source_id) {
@@ -666,13 +670,17 @@ public:
     }
 
     // 细分查询：次免/回合类免疫（soul=false）先于抗性判定；魂免（soul=true）在抗性失败后才查。
-    bool is_immune_effect(int owner, ImmunityType type, State timing, int status_id = 0) const {
+    // tier_filter：-1=不限层级（现代施加：两种免疫都响应）；Ancient=只查古代层条目
+    // （古早施加原语专用——现代免疫/弹控对主动毒不可见）。
+    bool is_immune_effect(int owner, ImmunityType type, State timing, int status_id = 0,
+                          int tier_filter = -1) const {
         return rule_center_.is_immune(owner, static_cast<int>(type), state_coverage_bit(timing),
-                                      roundCount, status_id, /*soul_filter=*/0);
+                                      roundCount, status_id, /*soul_filter=*/0, tier_filter);
     }
-    bool is_immune_soul(int owner, ImmunityType type, State timing, int status_id = 0) const {
+    bool is_immune_soul(int owner, ImmunityType type, State timing, int status_id = 0,
+                        int tier_filter = -1) const {
         return rule_center_.is_immune(owner, static_cast<int>(type), state_coverage_bit(timing),
-                                      roundCount, status_id, /*soul_filter=*/1);
+                                      roundCount, status_id, /*soul_filter=*/1, tier_filter);
     }
 
     /**
@@ -683,10 +691,10 @@ public:
      * @param soul_filter  -1=不限 / 0=仅次免(抗性前) / 1=仅魂免(抗性后)
      */
     bool consume_immune(int owner, ImmunityType type, State timing, int status_id = 0,
-                        int soul_filter = -1) {
+                        int soul_filter = -1, int tier_filter = -1) {
         return rule_center_.consume_immune(owner, static_cast<int>(type),
                                            state_coverage_bit(timing), roundCount,
-                                           status_id, soul_filter);
+                                           status_id, soul_filter, tier_filter);
     }
 
     //--- 伤害管线便利方法 ---

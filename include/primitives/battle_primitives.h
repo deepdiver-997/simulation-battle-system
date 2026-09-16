@@ -34,6 +34,22 @@ enum class ApplyAnomalyResult {
     CONVERTED,             // 转化异常：进入异常时转为另一指定异常
 };
 
+// 异常施加通道（2026-09-16 双通道口径，用户拍板 + 语料《浅谈主动毒与魂印免控判定》）。
+//
+// 数据库证据：施加模板分两代——古早"写死异常名"族（effect 10/11/12/14/15「命中后{0}%令对方XX」
+// + 114 易燃；通用特性 Eid 6/66/67 的接触施加同属此代，语料称"主动毒/被动毒"）与现代
+// 参数化族（"「{0}%令对手{1}」×100+ 条模板，{1}=battle_effects 异常码，如月下伏 2189）。
+// 两代在官方运行时走不同施加例程 → 对免疫/抗性/转化的可见性不同：
+//   Modern（低级控）：全检查链响应（次免→抗性→魂免→弹控反弹→转化）；
+//   Ancient（高级控=主动毒）：**只被 ImmunityTier::Ancient（古代层）免疫挡下**；
+//     无视一切现代免疫（含全部弹控）、异常抗性、转化异常。
+// 官方侧无任何字段区分这两代（施加路径是实现期行为，不在数据里）→ 通道由**施加方
+// 效果的实现**选择调用哪个原语来表达，这是认证数据层的解释，不是官方数据的事实。
+enum class AnomalyChannel {
+    Modern = 0,   // 现代施加（参数化模板族，主流）：全检查链
+    Ancient = 1,  // 古早施加（"命中后令对方XX"族 + 特性接触施加 = 主动毒）：只被古代层免疫挡
+};
+
 /**
  * 生成异常状态的随机持续回合数。
  * 绝大多数异常状态持续 2~3 回合（具体区间待确认）。
@@ -43,8 +59,9 @@ inline int random_anomaly_duration() {
 }
 
 /**
- * apply_anomaly - 施加异常的原子动作。
- * 全系统唯一施加入口，返回"发生了什么"。
+ * apply_anomaly - 现代异常施加原语（AnomalyChannel::Modern）。
+ * 全系统现代施加的唯一入口，返回"发生了什么"。
+ * 检查链（全序）：次免/回合类免疫 → 弹控反弹 → 异常抗性 → 魂免 → 转化 → 落地。
  *
  * 成功（异常状态实际改变）时 emit EVENT_ANOMALY_APPLIED；
  * 若是控场类异常，额外 emit EVENT_CONTROLLED（第三方 watcher 监听）。
@@ -56,6 +73,26 @@ ApplyAnomalyResult apply_anomaly(BattleContext* ctx,
                                  int anomaly_id,
                                  int duration_rounds = -1,
                                  int actor = -1);
+
+/**
+ * apply_anomaly_ancient - **古早异常施加原语**（AnomalyChannel::Ancient，主动毒）。
+ * 古早"命中后{0}%令对方XX"模板族（10/11/12/14/15/114）与通用特性接触施加
+ * （Eid 6/66/67，带电/高热/冰冷/阴森/静电/颤栗/火热/极寒）专用入口。
+ *
+ * 与 apply_anomaly 的差异（2026-09-16 口径，用户拍板 + 语料主动毒文章）：
+ *   - 免疫只查 **ImmunityTier::Ancient** 条目（次免/魂免两段都查，Mark 0 老魂免兜底
+ *     属古代层照常生效）；现代层免疫（含官方次数型"免下N次"——暂按 Modern，待实测）
+ *     与**一切弹控**对古早施加不可见 → 不会反弹；
+ *   - **跳过异常抗性**与**转化异常**（主动毒官方口径）；
+ *   - 返回值永不出现 REFLECTED / RESISTED_BY_RESISTANCE / CONVERTED。
+ *
+ * @param actor 施放方（0/1），效果程序调用时传效果所属方；未知传 -1
+ */
+ApplyAnomalyResult apply_anomaly_ancient(BattleContext* ctx,
+                                         int target,
+                                         int anomaly_id,
+                                         int duration_rounds = -1,
+                                         int actor = -1);
 
 /** 便捷函数：尝试施加异常，成功返回 true。 */
 inline bool try_apply_anomaly(BattleContext* ctx,

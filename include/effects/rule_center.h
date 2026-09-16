@@ -99,6 +99,30 @@ enum class SealKind {
     SEAL_ATTRIBUTE_HIT, // 封属·命中失效：只封属性技能，但只"命中效果失效"不触发无效补偿
 };
 
+// 免疫条目的**层级**（异常施加双通道专用，2026-09-16 用户拍板）。
+//
+// 官方运行时存在两代施加路径（语料《浅谈主动毒与魂印免控判定》+ 用户实测）：
+//   - 现代施加（"现代异常施加原语" apply_anomaly）：低级控——所有异常免疫都响应；
+//   - 古早施加（"古早异常施加原语" apply_anomaly_ancient，主动毒）：高级控——
+//     **只被"古代层级"的免疫挡下**（官方实现里的"老免控补丁"），无视一切现代免疫
+//     （含弹控——"所有的技能弹控不能免疫主动毒，包含魂印弹控也不能"）、异常抗性、转化异常。
+//
+// 层级是**免疫条目（RuleTicket）的属性**，由授予效果的实现声明：
+//   - Ancient（古代层=官方"带补丁"的老免控）：两种施加都挡。现知：effect 48
+//     「{N}回合内免疫所有受到的异常状态」；Mark 0 兜底（老魂免）按古代层处理。
+//   - Modern（现代层=默认）：只挡现代施加。⚠️ 官方**次数型**免疫（928/1099/1159/1440
+//     等"免下N次"，技能 id 19560+ 年代）**暂按 Modern**（无实测证据证明可挡主动毒；
+//     用户 2026-09-16 拍板"先当作没有"，拿到实测再翻）——已有实现（如 effect 1221）
+//     走默认值即 Modern，语义正合。
+//
+// 命名对应关系：古代免疫=高级免（挡两种控）；现代免疫=低级免（只挡低级控）；
+// 古早施加=高级控（主动毒）；现代施加=低级控。与用户"高级/低级控、高级/低级免疫/魂免"
+// 的分类一致——引擎不建"等级数轴"，只用这两个枚举值做条目标签。
+enum class ImmunityTier {
+    Ancient = 0,  // 古代层（官方"带补丁"老免控/老魂免）：两种施加通道都响应
+    Modern = 1,   // 现代层（默认）：只响应现代施加通道
+};
+
 // 一条规则 ticket（纯数据）。
 struct RuleTicket {
     // ── 挂载维度（"属于"谁 → 生命周期 + 覆盖键）────────────
@@ -121,6 +145,8 @@ struct RuleTicket {
     uint64_t coverage = 0;         // 时点 bitset（bit=(int)State+1；全置位=闭环）
     uint64_t anomaly_mask = 0;     // ANOMALY 专用：0=全免；否则按 status_id 位
     bool soul = false;             // true=魂免(抗性判定后才查)；false=次免/回合类免疫效果
+    int tier = static_cast<int>(ImmunityTier::Modern);  // 免疫层级（见 ImmunityTier 注）；
+                                  // 古早施加原语只查 Ancient 条目。soul 维度与之正交。
 
     // ── 封属(SEAL)参数 ──────────────────────────────────
     bool penetrable = true;        // 可否被"无视攻击免疫"穿透（条件盔/龙威=false）
@@ -184,7 +210,8 @@ public:
     int grant_immune(int owner, int type, uint64_t coverage, uint64_t anomaly_mask,
                      int duration_rounds, int register_round, int source_id,
                      bool soul, EffectScope scope, int source_slot,
-                     int counts = 0, int source_effect_id = -1) {
+                     int counts = 0, int source_effect_id = -1,
+                     int tier = static_cast<int>(ImmunityTier::Modern)) {
         if (owner < 0 || owner > 1) {
             return -1;
         }
@@ -200,6 +227,7 @@ public:
                     t.soul = soul;
                     t.scope = scope;
                     t.source_slot = source_slot;
+                    t.tier = tier;
                     return t.source_id;
                 }
             }
@@ -218,6 +246,7 @@ public:
                 t.soul = soul;
                 t.scope = scope;
                 t.source_slot = source_slot;
+                t.tier = tier;
                 return t.source_id;
             }
         }
@@ -238,6 +267,7 @@ public:
         t.remaining_counts = counts;           // 次数型免疫（>0）
         t.register_round = register_round;
         t.soul = soul;
+        t.tier = tier;
         all_.push_back(std::move(t));
         return sid;
     }
@@ -252,7 +282,8 @@ public:
     //    调用方只需保证"威胁确实落到该精灵头上"（如 apply_anomaly 只在 reflect_depth==0 时调、
     //    伤害管线只在 BLOCK 未被抑制时调），不要按"谁挡下的"来决定是否扣次数。
     bool consume_immune(int target, int type, uint64_t timing_bit, int current_round,
-                        int status_id = 0, int soul_filter = -1) {
+                        int status_id = 0, int soul_filter = -1,
+                        int tier_filter = -1) {
         if (target < 0 || target > 1) {
             return false;
         }
@@ -261,6 +292,7 @@ public:
             if (t.category != RuleCategory::IMMUNE || t.target != target) continue;
             if (t.subtype != type || t.remaining_counts <= 0) continue;  // 仅次数型
             if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) continue;
+            if (tier_filter >= 0 && t.tier != tier_filter) continue;
             if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
                 continue;
             }
@@ -371,7 +403,8 @@ public:
     }
 
     bool is_immune(int target, int type, uint64_t timing_bit, int current_round,
-                   int status_id = 0, int soul_filter = -1) const {
+                   int status_id = 0, int soul_filter = -1,
+                   int tier_filter = -1) const {
         if (target < 0 || target > 1) {
             return false;
         }
@@ -379,6 +412,7 @@ public:
             if (t.category != RuleCategory::IMMUNE || t.target != target) continue;
             if (t.subtype != type) continue;
             if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) continue;
+            if (tier_filter >= 0 && t.tier != tier_filter) continue;
             if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
                 continue;  // 窗口已过
             }
@@ -392,12 +426,16 @@ public:
         return false;
     }
     bool is_immune_effect(int target, int type, uint64_t timing_bit,
-                          int current_round, int status_id = 0) const {
-        return is_immune(target, type, timing_bit, current_round, status_id, /*soul_filter=*/0);
+                          int current_round, int status_id = 0,
+                          int tier_filter = -1) const {
+        return is_immune(target, type, timing_bit, current_round, status_id, /*soul_filter=*/0,
+                         tier_filter);
     }
     bool is_immune_soul(int target, int type, uint64_t timing_bit,
-                        int current_round, int status_id = 0) const {
-        return is_immune(target, type, timing_bit, current_round, status_id, /*soul_filter=*/1);
+                        int current_round, int status_id = 0,
+                        int tier_filter = -1) const {
+        return is_immune(target, type, timing_bit, current_round, status_id, /*soul_filter=*/1,
+                         tier_filter);
     }
 
     // on_armor_resolved（可选）：每条**被结算**的拦截条目回调一次
