@@ -101,6 +101,9 @@ void BattleContext::init_battle() {
     // 初始化逻辑
     on_stage[0] = 0;
     on_stage[1] = 0;
+    // 登场特性槽：首发两只的特性从 pet 数据拷入 context（查询/行为函数读槽）
+    sync_on_stage_trait(0);
+    sync_on_stage_trait(1);
     elf_element_view_bound_slot[0] = -1;  // 首回合 sync 时从 pet.elementalAttributes 基线系别
     elf_element_view_bound_slot[1] = -1;
     clear_all_on_stage_abnormal_statuses();
@@ -116,6 +119,7 @@ void BattleContext::init_battle() {
     install_default_damage_guard_detect();
     pink_damage_pipeline_.clear();
     install_default_pink_mitigation();
+    install_common_trait_effects(this);
 }
 
 void BattleContext::install_default_pink_mitigation() {

@@ -44,6 +44,10 @@ enum class EventType {
     // ⚠️ **多段粉每段各发一次**（每次 deal_pink_damage 一段）——阈值类检测（箫澈 2099「受到粉伤
     //    ≥300」）因此天然是"逐段判定"，不需要任何段计数逻辑。
     EVENT_TAKE_PINK_DAMAGE,
+    // **体力归零原语**（force_hp_to_zero）触发：target = 被归零方、actor = 来源方、
+    // amount = 归零前体力。秒杀族（通用特性·瞬杀 1-5 星、技能/魂印秒杀）的统一检测点——
+    // 它**不是伤害**（护盾/护罩/减伤不参与），所以不走 EVENT_TAKE_DAMAGE。
+    EVENT_HP_TO_ZERO,
 };
 
 /**

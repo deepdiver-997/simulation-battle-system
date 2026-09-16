@@ -239,6 +239,9 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
         ctx->ws.skill_element_view[robot_id][0] = skill.element[0];
         ctx->ws.skill_element_view[robot_id][1] = skill.element[1];
     }
+    // 技能类别视图（物理/特殊/属性）：通用特性「精神」特攻增伤、「瞬杀」进攻类门控读它。
+    // 与威力/连击/系别视图同点物化（见 battleWorkspace.h skill_type_view 注释）。
+    ctx->ws.skill_type_view[robot_id] = static_cast<int>(skill.type);
     const auto [result, flags] = skill.execute(ctx, robot_id, trigger_state);
     write_skill_resolution(ctx, robot_id, result, flags);
     // 变威力标记清零：`execute()` 里的**强制执行置 0**（query_usage ②.0）是引擎行为不是效果改写，
@@ -307,6 +310,8 @@ void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
     old_pet.on_stage_storage.clear();
     // ③ 更新在场槽位
     ctx->on_stage[robot_id] = target_slot;
+    // ③'' 登场特性槽：新精灵的通用特性拷入 context（查询/行为函数读槽，见 trait_state.h）
+    ctx->sync_on_stage_trait(robot_id);
     // ③' 新精灵登场：死亡通知标记复位（同一方后续新死亡要重新通知亡语类 watcher）
     ctx->death_notified[robot_id] = false;
     // ④ 新精灵魂印激活（登场：STAGE 节点注册 + early 信号 + on_enter 钩子）+ 登记更新器
@@ -509,6 +514,12 @@ void apply_resolved_damage(BattleContext* ctx) {
 
     ElfPet& defender = ctx->seerRobot[damage.defenderId].elfPets[ctx->on_stage[damage.defenderId]];
     const int hp_before = defender.hp;
+    if (hp_before <= 0) {
+        // 目标已被本次攻击中更早的结算打死（瞬杀特性 1-5 星的粉伤修正秒杀先落）：
+        // 红伤对已死目标为 0（L310「先结算第五秒杀把犀牛体力降低到0…由于红伤为0
+        // 不会触发犀牛的高伤回满血」），也不发 ATTACK_BLOCKED——这不是"被挡下"。
+        return;
+    }
     // 统一走伤害原语：护盾吸收 + EVENT_TAKE_DAMAGE（护盾被击破发 EVENT_SHIELD_BROKEN）
     const DamageKind kind = damage.isTrueDamage ? DamageKind::TRUE
                          : (damage.isFixed ? DamageKind::FIXED : DamageKind::NORMAL);
@@ -551,6 +562,10 @@ void finish_attack_damage(BattleContext* ctx, int attacker_id) {
         ctx->resolvedDamage.final = 0;
     }
     apply_resolved_damage(ctx);
+    // 通用特性·瞬杀 1-5 星：红伤**结算完之后**强制体力归零（用户 2026-09-15 实测口径；
+    // 走 force_hp_to_zero 原语。犀牛式回血挂 EVENT_TAKE_DAMAGE、drain 在状态桶之后
+    // → 回血晚于归零）。0 星的"条件式红伤拉高"在管线的 TRAIT_REPLACE（链首）。
+    trait_instant_kill_zero_hook(ctx, attacker_id);
 }
 
 // 技能无效（盔/威/封属）的伤害出口 —— effect 2501「技能无效时，重新进行伤害结算且…」的落点。
@@ -592,6 +607,26 @@ void run_attack_damage_from_invalid_skill(BattleContext* ctx, int attacker_id) {
     }
     stage_simple_attack_damage(ctx, attacker_id);   // 第一次公式
     finish_attack_damage(ctx, attacker_id);         // 里面会按标记做第二次（推翻第一次）
+}
+
+// 无效技能出口的**通用**结算钩子（见 BattleContext::invalid_skill_damage_hooks）：
+// 变威力路径未接管时逐个询问"是否仍需结算一次伤害"（如魔王咒怨保底：无需命中、
+// 有盔/龙威且无穿透凭证也造成）。返回 true 的第一个钩子命中后由本函数执行
+// stage+finish（是否真的造成伤害由管线里的效果自己决定）。内核不解释钩子内容。
+void run_invalid_skill_damage_hooks(BattleContext* ctx, int attacker_id) {
+    if (!ctx || ctx->invalid_skill_damage_hooks.empty()) {
+        return;
+    }
+    if (variable_power_requested(ctx, attacker_id)) {
+        return;   // 变威力路径已接管（run_attack_damage_from_invalid_skill 已结算过）
+    }
+    for (auto& hook : ctx->invalid_skill_damage_hooks) {
+        if (hook && hook(ctx, attacker_id)) {
+            stage_simple_attack_damage(ctx, attacker_id);
+            finish_attack_damage(ctx, attacker_id);
+            return;
+        }
+    }
 }
 
 int resolve_pet_max_hp(const ElfPet& pet) {
@@ -1223,6 +1258,8 @@ void BattleFsm::handle_BattleFirstAttackDamage(BattleContext* battleContext) {
         // ★ 技能效果无效 ≠ 攻击伤害一定为零：SKILL_EFFECT 时点写视图威力的效果（effect 2501）
         //   会在这里被"变威力"检查点抓到 → 隔着盔重算并打出红伤（见函数注释）。
         run_attack_damage_from_invalid_skill(battleContext, first_mover_id);
+        // 无效出口通用钩子（如咒怨保底"有盔/龙威也造成"）：变威力未接管时询问。
+        run_invalid_skill_damage_hooks(battleContext, first_mover_id);
         battleContext->generateState();
         return;
     }
@@ -1331,6 +1368,8 @@ void BattleFsm::handle_BattleSecondAttackDamage(BattleContext* battleContext) {
         apply_crit_defense_break(battleContext, second_mover_id);   // 技能无效/被盔：照样破防
         // 同第一行动方：技能无效 ≠ 一定零伤害（effect 2501 的"重新进行伤害结算"）。
         run_attack_damage_from_invalid_skill(battleContext, second_mover_id);
+        // 无效出口通用钩子（如咒怨保底"有盔/龙威也造成"）：变威力未接管时询问。
+        run_invalid_skill_damage_hooks(battleContext, second_mover_id);
         battleContext->generateState();
         return;
     }

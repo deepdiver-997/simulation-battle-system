@@ -220,6 +220,7 @@ CommonTrait PetFactory::create_common_trait_for_pet(int common_trait_id) {
 
     CommonTrait trait;
     trait.id = record->id;
+    trait.effect_id = record->effect_id;  // 瞬杀 32/151：咤克斯/琉梦扫描的官方判据
     trait.name = record->description;  // desc 列 = 特性名
     trait.star_level = record->star_level;
     trait.description = record->intro;

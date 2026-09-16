@@ -363,6 +363,40 @@ FixedDamageResult deal_pink_damage(BattleContext* ctx, int target, int amount,
  */
 FixedDamageResult deal_true_damage(BattleContext* ctx, int target, int amount, int actor);
 
+/**
+ * HpZeroResult - 体力归零原语的结算结果
+ */
+enum class HpZeroResult {
+    EXECUTED,       // 已归零
+    CONVERTED,      // 被短路/转化（目标方 hp_zero_converted 标记，或特性抑制）：未归零
+    TARGET_DOWN,    // 目标本已倒地：无事发生
+    INVALID_PARAM,  // 参数非法
+};
+
+/**
+ * force_hp_to_zero - **体力归零原语**（"秒杀"族专用入口，插件可经 CoreApi 调）。
+ *
+ * 不是伤害：护盾/护罩/减伤/抗性一概不参与，直接把目标体力置 0（免疫票也不拦——
+ * 它不是攻击伤害；免死类口径待官方证据，v1 不查）。
+ *
+ * ⚠️ **秒杀短路/转化**（用户 2026-09-16 实测口径 + 咤克斯专栏）：现代精灵大量利用秒杀
+ *   机制做文章（咤克斯「对方的秒杀效果改为使咤获得1层魔王咒怨」、奥菲式免疫瞬杀…），
+ *   所以本原语**每次调用都查 `ctx->hp_zero_converted[target]` 与目标方对来源方瞬杀特性的
+ *   抑制条目**：命中 → **短路**（不归零），事件仍以 `blocked=true` emit —— 转化方
+ *   （咤咒怨 +1 层）监听事件即可，短路与否都收得到。blocked=false = 真归零。
+ *
+ * ⚠️ 每次调用（无论短路与否）都 emit `EVENT_HP_TO_ZERO`
+ *   （actor=来源方、target=被归零方、amount=归零前体力、blocked=是否被短路）——
+ *   这是秒杀族的统一检测点（琉梦"被秒杀效果击败"类检测也挂这里）。
+ *
+ * ⚠️ 时点语义（用户 2026-09-15 实测）：瞬杀的归零在**红伤结算完之后**——
+ *   犀牛式"回血"挂 EVENT_TAKE_DAMAGE（事件 drain 在状态桶之后）→ 回血天然晚于本原语
+ *   的直写，红伤 >350 时犀牛最后仍满血（"高伤害和瞬杀同时触发犀牛不会死"）。
+ *
+ * @return 结算结果；amount（归零前体力）经事件载荷带出。
+ */
+HpZeroResult force_hp_to_zero(BattleContext* ctx, int target, int actor);
+
 // ----------------------------------------------------------------
 // 第二刀新原语（组合语法：无相谛 5 类条件模板）
 // ----------------------------------------------------------------

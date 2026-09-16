@@ -364,6 +364,40 @@ FixedDamageResult deal_pink_damage(BattleContext* ctx, int target, int amount,
                                        : FixedDamageResult::SUCCESS;
 }
 
+// 体力归零原语（"秒杀"族专用）：不是伤害——护盾/护罩/减伤/抗性一概不参与。
+// 三路短路（命中任一即不归零，但事件照发 blocked=true，供转化方计数）：
+//   ① 目标方 hp_zero_converted 标记（咤克斯式"秒杀改为使咤获得咒怨"，全队转化）；
+//   ② 来源方瞬杀特性被抑制（suppress_common_trait，瞬杀被抑制≠不触发）；
+//   ③ 目标方 RuleCenter 的 INSTANT_KILL 免疫票（奥菲次数型"免疫一次秒杀"/希望态永久型）。
+HpZeroResult force_hp_to_zero(BattleContext* ctx, int target, int actor) {
+    if (!ctx || target < 0 || target > 1) {
+        return HpZeroResult::INVALID_PARAM;
+    }
+    ElfPet& pet = ctx->getPet(target);
+    const int hp_before = pet.hp;
+    if (hp_before <= 0) {
+        return HpZeroResult::TARGET_DOWN;   // 目标本已倒地：无事发生、不发事件
+    }
+    bool short_circuited = ctx->hp_zero_converted[target];
+    if (!short_circuited && actor >= 0 && actor <= 1) {
+        short_circuited = ctx->is_trait_suppressed(actor, TraitKind::InstantKill);
+    }
+    // 秒杀免疫票（RuleCenter）：纯查询命中才消费——窗口/永久票（希望态 counts=0）命中不扣。
+    if (!short_circuited
+        && ctx->is_immune(target, ImmunityType::INSTANT_KILL, ctx->currentState)) {
+        ctx->consume_immune(target, ImmunityType::INSTANT_KILL, ctx->currentState);
+        short_circuited = true;
+    }
+    ctx->event_center_.emit(BattleEvent{EventType::EVENT_HP_TO_ZERO, actor, target,
+                                        hp_before, static_cast<int>(ctx->currentState),
+                                        /*grant_id=*/-1, /*blocked=*/short_circuited});
+    if (short_circuited) {
+        return HpZeroResult::CONVERTED;
+    }
+    pet.hp = 0;
+    return HpZeroResult::EXECUTED;
+}
+
 int seal_skill(BattleContext* ctx, int source, int target, int effect_id, bool attribute,
                bool attack, int count, int duration_rounds, bool penetrable, int source_slot,
                EffectScope scope, bool hit_invalid, int chance_pct, bool consumed_when_pierced) {

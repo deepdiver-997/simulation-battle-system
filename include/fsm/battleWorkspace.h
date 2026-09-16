@@ -258,6 +258,13 @@ struct BattleWorkspace {
     // 本系加成(involve) 仍用技能真实系别 skill.element（改系别只改克制、不改本系）。
     int skill_element_view[2][2];
 
+    //========== 技能类别视图层（物理/特殊/属性）==========
+    // 攻击结算视角的技能类别：resolve_skill_execution 与威力/连击/系别视图**同点物化**
+    // skill.type（SkillType）。消费方：通用特性「精神」（特攻增伤门控）、「瞬杀」
+    // （进攻类技能门控）。⚠️ ws.reset() 的 memset 归 0（=Physical）；每次攻击都会
+    // 重新物化，读点全在攻击结算内部（ON_SKILL_HIT 之后、ATTACK_DAMAGE 管线里）。
+    int skill_type_view[2];
+
     // 克制倍率视图：>=0 直接用作本次攻击克制倍率（"不会出现微弱"钳到1、
     // "不计算克制"设1、固定倍率直写）；<0 未设置 → 按 skill_element_view vs
     // 防御方元素计算。reset 须显式恢复 -1.0（memset 会清成 0）。

@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <any>
 #include <functional>
 #include <array>
 #include <map>
@@ -21,6 +22,8 @@
 #include <effects/event_center.h>
 #include <effects/damage_pipeline.h>
 #include <effects/pink_damage_pipeline.h>
+#include <effects/trait_state.h>
+#include <effects/common_trait_effects.h>
 #include <entities/soul_mark.h>
 #include <fsm/state.h>
 
@@ -97,6 +100,46 @@ public:
     // 每段粉伤（每次 deal_pink_damage）重置 resolvedPink 并跑一遍，当场落到体力。
     // "多段粉逐段独立结算"= 每次调用各跑一遍，不累积不合并。
     PinkDamagePipeline pink_damage_pipeline_;
+
+    //--- 通用特性运行时层（登场槽 + 复制/抑制条目，见 effects/trait_state.h）---
+    // own = 登场特性槽（sync_on_stage_trait 在 init_battle/perform_switch 拷入）；
+    // copies/suppressions = 战斗内产生的复制（天女式）与抑制（扎克斯式）条目，
+    // 查询时惰性判活（来源方登场槽 + epoch）。clearAllEffects 清空。
+    TraitState trait_state_[2];
+
+    //--- 插件战斗级共享存储（**通用机制**，内核不解释内容）---
+    // 给插件放"跨效果/跨时点的战斗内标志"用（如某套 buff 接线是否已安装、某次结算的
+    // 掷点结果）。key 由插件自约定；clearAllEffects 清空。pet 级状态请用
+    // ElfPet::soulmark_storage（下场保留）/ on_stage_storage（本场上场）。
+    std::map<int, std::any> plugin_storage;
+
+    //--- 无效技能出口的通用结算钩子（**通用机制**）---
+    // 打盔/龙威/miss 使 SKILL_INVALID 时，攻击伤害处理器默认零伤害早退；但存在
+    // "无效也照常造成伤害"的效果（魔王咒怨保底：无需命中、有盔龙威无穿透也造成）。
+    // FSM 在无效出口（变威力路径未接管时）逐个调用：返回 true = 需要按当前条件
+    // 重算并结算一次伤害（FSM 负责执行 stage+finish；是否真的造成伤害由管线里的
+    // 效果自己决定）。clearAllEffects 清空。
+    std::vector<std::function<bool(BattleContext*, int attacker)>> invalid_skill_damage_hooks;
+
+    //--- 秒杀转化/短路标记（咤克斯式，**秒杀族通用**，不限于特性瞬杀）---
+    // 官方口径（机制解析—湮灭之主·咤克斯）：「自身位于出战背包时，**对方的秒杀效果改为：
+    // 使咤克斯获得1层魔王咒怨**」——瞬杀特性/技能秒杀/弹控秒杀照常触发，但"体力归零"
+    // 不执行，转化为标记方的收益。force_hp_to_zero 每次调用都查这个标记：
+    //   true  → 短路：不归零，EVENT_HP_TO_ZERO 以 blocked=true emit（转化方 watcher 收事件 +1 层）；
+    //   false → 正常归零，blocked=false。
+    // ⚠️ 生命周期由效果自己维护（官方实测：咤正常死亡不影响、被消逝才失效）——
+    //    这里只提供开关；per-side。
+    bool hp_zero_converted[2]{false, false};
+
+    /**
+     * 置/清某方的"秒杀转化"标记（咤克斯式效果在战斗开始/登场时置位）。
+     */
+    void set_hp_zero_conversion(int target_side, bool converted) {
+        if (target_side < 0 || target_side > 1) {
+            return;
+        }
+        hp_zero_converted[target_side] = converted;
+    }
 
     //--- 次数型穿透授予（挂在自己身上，"下1次攻击无视伤害限制"类）---
     // 跨回合持久；成功使用攻击技能后统一消费（每槽 remaining-1，0 移除）。
@@ -523,6 +566,14 @@ public:
         install_default_damage_guard_detect();
         pink_damage_pipeline_.clear();
         install_default_pink_mitigation();
+        trait_state_[0].clear();
+        trait_state_[1].clear();
+        hp_zero_converted[0] = hp_zero_converted[1] = false;
+        plugin_storage.clear();
+        invalid_skill_damage_hooks.clear();
+        sync_on_stage_trait(0);
+        sync_on_stage_trait(1);
+        install_common_trait_effects(this);
     }
 
     //--- 回合类效果管理 ---
@@ -669,6 +720,119 @@ public:
         pink_damage_pipeline_.register_effect(phase, owner, std::move(fn),
                                               pipeline_valid_id[owner],
                                               scope == EffectScope::TEAM);
+    }
+
+    //--- 通用特性运行时层（内联入口，插件可调；仿 grant_immunity 先例）---
+    // 登场特性槽：init_battle / perform_switch 时从 pet.commonTrait 拷入 trait_state_[side].own，
+    // 行为函数与查询入口读槽（不再惰性读 pet 数据）；全队扫描类检测（咤克斯/琉梦数层）
+    // 直接逐宠读 pet.commonTrait + trait_kind_from_name（pet 数据，不入槽）。
+
+    /**
+     * 把当前登场精灵的通用特性拷进 context 槽（trait_state_[side].own）。
+     * init_battle（首发登场）与 perform_switch（主动切换/死亡换宠的共同漏斗）调用。
+     */
+    void sync_on_stage_trait(int side) {
+        if (side < 0 || side > 1) {
+            return;
+        }
+        const ElfPet& pet = seerRobot[side].elfPets[on_stage[side]];
+        trait_state_[side].own = effective_trait_from_common(pet.commonTrait);
+    }
+
+    /**
+     * 查询某方某类特性当前是否被抑制（扎克斯式条目，惰性判活：来源方登场槽 + epoch）。
+     * ⚠️ 瞬杀的特殊性：被抑制 ≠ 不触发——瞬杀照常掷点、照常调秒杀原语，
+     *    抑制表现为**原语短路**（不归零）。该查询由原语调用（见 battle_primitives.h）。
+     */
+    bool is_trait_suppressed(int side, TraitKind kind) const {
+        if (side < 0 || side > 1) {
+            return false;
+        }
+        for (const TraitSuppression& s : trait_state_[side].suppressions) {
+            if (s.kind != kind) {
+                continue;
+            }
+            if (s.source_valid_id != 0 && s.source_valid_id != round_effect_valid_id[s.source_owner]) {
+                continue;   // 来源效果已被断回合作废
+            }
+            if (s.source_slot >= 0 && s.source_owner >= 0 && on_stage[s.source_owner] != s.source_slot) {
+                continue;   // 来源方已换宠（抑制是登场精灵的被动）
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 查询某方当前**生效**的通用特性。
+     * @param kind 指定机制（None = 任意第一个生效特性，检查类效果用）。
+     * @param include_suppressed true = 被抑制的也返回（瞬杀钩位用：抑制≠不触发，触发后
+     *        由秒杀原语短路；默认 false = 跳过被抑制的）。
+     * @return 解析结果；该方没有（或被抑制且未要求包含）时 nullopt。
+     * 解析优先级：登场特性槽（trait_state_[side].own）→ 复制条目（同 kind 时本体优先，
+     * 不做叠加——一个精灵至多一个本体特性，复制来的同 kind 视为同一份）。
+     */
+    std::optional<EffectiveTrait> effective_common_trait(int side, TraitKind kind = TraitKind::None,
+                                                         bool include_suppressed = false) const {
+        if (side < 0 || side > 1) {
+            return std::nullopt;
+        }
+        const EffectiveTrait& own = trait_state_[side].own;
+        if (own.kind != TraitKind::None
+            && (kind == TraitKind::None || own.kind == kind)
+            && (include_suppressed || !is_trait_suppressed(side, own.kind))) {
+            return own;
+        }
+        for (const TraitOverlay& e : trait_state_[side].copies) {
+            if (kind != TraitKind::None && e.trait.kind != kind) {
+                continue;
+            }
+            if (!include_suppressed && is_trait_suppressed(side, e.trait.kind)) {
+                continue;
+            }
+            if (e.source_valid_id != 0 && e.source_valid_id != round_effect_valid_id[e.source_owner]) {
+                continue;
+            }
+            if (e.source_slot >= 0 && e.source_owner >= 0 && on_stage[e.source_owner] != e.source_slot) {
+                continue;
+            }
+            return e.trait;
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * 抑制某方的某类通用特性（扎克斯式"抑制对手的瞬杀"）。
+     * @param source_owner   谁抑制的（生命周期锚）
+     * @param source_valid_id 授予时的 round_effect_valid_id[source_owner]（0 = 不参与断回合作废）
+     * @param source_slot    授予时来源方登场槽（-1 = 不锚槽位；≥0 则来源方换宠即失效）
+     */
+    void suppress_common_trait(int target_side, TraitKind kind, int source_owner,
+                               int source_valid_id = 0, int source_slot = -1) {
+        if (target_side < 0 || target_side > 1) {
+            return;
+        }
+        trait_state_[target_side].suppressions.push_back(
+            TraitSuppression{kind, source_owner, source_slot, source_valid_id});
+    }
+
+    /**
+     * 复制一条生效特性到 dest_side（妙时天女式）。
+     * 「取消触发条件」的复制升级 = 置 proc_forced（概率触发 → 必发，行为函数统一消费）。
+     * 条目生命周期锚来源方（source_valid_id/source_slot 语义同 suppress_common_trait）。
+     */
+    void copy_common_trait(int dest_side, const EffectiveTrait& trait,
+                           int source_owner, int source_valid_id = 0, int source_slot = -1) {
+        if (dest_side < 0 || dest_side > 1) {
+            return;
+        }
+        TraitOverlay e;
+        e.trait = trait;
+        e.trait.copied = true;
+        e.source_owner = source_owner;
+        e.source_slot = source_slot;
+        e.source_valid_id = source_valid_id;
+        trait_state_[dest_side].copies.push_back(e);
     }
 
     //--- 引擎默认回调（常驻，TEAM 绑定：**不受切换作废**）---

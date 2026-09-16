@@ -83,6 +83,11 @@ struct CoreApi {
     // "对手免疫固定伤害时额外附加等量的真实伤害"（1737）、"减少值低于阈值则附加真伤"（2077）。
     // 效果侧读 `ctx->resolvedPink`（粉伤即时结算的结果）判定后再调本槽补真伤。
     FixedDamageResult (*deal_true_damage)(BattleContext*, int target, int amount, int actor);
+    // **体力归零原语**（"秒杀"族专用）：不是伤害——护盾/护罩/减伤/抗性/免疫票不参与。
+    // 每次调用都 emit EVENT_HP_TO_ZERO（amount=归零前体力、blocked=是否被短路/转化）；
+    // 目标方 hp_zero_converted 标记或来源方瞬杀特性被抑制 → 短路（不归零、CONVERTED）。
+    // 返回结算结果。通用特性·瞬杀与技能/魂印秒杀效果的统一落点（咤咒怨/琉梦检测挂事件）。
+    HpZeroResult (*force_hp_to_zero)(BattleContext*, int target, int actor);
 };
 
 // sim_core 暴露的 CoreApi 单例（实际填充）。插件侧不调它；由 core 在初始化时传入。

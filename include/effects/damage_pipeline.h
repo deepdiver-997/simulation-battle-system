@@ -24,6 +24,13 @@ class BattleContext;
  *     点数减伤——百分比减伤——伤害锁定——伤害免疫」
  *   辅以 L254「坚硬是靠前的减伤，乘法计算，**时点早于保底伤害**」→ 保底在减伤之后。
  *
+ * 2026-09-15 新增通用特性阶段（new_se stat=1，见 effects/trait_state.h）：
+ *   · `REDUCE_TRAIT`（AMP_EXTRA 与 REDUCE_FLAT 之间）：坚硬——非通用减伤区、乘法、早于保底
+ *     （L254）；只免红伤。
+ *   · （瞬杀不在管线里：0-5 星统一为"红伤落地后 force_hp_to_zero 归零秒杀"，
+ *     钩位在 finish_attack_damage；曾短暂存在的 TRAIT_REPLACE 红伤拉高阶段已随
+ *     游戏口径更新移除——2026-09-16，需要"特性早期改伤害"时再加回。）
+ *
  * ⚠️ `kOrder` 是**一个可改常量**：实测口径若有出入，改一行顺序即可，不用动任何回调。
  *
  * ⚠️ **两处已记档的待做**（阶段在、生产者未做，别当成 bug）：
@@ -36,7 +43,8 @@ class BattleContext;
 enum class DamagePhase {
     GUARD_DETECT,  // 犀牛魂印：受高伤检测/挡伤/回满——**看到的必须是未增伤的值**（时点链第一位）
     AMP,           // 通用增伤（加法）——"造成攻击伤害提升X%"一族
-    AMP_EXTRA,     // 非通用增伤（乘法）——"**额外**提升X%"一族（693；判据就是"额外"这个字）
+    AMP_EXTRA,     // 非通用增伤（乘法）——"**额外**提升X%"一族（693；精神（特攻门控）也在此阶段）
+    REDUCE_TRAIT,  // 通用特性·坚硬：靠前的**乘法**减伤——非通用减伤区、早于保底（L254）、只免红伤
     REDUCE_FLAT,   // 点数减伤——"减伤N点"
     REDUCE_PCT,    // 百分比减伤——加算槽求和(钳 ±100) + 乘算槽连乘
     FLOOR,         // 保底伤害（最低伤害）——减伤之后、锁伤之前
@@ -97,7 +105,7 @@ struct DamageEffect {
  */
 class DamagePipeline {
 public:
-    static constexpr int kPhaseCount = 10;
+    static constexpr int kPhaseCount = 11;
 
     DamagePipeline() = default;
     DamagePipeline(const DamagePipeline&) = delete;
@@ -138,7 +146,8 @@ public:
     static constexpr DamagePhase kOrder[kPhaseCount] = {
         DamagePhase::GUARD_DETECT,   // 犀牛魂印（看未增伤的值）
         DamagePhase::AMP,            // 通用增伤（加法）
-        DamagePhase::AMP_EXTRA,      // 非通用增伤（乘法）——693
+        DamagePhase::AMP_EXTRA,      // 非通用增伤（乘法）——693；精神（特攻门控）也在此阶段
+        DamagePhase::REDUCE_TRAIT,   // 通用特性·坚硬（乘法减伤，早于减伤区/保底）
         DamagePhase::REDUCE_FLAT,    // 点数减伤
         DamagePhase::REDUCE_PCT,     // 百分比减伤
         DamagePhase::FLOOR,          // 保底伤害

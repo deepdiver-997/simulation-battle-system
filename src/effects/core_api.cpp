@@ -34,6 +34,7 @@ const CoreApi& core_api() {
         /*pp_reduce=*/&pp_reduce,
         /*clear_stat_drops=*/&clear_stat_drops,
         /*deal_true_damage=*/&deal_true_damage,
+        /*force_hp_to_zero=*/&force_hp_to_zero,
     };
     return api;
 }
