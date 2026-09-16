@@ -67,4 +67,11 @@ void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id);
  */
 void trait_survive_lethal_hook(BattleContext* ctx, int defender_id);
 
+/**
+ * 强攻(62)/强念(63) 的 **miss 分支**钩位：攻击技能 miss 时追加伤害照常扣血
+ * （必修6 ②"攻击技能 miss 了也可以扣除对手体力"）。
+ * 调用点：`Skills::execute` 的 miss 出口——**只对 MISS**；被盔/封技（SEALED）技能没打出去，不适用。
+ */
+void trait_extra_damage_on_miss_hook(BattleContext* ctx, int attacker_id);
+
 #endif // COMMON_TRAIT_EFFECTS_H

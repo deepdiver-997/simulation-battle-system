@@ -36,7 +36,21 @@ enum class TraitKind {
                   //      无红伤修正，星级只差触发概率 args[0] 千分点）；
                   //      可被"秒杀转化/免疫"短路（原语查标记，见 battle_primitives.h）
     Hardness,     // 坚硬：受伤减 n%（红伤管线 REDUCE_TRAIT 阶段，非通用减伤、乘法、早于保底）
-    Spirit,       // 精神：特殊攻击伤害 +n%（AMP_EXTRA 阶段，非通用增伤、乘法、按技能类别门控）
+    Spirit,       // **精神 / 强袭**（同一个 Eid 65，靠 args[0] 分类别）：
+                  //   "物理攻击或者特殊攻击伤害增加 n%"——必修6：**不属于通用增伤、乘法计算**
+                  //   → AMP_EXTRA 阶段；args[0]=官方类别码（**1=物理=强袭 / 2=特殊=精神**，
+                  //   与 map_skill_type 的 1物理/2特殊 一致）、args[1]=增伤百分点。
+                  //   ⚠️ 门控必须读 args[0]（早年硬编码"只认特殊"会把强袭做死）。
+    ExtraDamagePhysical,  // 强攻（Eid 62）："物理攻击有 n% 几率使伤害提高 m 点"（DB desc）；
+                          //   args[0]=概率百分点、args[1]=点数。
+                          //   ★ 必修6 ①"属于**追加伤害，与红伤一并结算**" → AMP_EXTRA 点数加成；
+                          //   ★ 必修6 ②"**攻击技能 miss 了也可以扣除对手体力**" → miss 出口单列
+                          //   （trait_extra_damage_on_miss_hook）。
+    ExtraDamageSpecial,   // 强念（Eid 63）：同上，"特殊攻击有 n% 几率使伤害提高 m 点"。
+    Dancer,               // 乱舞（Eid 503/504）：**已被官方废除**（必修6："乱舞依旧被废除，
+                          //   因此可以说是最没用的特性。0 星乱舞跟白板一样"；库里 增伤 args 0/6/7/8/9/10、
+                          //   "增加攻击目标数" args 全 0）→ 登记 kind 但行为 **no-op**，
+                          //   将来若官方复活再按 args 补多目标与增伤。
     // ── 接触毒特性（2026-09-16 接线；必修6《精灵特性》+ 用户拍板）──
     // 主动毒：静电/颤栗（Eid 66 家族）= **物理攻击**命中时 args[0]% 令对手 args[1] 号异常
     // （0=麻痹/6=害怕）；火热/极寒（Eid 67 家族）= **特殊攻击**命中（2=烧伤/5=冻伤）。
@@ -128,8 +142,17 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
     if (name == "坚硬") {
         return TraitKind::Hardness;
     }
-    if (name == "精神") {
-        return TraitKind::Spirit;
+    if (name == "精神" || name == "强袭") {
+        return TraitKind::Spirit;   // 同族，类别由 args[0] 区分（1=强袭物理 / 2=精神特殊）
+    }
+    if (name == "强攻") {
+        return TraitKind::ExtraDamagePhysical;
+    }
+    if (name == "强念") {
+        return TraitKind::ExtraDamageSpecial;
+    }
+    if (name == "乱舞") {
+        return TraitKind::Dancer;   // 已废除：只登记、行为 no-op（必修6）
     }
     if (name == "静电" || name == "颤栗" || name == "战栗") {
         return TraitKind::ActivePoisonPhysical;
@@ -188,6 +211,20 @@ inline TraitKind trait_kind_from_name(const std::string& name) {
 //   ⚠️ 与瞬杀族**同数字不同义**（瞬杀 args=3 → 0.3%，本族 args=3 → 3%）——别共用一套换算。
 //   ⚠️ 0 星档是唯一有歧义处（若按瞬杀口径读则 0.3%）：本文按必修6 明写的"3%"取值，
 //      将来实测若推翻只需改本函数一处。
+// ★ 官方技能类别码 → 引擎 `SkillType` 整数值（**两套码不同，必须换算**）。
+//   官方/DB 用 **1=物理 / 2=特殊 / 4=属性**（如 Eid 65 精神(args="2 3")、Eid 26 家族）；
+//   引擎 `SkillType` 是 **0=Physical / 1=Special / 2=Attribute**（见 entities/skills.h）。
+//   ⚠️ 直接拿 args[0] 与 `ws.skill_type_view` 比对会静默错位（精神会去匹配"属性"档）——
+//      场景 064 D1 就是这么抓到的。所有"按技能类别门控"的特性都走本函数。
+inline int trait_skill_type_from_official_code(int code) {
+    switch (code) {
+        case 1: return 0;   // 官方 物理 → SkillType::Physical
+        case 2: return 1;   // 官方 特殊 → SkillType::Special
+        case 4: return 2;   // 官方 属性 → SkillType::Attribute
+        default: return -1;
+    }
+}
+
 inline int trait_survive_prob_permille(int raw) {
     if (raw <= 0) {
         return 0;
@@ -281,6 +318,9 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
     }
     if (t.kind == TraitKind::Absorb) {
         return t.args[0] * 10;   // 概率在 args[0]
+    }
+    if (t.kind == TraitKind::ExtraDamagePhysical || t.kind == TraitKind::ExtraDamageSpecial) {
+        return t.args[0] * 10;   // 概率在 args[0]（百分点）、点数是 args[1]
     }
     if (t.kind == TraitKind::PassiveStatDrop || t.kind == TraitKind::PassiveStatBoost) {
         return t.args[1] * 10;   // ⚠️ 概率在 args[1]（args[0] 是能力码）

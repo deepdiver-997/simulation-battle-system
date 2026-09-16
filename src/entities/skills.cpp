@@ -9,6 +9,7 @@
 #include <effects/effect_meta.h>
 #include <effects/effect_unit_parser.h>
 #include <effects/effect_unit_loader.h>
+#include <effects/common_trait_effects.h>
 #include <effects/trait_state.h>
 #include <fsm/battleContext.h>
 
@@ -787,6 +788,11 @@ std::pair<SkillExecResult, SkillResolutionFlags> Skills::execute(BattleContext* 
     // 执行期可用性判定（统一走 query_usage：miss + 封属性/封攻击/命中失效）
     const SkillUsageResult usage = query_usage(ctx, owner);
     if (usage == SkillUsageResult::MISS || usage == SkillUsageResult::SEALED) {
+        // 通用特性·强攻/强念：**攻击技能 miss 也扣血**（必修6 ②）——只对 MISS；
+        // 被盔/封技（SEALED）技能没打出去，不适用。
+        if (usage == SkillUsageResult::MISS && type != SkillType::Attribute) {
+            trait_extra_damage_on_miss_hook(ctx, owner);
+        }
         const SkillResolutionFlags flags = resolution_flags_for(SkillExecResult::SKILL_INVALID);
         ctx->event_center_.emit(BattleEvent{EventType::EVENT_SKILL_INVALID, owner, ctx->opponent(owner)});
         register_branch(ctx, owner, SkillExecResult::SKILL_INVALID, flags);

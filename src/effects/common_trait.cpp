@@ -89,8 +89,12 @@ void install_spirit(BattleContext* ctx, int owner) {
             if (!trait) {
                 return;   // 先查特性（早退），再查技能类别
             }
-            if (c->ws.skill_type_view[bucket_owner] != static_cast<int>(SkillType::Special)) {
-                return;   // 「特殊攻击伤害增加」：只对特殊系技能
+            // 类别门控**读 args[0]**（官方类别码 1=物理=强袭 / 2=特殊=精神），
+            // 经 trait_skill_type_from_official_code 换算成引擎 SkillType 再比
+            //（⚠️ 两套码不同：官方 1/2/4 vs 引擎 0/1/2；早年硬编码"只认特殊"会让强袭失效）。
+            if (c->ws.skill_type_view[bucket_owner]
+                != trait_skill_type_from_official_code(trait->args[0])) {
+                return;   // 「物理攻击」吃强袭、「特殊攻击」吃精神，互不串门
             }
             if (trait->args[1] == 0) {
                 return;
@@ -161,6 +165,42 @@ void install_crit_immunity(BattleContext* ctx, int owner) {
                 return;
             }
             damage.final = 0;   // 挡下本次暴击伤害
+        }
+    );
+}
+
+//---- 强攻(62)/强念(63)：追加伤害（AMP_EXTRA 点数加成）----
+// DB desc："物理攻击有 n% 几率使伤害提高 m 点"（强攻）/ "特殊攻击有…"（强念）；
+// 必修6 ①："属于**追加伤害，与红伤一并结算**" → 落在红伤上、受后续减伤与保底约束。
+// ②miss 也扣血的那一半见 `trait_extra_damage_on_miss_hook`。
+// ⚠️ 只有**确带该特性**才消耗 rand（惰性：先查特性、再掷点）。
+void install_extra_damage(BattleContext* ctx, int owner) {
+    ctx->register_default_damage_effect(
+        DamagePhase::AMP_EXTRA,
+        owner,
+        DamageEffectCategory::AMP,
+        [](BattleContext* c, int bucket_owner) {
+            DamageSnapshot& damage = c->resolvedDamage;
+            if (damage.attackerId != bucket_owner || !damage.isRed || damage.final <= 0) {
+                return;   // 只对红伤、且是攻击方自己的桶
+            }
+            const int skill_type = c->ws.skill_type_view[bucket_owner];
+            TraitKind want = TraitKind::None;
+            if (skill_type == static_cast<int>(SkillType::Physical)) {
+                want = TraitKind::ExtraDamagePhysical;   // 强攻
+            } else if (skill_type == static_cast<int>(SkillType::Special)) {
+                want = TraitKind::ExtraDamageSpecial;    // 强念
+            } else {
+                return;
+            }
+            const std::optional<EffectiveTrait> trait = c->effective_common_trait(bucket_owner, want);
+            if (!trait || trait->args[1] <= 0) {
+                return;
+            }
+            if (!trait_proc_roll(*trait)) {
+                return;
+            }
+            damage.final += trait->args[1];   // 追加伤害（点数）
         }
     );
 }
@@ -302,6 +342,7 @@ void install_common_trait_effects(BattleContext* ctx) {
         install_single_element_amp(ctx, owner);
         install_absorb(ctx, owner);
         install_crit_immunity(ctx, owner);
+        install_extra_damage(ctx, owner);
     }
 }
 
@@ -341,6 +382,37 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
 //
 // ⚠️ 只认**本体槽**（天女式复制毒不经特性节点——见 trait_state.h 的架构拍板：
 // 复制毒走现代异常效果，由天女魂印自己注册效果到本时点、调 apply_anomaly）。
+//---- 强攻/强念的 miss 分支：攻击技能 miss 也扣血（必修6 ②）----
+// 时点：`Skills::execute` 的 miss 出口（**只对 MISS，不对被盔/封技的 SEALED**——后者技能
+// 根本没打出去，与"miss 也算使出过这一击"不同）。
+// 伤害形态取 `deal_damage(NORMAL)`：走红伤出口（吃护盾/事件），与"与红伤一并结算"同源。
+void trait_extra_damage_on_miss_hook(BattleContext* ctx, int attacker_id) {
+    if (!ctx || attacker_id < 0 || attacker_id > 1) {
+        return;
+    }
+    const int skill_type = ctx->ws.skill_type_view[attacker_id];
+    TraitKind want = TraitKind::None;
+    if (skill_type == static_cast<int>(SkillType::Physical)) {
+        want = TraitKind::ExtraDamagePhysical;
+    } else if (skill_type == static_cast<int>(SkillType::Special)) {
+        want = TraitKind::ExtraDamageSpecial;
+    } else {
+        return;   // 属性技能不参与（"攻击技能 miss 了也…"）
+    }
+    const std::optional<EffectiveTrait> trait = ctx->effective_common_trait(attacker_id, want);
+    if (!trait || trait->args[1] <= 0) {
+        return;
+    }
+    if (!trait_proc_roll(*trait)) {
+        return;
+    }
+    const int defender_id = 1 - attacker_id;
+    if (ctx->getPet(defender_id).hp <= 0) {
+        return;
+    }
+    (void)deal_damage(ctx, defender_id, trait->args[1], DamageKind::NORMAL, attacker_id);
+}
+
 void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
     if (!ctx || attacker_id < 0 || attacker_id > 1) {
         return;
