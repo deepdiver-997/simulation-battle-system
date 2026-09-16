@@ -155,10 +155,15 @@ BranchKey drain_hp_result_to_branch(DrainHpResult result) {
         default:                              return BranchKey::Invalid;
     }
 }
-BranchKey kill_result_to_branch(KillResult result) {
+// 秒杀原语细码 → 分支键归一化（首次消费原语返回值）。
+// Kill 标签走 force_hp_to_zero（秒杀族统一入口，2026-09-16 口径）：查秒杀免疫票/瞬杀抑制/
+// hp_zero_converted 短路，并 emit EVENT_HP_TO_ZERO——旧的直写 hp=0 版本绕过这一切，
+// 会让"咤克斯咒怨转化""奥菲式免疫瞬杀"对解析器路径的秒杀全部失效。
+BranchKey hp_zero_result_to_branch(HpZeroResult result) {
     switch (result) {
-        case KillResult::SUCCESS:              return BranchKey::Success;
-        case KillResult::ALREADY_DEFEATED:     return BranchKey::TargetDefeated;
+        case HpZeroResult::EXECUTED:           return BranchKey::Success;
+        case HpZeroResult::CONVERTED:          return BranchKey::Blocked;   // 被短路/转化
+        case HpZeroResult::TARGET_DOWN:        return BranchKey::TargetDefeated;
         default:                               return BranchKey::Invalid;
     }
 }
@@ -185,7 +190,7 @@ BranchKey run_primitive(BattleContext* ctx, const EffectArgs& args, const Effect
         case PrimitiveTag::DrainHp:
             return drain_hp_result_to_branch(drain_hp(ctx, actor, target, unit.param0));
         case PrimitiveTag::Kill:
-            return kill_result_to_branch(kill(ctx, target));
+            return hp_zero_result_to_branch(force_hp_to_zero(ctx, target, actor));
         case PrimitiveTag::PowerBoost:
             // 技能威力视图层：直接改 ws（效果在 SKILL_EFFECT 时点跑，ATTACK_DAMAGE 读最终值）。
             ctx->ws.skill_power_view[actor] += unit.param0;

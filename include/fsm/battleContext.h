@@ -590,6 +590,7 @@ public:
         install_default_damage_amp();
         install_default_damage_amp_extra();
         install_default_damage_guard_detect();
+        install_default_damage_floor();
         pink_damage_pipeline_.clear();
         install_default_pink_mitigation();
         trait_state_[0].clear();
@@ -928,6 +929,15 @@ public:
      * 每次攻击伤害结算前确保已安装（init_battle / clearAllEffects 后调用）。
      */
     void install_default_damage_guard_detect();
+
+    /**
+     * 安装默认**保底伤害**（FLOOR 阶段，AMP 类别）。
+     * "造成的伤害不少于{0}"（effect 447 族）：把经过增伤/减伤区后的红伤抬到至少
+     * `ws.damage_floor[attackerId]`（攻击技能效果体在 SKILL_EFFECT 时点写入）。
+     * 官方时点链 L345 保底在减伤区之后、锁伤之前；挡伤/免伤（BLOCK）在它之后仍能归零。
+     * 每次攻击伤害结算前确保已安装（init_battle / clearAllEffects 后调用）。
+     */
+    void install_default_damage_floor();
 
     /**
      * 安装默认**非通用增伤**（AMP_EXTRA 阶段，AMP 类别，**乘法**）。

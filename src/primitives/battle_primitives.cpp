@@ -831,14 +831,3 @@ DrainHpResult drain_hp_amount(BattleContext* ctx, int actor, int target, int amo
     return DrainHpResult::SUCCESS;
 }
 
-KillResult kill(BattleContext* ctx, int target) {
-    if (!ctx || target < 0 || target > 1) {
-        return KillResult::INVALID_PARAM;
-    }
-    ElfPet& pet = ctx->getPet(target);
-    if (pet.hp <= 0) {
-        return KillResult::ALREADY_DEFEATED;
-    }
-    pet.hp = 0;
-    return KillResult::SUCCESS;
-}

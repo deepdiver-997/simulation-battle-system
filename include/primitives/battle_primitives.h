@@ -499,16 +499,9 @@ DrainHpResult drain_hp(BattleContext* ctx, int actor, int target, int fraction_d
  */
 DrainHpResult drain_hp_amount(BattleContext* ctx, int actor, int target, int amount);
 
-enum class KillResult {
-    SUCCESS,        // 秒杀（目标体力归 0）
-    ALREADY_DEFEATED,
-    INVALID_PARAM,
-};
-
-/**
- * kill - 秒杀：目标体力直接归 0。
- * 无相谛 456"若对手体力不足{n}则直接秒杀"。
- */
-KillResult kill(BattleContext* ctx, int target);
+// （kill 原语已删除，2026-09-17）：旧的"直接 hp=0"秒杀绕过秒杀体系（不查秒杀免疫票/
+// hp_zero_converted/瞬杀抑制、不 emit EVENT_HP_TO_ZERO），唯一调用方（EffectUnit 的
+// Kill 标签，effect 456"若对手体力不足{n}则直接秒杀"）已改走 **force_hp_to_zero**。
+// "秒杀"一律经 force_hp_to_zero——它是秒杀族唯一入口，见其注释。
 
 #endif // BATTLE_PRIMITIVES_H

@@ -54,6 +54,13 @@ bool monster_has_skill(const official_data::MonsterRecord& monster, int skill_id
 //   · 无参数常量 1608 / 1609 / 1610（区间写死在文案里）
 std::optional<std::pair<int, int>> combo_arg_indices(int effect_id) {
     switch (effect_id) {
+        case 31:    // （无 effect_info 行的裸连击模板）经典连击族：乱突/疯狂乱抓[2,5]、
+                    // 花瓣舞[2,3]——args[0]=下限 args[1]=上限。2026-09-17 用引用它的 303 个
+                    // 技能逐个核对：全是老连击招，[lo,hi] 就是攻击次数区间
+                    //（交接文档旧表把 31 误记为"消强"——消强是 effect 33，已有实现）。
+                    // 模板本体无文本无动作 → loadSkills 在这里顺路取完连击数后，
+                    // 注册一个 no-op 处理器仅用于消音启动审计（见 moves_lib effect_31_combo_noop）。
+            return std::make_pair(0, 1);
         case 1172:  // {0}回合做{1}~{2}次攻击，每次攻击都有{3}%的概率令自身{4}
         case 1577:  // {0}回合做{1}-{2}次攻击，当前技能PP值小于{3}时连击上限为{4}
         case 1627:  // {0}回合做{1}-{2}次攻击，若本回合攻击次数达到最大则必定秒杀对手
@@ -82,6 +89,7 @@ State effect_register_state(int effect_id) {
         case 1256:  // 王·酷烈风息 "造成的伤害低于X"：需伤害结算后读 resolvedDamage.final
         case 1221:  // 王·酷烈风息 "反转自身能力下降"：攻击技能**先结算伤害再反转**——
                     // 反转不参与本次伤害（本次用反转前等级，提升留给下次），故伤害结算后操作 levels
+        case 521:   // 反转自身能力下降状态（无参基本形，1221 的主子句同族）：同上口径
             return State::BATTLE_FIRST_AFTER_ACTION;
         case 1960:  // 希拓·神煌炎舞斩 "击败对手则令自身N回合内强化无法被消除或吸取"
                     // → 击败对手后时点（本轮线性序最后，本技能效果仍在桶里）

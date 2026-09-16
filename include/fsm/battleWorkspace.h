@@ -176,6 +176,10 @@ struct BattleWorkspace {
     float damage_add_pct[2];        // 通用增伤·加算百分比（AMP 阶段求和后一次性施加）
     int   damage_add_flat[2];       // 通用增伤·固定值
     int   damage_add_extra_mul[2][4]; // **非通用增伤·乘算**（AMP_EXTRA 阶段逐槽 final*(100+v)/100）
+    // **保底伤害**（"造成的伤害不少于{0}"，effect 447 族）：FLOOR 阶段把红伤抬到至少此值。
+    // 攻击技能的效果体在 SKILL_EFFECT 时点**赋值**（覆盖语义——额外行动二次出手时按当次技能重算），
+    // 管线跑完即无人再读；打盔/miss 不跑管线，天然不触发（与"打盔不消耗点数减伤"同理由）。
+    int   damage_floor[2];
     // ⚠️ 全部靠 `reset()` 的 memset 每回合归零 → 回合类效果必须**每回合重写**
     //    （见 effect_set_damage_amp 的套路：注册成 BATTLE_ROUND_START 回合桶效果）。
     numerical_properties battle_attrs[2];        // 本回合视角的数值属性，受到效果修正但不改变真实属性
