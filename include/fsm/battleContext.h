@@ -131,6 +131,14 @@ public:
     //    这里只提供开关；per-side。
     bool hp_zero_converted[2]{false, false};
 
+    //--- 每方技能使用序号（战斗级，跨回合累计）---
+    // 每次**真的执行了一次技能**主流程（resolve_skill_execution）自增 1；嗑药/被控/切宠
+    // 不经过主流程则不动。"连续使用"类效果（effect 9 水晶烈冲）用它判连用：
+    // 本次序号 == 上次记录 +1 且同一技能 → 连用继续；序号有跳变（中间用过别的技能）→ 断连；
+    // 嗑药回合序号不动 → 天然不断连（用户 2026-09-17 嗑药口径的自然推论）。
+    // clearAllEffects 清零（新对局无残留）。
+    int skill_use_seq[2]{0, 0};
+
     /**
      * 置/清某方的"秒杀转化"标记（咤克斯式效果在战斗开始/登场时置位）。
      */
@@ -600,6 +608,7 @@ public:
         clear_ability_levels(0);
         clear_ability_levels(1);
         hp_zero_converted[0] = hp_zero_converted[1] = false;
+        skill_use_seq[0] = skill_use_seq[1] = 0;
         plugin_storage.clear();
         invalid_skill_damage_hooks.clear();
         sync_on_stage_trait(0);

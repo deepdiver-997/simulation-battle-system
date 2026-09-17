@@ -87,6 +87,7 @@ State effect_register_state(int effect_id) {
         case 8:
             return State::BATTLE_FIRST_ATTACK_DAMAGE;
         case 1256:  // 王·酷烈风息 "造成的伤害低于X"：需伤害结算后读 resolvedDamage.final
+        case 101:   // "伤害数值的{0}%恢复自身"（吸血）：同上，伤害结算后按最终伤害回血
         case 1221:  // 王·酷烈风息 "反转自身能力下降"：攻击技能**先结算伤害再反转**——
                     // 反转不参与本次伤害（本次用反转前等级，提升留给下次），故伤害结算后操作 levels
         case 521:   // 反转自身能力下降状态（无参基本形，1221 的主子句同族）：同上口径
@@ -352,7 +353,17 @@ bool Skills::loadSkills() {
             continue;
         }
         // 未命中离线程序：走既有 注册函数 → parser 兜底路径。
-        Effect effect = clone_effect(effect_record.effect_id, build_effect_args_for_skill(effect_record));
+        // effect 9（连续使用威力递增）：连用判定按**技能 id**——core 把自己的 id 追加进
+        // args[4]（同 2030/2490 的 core 喂参先例；插件拿不到 resolve_executing_skill）。
+        EffectArgs effect_args = build_effect_args_for_skill(effect_record);
+        if (effect_record.effect_id == 9) {
+            if (effect_args.owned_int_args.size() < 5) {
+                effect_args.owned_int_args.resize(5, 0);
+            }
+            effect_args.owned_int_args[4] = id;
+            effect_args.refresh_views();
+        }
+        Effect effect = clone_effect(effect_record.effect_id, std::move(effect_args));
         if (!effect.logic) {
             // 未注册函数：尝试解析模板为条件效果单元（组合语法），成功则注册通用执行器
             // （args.extra 指向 Skills::parsed_units_ 内单元）。失败维持跳过（现状）。

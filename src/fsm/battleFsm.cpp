@@ -225,6 +225,10 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
     // ATTACK_DAMAGE 阶段 calculateDamage 从 ws 读最终值（见 battleWorkspace.h）。
     // ⚠️ 用 `materialize()` 而**不是** `=`：物化是引擎打底，不算"效果改威力"，
     //    不该触发变威力重算（`=` 会置 rewritten 标记）。
+    // 每方技能使用序号：真的执行了一次技能主流程 +1（供"连续使用"类效果判连用，
+    // 见 BattleContext::skill_use_seq 注释）。位置在物化之前的效果注册之前都行，
+    // 与威力物化同点最直观。
+    ++ctx->skill_use_seq[robot_id];
     ctx->ws.skill_power_view[robot_id].materialize(skill.power);
     // 连击次数视图层：**每次技能使用掷一次**（"1回合做 x~y 次攻击"的 x~y 是随机区间），
     // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗 rand()。
