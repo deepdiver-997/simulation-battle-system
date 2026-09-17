@@ -97,6 +97,10 @@ struct CoreApi {
     // 全穿），校验后直接落地。"受到普通攻击（物攻）时 n% 使对方XX"（带电/高热/冰冷/阴森）。
     ApplyAnomalyResult (*apply_anomaly_raw)(BattleContext*, int target, int anomaly_id,
                                             int duration_rounds, int actor);
+    // 吸取体力：目标掉 max_hp/{denom} 固定伤害，actor 恢复等量（恢复走 heal_impl，
+    // 封回血生效）。"{0}回合内每回合使用技能吸取对手最大体力的1/{1}"（597）与
+    // 无相谛 1257 同族。另有无参数版 drain_hp_amount（暂无调用方，未暴露）。
+    DrainHpResult (*drain_hp)(BattleContext*, int actor, int target, int fraction_denom);
 };
 
 // sim_core 暴露的 CoreApi 单例（实际填充）。插件侧不调它；由 core 在初始化时传入。

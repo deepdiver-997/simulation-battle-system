@@ -37,6 +37,7 @@ const CoreApi& core_api() {
         /*force_hp_to_zero=*/&force_hp_to_zero,
         /*apply_anomaly_ancient=*/&apply_anomaly_ancient,
         /*apply_anomaly_raw=*/&apply_anomaly_raw,
+        /*drain_hp=*/&drain_hp,
     };
     return api;
 }
