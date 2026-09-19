@@ -8,7 +8,7 @@
 #include <functional>
 #include <string>
 #include <entities/seer-robot.h>
-#include <thread_pool/boost_thread_pool.h>
+#include <thread_pool/thread_pool_base.h>
 
 class BattleContext;
 enum class State;
@@ -40,13 +40,17 @@ public:
 
     // 使用 raw pointer，context 由 control block 持有
     void run(BattleContext* battleContext);
-    void operation(BattleContext* battleContext, int robotId, ActionType actionType, int index);
+    // is_forced = true 表示**非自愿**的换宠（死后补位，handle_ChooseAfterDeath）——限制类异常
+    // （凝滞 32 / 瘫痪 19）只拦"主动切换"，拦不住死后补位，否则对局会卡死。
+    void operation(BattleContext* battleContext, int robotId, ActionType actionType, int index,
+                   bool is_forced = false);
     void log(const std::string& message);
 
     bool id_debug = true;
 
-    // 战斗线程池（由 Server 注入）
-    std::shared_ptr<BoostThreadPool> battle_pool_;
+    // 战斗线程池（由 Server 注入）。
+    // 类型是纯虚基类而非具体池：FSM 只用到 post()，不该被"池是 asio 还是原生"绑死。
+    std::shared_ptr<ThreadPoolBase> battle_pool_;
 
     // Battle pool 用于继续执行
     void post(std::function<void()> task);
@@ -58,6 +62,9 @@ private:
     void trace_fsm(const BattleContext* battleContext, const std::string& phase) const;
 
     bool runInternal(BattleContext* battleContext);
+
+    // 时点采样：在每个状态执行完、事件 drain 之后录一条（tape 关闭时零开销）。
+    void record_tape_sample(BattleContext* ctx, State state);
 
     void General_Handler(BattleContext* battleContext, int robotId);
     void handle_GameStart(BattleContext* battleContext);

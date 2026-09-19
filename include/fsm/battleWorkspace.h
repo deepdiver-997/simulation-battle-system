@@ -36,6 +36,18 @@ struct DamageSnapshot {
     // ⚠️ `DamageSnapshot{}` 走默认成员初始化 → 1；但 `ws.reset()` 是 memset → 会被清成 0，
     //    所以 `stage_simple_attack_damage` 里**显式**赋值，不要依赖默认值。
     int hitCount = 1;
+    // ── 属性伤害专用（《赛学必修16—伤害类型》；用户 2026-09-18 口径）──────────
+    // 本笔结算是否**跳过"常规挡伤"** = core 默认 BLOCK 回调用 `ImmunityType::DAMAGE` 票
+    // （"免疫下N次攻击伤害"一族）把整段归零的那条。
+    // 口径：「属性直伤…**常规挡伤不会触发**，只有像岚那种**非本系抵挡**的挡伤才可以」
+    //   → 属性伤害置 true：常规挡伤不响应，但**系别条件性**的抵挡要能响应。
+    // ⚠️ 只作用于**常规**挡伤（core 那条默认回调）：插件自己注册的 BLOCK 条目
+    //    （如岚"免疫非本系技能伤害"）**不看**这个标志，请自行按 `attribute_element` 判——
+    //    这正是"只有系别抵挡才可以"的落法。
+    bool skip_routine_block = false;
+    // 本笔若是**属性伤害**，记它声明的系别（组件对，如 次元·龙 = {17,15}）；否则 {0,0}。
+    // 供"非本系抵挡"一类**系别条件**的 BLOCK 条目作判据。
+    int attribute_element[2] = {0, 0};
 };
 
 /**
@@ -138,9 +150,29 @@ struct BattleWorkspace {
     // 全 POD，`ws.reset()` 的 memset 天然归零。
     PinkDamageResolved resolvedPink;
 
-    //========== 行动开始异常白字真伤（不可减免） ==========
-    DamageSnapshot action_start_abnormal_damage[2];
+    //========== 行动开始异常扣血（逐段分档结算）==========
+    // 官方 effect_des kind=2 逐条给出时点与档位，语料 idx=472《机制讲解—挡伤/锁伤，miss/异常》归纳为三档
+    // （真实百分比 / 百分比 / 固定）→ **逐条独立结算**，不合并成一个总量
+    // （同 deal_damage 的"一次调用 = 一段"约定：各自取整、各自过护罩、各自发事件）。
+    // 存"异常 id + 已算好的数值"：数值在 stage 期**冻结**（本时点该扣多少就扣多少，
+    // 不受随后 ACTION_START 桶里效果改体力上限/解异常的影响）；档位在 settle 期由
+    // abnormal_damage_profile(id) 现查（它是不变的数据表，无需求冻结）。
+    // ⚠️ 定长 POD 数组：`reset()` 是 `memset(this, 0, sizeof)` → 加 std::vector 会被打成野指针。
+    // 8 槽够用：行动开始档的异常全表只有 6 条（中毒/烧伤/冻伤/寄生/流血/混乱）。
+    int  action_start_abnormal_damage_ids[2][8];
+    int  action_start_abnormal_damage_amounts[2][8];
+    int  action_start_abnormal_damage_count[2];
     bool action_start_abnormal_damage_pending[2];
+
+    //========== 异常状态相关的"本回合"标志 ==========
+    // 砥砺(37)「受到真实伤害后**若本回合未执行过附加异常状态的效果**则增加此伤害值80%的体力」
+    // 的条件位：下标 = **被施加方**（"对方对我方执行过附加异常"）。
+    // 口径（语料 idx=90/157）："执行过"= 效果**被执行过**（不要求真落地）；**主动毒/被动毒不算**、
+    // **来源必须是对方**、第三方效果不算 → 由 `apply_anomaly_impl` 在 **Modern 通道**入口置位。
+    // ⚠️ 只放**一个 bool**、不放"真伤数值"槽：官方是"受到真伤后**实时**结算"，
+    //    回血量在 `deal_damage(TRUE)` 落地那一刻就可得（见那里的就地钩）。
+    // ⚠️ ws 每回合 `memset` → 天然就是"本回合"语义，无需手动清。
+    bool anomaly_applied_by_opponent[2];
 
     //========== 减伤槽位 ==========
     // 官方减伤区顺序（L402）：「**点数减伤——百分比减伤——伤害锁定——伤害免疫**」。
@@ -153,6 +185,11 @@ struct BattleWorkspace {
     float dodge_rate[2];           // 闪避率
     float hit_rate_mod[2];         // 命中率修正倍率
     float crit_rate_mod[2];        // 暴击率修正（乘算；效果"下N回合暴击率提升"每回合写它）
+    // **暴击率加算**（百分点）："{0}回合攻击击中对象要害概率增加1/16"（effect 32 蓄气族）——
+    // +1/16 = +6.25 个百分点，是**加法**不是乘算（crit_rate_mod 表达不了"加 1/16"）。
+    // 直接参与判定率：rate = base × mod + add；add>0 也是"引爆效果"（base=0 的技能
+    // 有了 add 照样能暴）。每回合 reset → 窗口效果每回合重写（同 must_crit 套路）。
+    float crit_rate_add[2];
     // **必定致命一击**（"下N回合自身攻击技能必定打出致命一击"，effect 58 圣光气）。
     // ⚠️ 为什么不能复用 `crit_rate_mod`：那是**乘算**修正，技能自身 `crit_rate == 0`
     //    时 `0 × 任何数 = 0`——表达不了"必定"（`crit_rate==0` 就是"永不必暴"）。
@@ -184,6 +221,9 @@ struct BattleWorkspace {
     //    （见 effect_set_damage_amp 的套路：注册成 BATTLE_ROUND_START 回合桶效果）。
     numerical_properties battle_attrs[2];        // 本回合视角的数值属性，受到效果修正但不改变真实属性
     int  view_levels[2][6];         // 本回合能力提升/下降等级，受到视强为弱、示弱为强效果修正，但是不会改变真实能力上升/下降等级
+                                    // 槽位 0..5（**5=命中**，2026-09-18 口径更正；宽度须与
+                                    // BattleContext::kAbilityLevelSlotCount 一致）。命中只作用于精度公式，
+                                    // 不是 NumericalPropertyIndex 的一项——battle_attrs 的第 6 项是**体力**。
     int view_elementalAttributes[2][2];
 
     //========== 伤害抗性有效视图（本回合计算用）==========
@@ -198,7 +238,24 @@ struct BattleWorkspace {
     //========== 回合内状态 ==========
     bool has_attacked[2];           // 本回合是否已攻击
     bool skill_used[2];             // 本回合技能使用标记
-    int extra_action_count[2];      // 额外行动次数
+
+    //========== 额外行动（通用机制；2026-09-18）==========
+    // 官方口径：effect_des 331「精灵的行动结束之后，可以根据效果，进行一次追加的行动，
+    //   追加的行动在未声明的场合下不为技能，故而没有威力、类型等技能属性」；
+    //   effect_des 317「一回合内，当双方的行动、额外行动均结束之后，战斗阶段结束」。
+    // 时点：BATTLE_{FIRST,SECOND}_EXTRA_ACTION（线性序里紧跟同名 AFTER_ACTION_END 之后，
+    //   且两个都在 BATTLE_ROUND_END 之前 → 317 的排序要求天然满足）。
+    //
+    // **内容的载体 = 在该时点注册的效果节点**（沿用"时点桶 = 效果"的既有模型）：
+    //   声明方（魂印/技能）把"要执行什么"注册到 BATTLE_*_EXTRA_ACTION 桶，不另设
+    //   payload 结构——否则要再造一套生命周期/顺序/过期规则，且与桶的语义重复。
+    // **触发开关 = pending**：官方措辞是"**可以根据效果**进行一次追加的行动"，效果是前提，
+    //   故没人声明时该时点桶**不跑**（该状态同时是"跳过主流程"——嗑药/换宠/被控/死宠——
+    //   的跳转目标，从那条路进来时桶必须空跑，默认 false 天然满足）。
+    // 生命周期：ws 每回合 reset 自动清零（声明与消费都在同一回合内完成）。
+    bool extra_action_pending[2]{}; // 本回合是否已**声明**一次额外行动（效果侧置位，FSM 消费）
+    int extra_action_count[2];      // 本回合**已执行**的额外行动次数（FSM 消费时自增；多次上限将来加）
+
     SkillExecResult skill_exec_result[2];
     SkillResolutionFlags skill_resolution_flags[2];
     bool skill_resolution_ready[2];
@@ -231,6 +288,28 @@ struct BattleWorkspace {
     // 最近一次恢复的实际体力值（按目标索引；封回血/恢复效果修正后的值）。
     // heal 原语写入；吃月亮二类（按实际恢复值）效果读取。
     int last_heal_amount[2]{};
+
+    //========== 裸伤台账（按攻击方索引；2026-09-18，effect 422 族）==========
+    //
+    // 一次攻击在内存里产生**三个不同的"伤害值"**，别混（effect 422「附加所造成伤害值{0}%的
+    // 固定伤害」实测暴露的坑，用户 2026-09-18 口径）：
+    //   ① **裸伤** = 本字段。公式值（含暴击/浮动/连击/次数攻击增伤）+ **变威力重算后的
+    //      第二次结果**，**不含伤害管线任何阶段**——增伤/减伤/保底/锁伤/挡伤都不进。
+    //      实测口径："挡伤、锁伤所改变的红伤不是被这个效果记录的"。
+    //   ② **管线后** = `resolvedDamage.final`（增伤/减伤/保底/锁伤/挡伤都已作用）。
+    //      "按伤害比例吸血"族（101/1256）读的是这个——**两族不要混用同一个值**。
+    //   ③ **实际落血** = `BattleEvent::EVENT_TAKE_DAMAGE` 的 amount（再扣掉护盾/护罩吸收），
+    //      死亡归因 `last_damage_actor` 也按它写。
+    //
+    // ★ 唯一写入点 = `finish_attack_damage` 里 **`apply_variable_power_recalc` 之后、
+    //   `damage_pipeline_.run` 之前**。为什么必须在那儿：
+    //     · 变威力会**重跑一遍公式**（`apply_variable_power_recalc` 内部调
+    //       `stage_simple_attack_damage`）并覆盖第一次结果 → 写早了记到的是被推翻的值；
+    //     · 管线一跑 `final` 就被逐阶段改写 → 写晚了记到的是管线后的值。
+    //   挪动这一行 = **改机制定义**（不是实现细节），动之前先做游戏内对照实验。
+    // ⚠️ 每次**攻击尝试**开头清零（含被盔/被威的无效出口）→ 无效的那次攻击读不到上一击的残留值。
+    // 生命周期：ws 每回合 reset 自动清零；按攻击方索引（同回合双方各一击互不覆盖）。
+    int raw_attack_damage[2]{};
 
     //========== 技能威力视图层 ==========
     // 本回合视角的技能威力：攻击时由 resolve_skill_execution 物化 skill.power，
@@ -345,6 +424,9 @@ struct BattleWorkspace {
             skill_effect_source[i] = SkillReplaceSource{};  // 未替换 → 用本槽位技能（memset 后须显式恢复默认）
         }
     }
+    // 取"本回合视角"的属性值（含能力等级修正）。**只用于 battle_attrs 的 6 项属性**
+    // （攻击/特攻/防御/特防/速度/体力），不是"能力等级"的读取口——等级槽 5 是**命中**
+    // 而属性槽 5 是**体力**，两套索引只在 0..4 重合（见 battleContext.h 的长注释）。
     int getTempAbilityValue(int owner, NumericalPropertyIndex i) const {
         if (owner < 0 || owner >= 2) {
             throw std::out_of_range("Owner index out of range");
@@ -354,27 +436,26 @@ struct BattleWorkspace {
         if (index < 0 || index >= 6) {
             throw std::out_of_range("Index out of range");
         }
+        // ⚠️ **体力（HP）没有能力等级**：官方能力提升状态只有 6 种（双攻双防速命中），
+        //    不含体力。原实现在这里读 `view_levels[owner][5]`，而槽 5 是**命中** →
+        //    等价于"体力值被命中等级缩放"，是纯粹的口径错误。
+        //    好在**从无人以 HP 调用本函数**（调用点只有 skill.type / skill.type+2 / SPEED /
+        //    SPECIAL_ATTACK），所以它一直是死分支——但仍必须堵上，免得将来有人踩。
+        if (i == NumericalPropertyIndex::HP) {
+            return battle_attrs[owner][NumericalPropertyIndex::HP];
+        }
         if (level[index] < -6 || level[index] > 6) {
             throw std::out_of_range("Level out of range");
         }
         if (level[index] >= 0) {
             return static_cast<int>(battle_attrs[owner][i] * ((level[index] + 2) / 2.0));
         }
-        if (index == 5 && level[index] < 0) {
-            // return Cm * 100 (命中等级为负时的特殊处理)
-            switch (level[index]) {
-                case -1: return 85;
-                case -2: return 70;
-                case -3: return 55;
-                case -4: return 45;
-                case -5: return 35;
-                case -6: return 25;
-                // no need for default since level range is already checked
-            }
-        }
         // 负等级：官方 2/(2-|level|)，展开即 2/(2-level)。
         // ⚠️ 原写法是 2/(2+level)：-1 会算成 ×2（应当 ×0.67，方向还反了），
         //    **-2 直接除零** → int 溢出成 INT_MAX（红伤一击 5 亿，见场景 032 踩坑记录）。
+        // ⚠️ 原先这里还有一段 `if (index == 5 && level[index] < 0)` 返回 85/70/55/45/35/25 的
+        //    "命中等级为负时的特殊处理"——那是**命中率档位表**，误放在了按属性索引取值的函数里。
+        //    2026-09-18 已搬到 abnormal-types.h 的 `hit_level_accuracy_pct()`（精度公式用它）。
         return static_cast<int>(battle_attrs[owner][i] * (2.0 / (2 - level[index])));
     }
 };

@@ -38,6 +38,21 @@ const CoreApi& core_api() {
         /*apply_anomaly_ancient=*/&apply_anomaly_ancient,
         /*apply_anomaly_raw=*/&apply_anomaly_raw,
         /*drain_hp=*/&drain_hp,
+        // 精灵生命周期（存活/死亡/消逝）——**追加在末尾**，勿插中间（位置初始化列表）
+        /*count_dead=*/&count_dead,
+        /*reduce_max_hp_pct=*/&reduce_max_hp_pct,
+        /*raise_max_hp_pct=*/&raise_max_hp_pct,
+        /*defeat_pet=*/&defeat_pet,
+        /*revive_pet=*/&revive_pet,
+        /*vanish_spirit=*/&vanish_spirit,
+        /*vanish_dead_spirits=*/&vanish_dead_spirits,
+        /*register_death_interceptor=*/&register_death_interceptor,
+        /*remove_death_interceptors=*/&remove_death_interceptors,
+        // 点数版上限削减/提升（2026-09-17 追加）——**继续追加在末尾**，勿插中间
+        /*reduce_max_hp_flat=*/&reduce_max_hp_flat,
+        /*raise_max_hp_flat=*/&raise_max_hp_flat,
+        // 属性伤害（2026-09-18 追加）——**继续追加在末尾**，勿插中间（位置初始化列表）
+        /*deal_attribute_damage=*/&deal_attribute_damage,
     };
     return api;
 }

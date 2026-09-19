@@ -101,6 +101,40 @@ struct CoreApi {
     // 封回血生效）。"{0}回合内每回合使用技能吸取对手最大体力的1/{1}"（597）与
     // 无相谛 1257 同族。另有无参数版 drain_hp_amount（暂无调用方，未暴露）。
     DrainHpResult (*drain_hp)(BattleContext*, int actor, int target, int fraction_denom);
+    // ── 精灵生命周期（存活/死亡/消逝，见 effects/spirit_lifecycle.h）──
+    // 阵亡计数（四口径 ROSTER/OFF_FIELD/NOT_ON_STAGE/ALL，额外精灵只进后两个，
+    // 已消逝四个口径都不计）。"己方每有 N 只阵亡则 XX"类效果用它，别手写 for(slot<6)。
+    int (*count_dead)(const BattleContext*, int side, DeadScope scope);
+    // 削减/提升体力上限（官方取整：削减向上、提升向下）。削减下限钳 1——
+    // **永远不会**造成消逝（消逝只能由 vanish_spirit 产生）。
+    int (*reduce_max_hp_pct)(BattleContext*, int side, int slot, int pct, int floor);
+    int (*raise_max_hp_pct)(BattleContext*, int side, int slot, int pct);
+    // 死亡漏斗（含场下精灵）+ 复活。defeat_pet 会询问登记过的死亡拦截器。
+    DefeatResult (*defeat_pet)(BattleContext*, int side, int slot, int actor, DefeatCause cause);
+    int (*revive_pet)(BattleContext*, int side, int slot, int hp);
+    // 消逝（体力上限归零，不可逆、不发 EVENT_DEATH）。批量版返回**实际消逝数**
+    // ——"任意一方消逝成功则获得收益"（魂帝尸骸）靠它分支。
+    VanishResult (*vanish_spirit)(BattleContext*, int side, int slot, int actor);
+    int (*vanish_dead_spirits)(BattleContext*, int side, int count, bool include_extra);
+    // 死亡拦截器（残留体力免死 / 真2命复活）：sees_hp_consume 表达"消耗体力能否免死"，
+    // 官方口径是残留免死不能、复活能（idx=339）——两层不可合并。
+    void (*register_death_interceptor)(BattleContext*, DeathInterceptor interceptor);
+    void (*remove_death_interceptors)(BattleContext*, int source_effect_id);
+    // ── 点数版体力上限削减/提升（2026-09-17 追加，空元之渎/之录用）──
+    // 契约与 pct 版一致：下限钳 1（"上限==0 ⇔ 被消逝"守卫）、已消逝拒绝、
+    // 削减同步压低当前体力、提升不动当前体力。点数衰减用百分比凑不准（取整漂移）。
+    int (*reduce_max_hp_flat)(BattleContext*, int side, int slot, int amount, int floor);
+    int (*raise_max_hp_flat)(BattleContext*, int side, int slot, int amount);
+
+    // ── 属性伤害（2026-09-18 追加；《赛学必修16—伤害类型》）──
+    // "附加 X 点 {系} 伤害"族的结算出口：**数值由调用方按"点数 × 克制倍数"算好后传入**
+    //（克制的防御方一侧取 `ws.view_elementalAttributes[target]`，插件侧可用上面的
+    // `restraint_multiplier` 槽自查；也可直接用 core 的本原语让它一并算）。
+    // 结算形式 = **红伤**（`DamageKind::NORMAL`）→ 吃护盾/增伤/减伤/锁伤/挡伤与对应免疫，
+    // emit EVENT_TAKE_DAMAGE、进死亡漏斗。属性伤害**有系别**，既不是固定伤害（粉伤、无系别）
+    // 也不是真伤（真伤"无法减免"，属性伤害受对应的增减免影响）。
+    FixedDamageResult (*deal_attribute_damage)(BattleContext*, int target, int points,
+                                               const int element[2], int actor);
 };
 
 // sim_core 暴露的 CoreApi 单例（实际填充）。插件侧不调它；由 core 在初始化时传入。

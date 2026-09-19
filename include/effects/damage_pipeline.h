@@ -131,8 +131,20 @@ public:
      * walk - 按阶段序执行双方伤害效果。
      * 各阶段内先执行攻击方，再执行防御方（顺序可随游戏知识调整）。
      * 效果通过 ctx->resolvedDamage 读取/修改当前伤害值。
+     *
+     * `phase_mask`（bit = (int)DamagePhase）：**只跑掩码里的阶段**，默认全跑。
+     *   用途：**属性伤害**只吃一部分阶段（锁伤 / 挡伤阶段），不吃攻击伤害的增·减伤
+     *   —— 见 `deal_attribute_damage` 与 `DamageSnapshot::skip_routine_block`。
      */
-    void run(BattleContext* ctx, int attacker, int defender);
+    void run(BattleContext* ctx, int attacker, int defender,
+             uint32_t phase_mask = kAllPhases);
+
+    // 全阶段（默认）。
+    static constexpr uint32_t kAllPhases = 0xFFFFFFFFu;
+    // 单个阶段的掩码位。
+    static constexpr uint32_t phase_bit(DamagePhase phase) {
+        return 1u << static_cast<int>(phase);
+    }
 
     void clear() {
         for (auto& owner_buckets : buckets_) {

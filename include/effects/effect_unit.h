@@ -76,4 +76,23 @@ struct EffectUnit {
 // 返回最终归一化 BranchKey（测试/上层观测用）。
 BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args, const EffectUnit& unit);
 
+// **跳过本单元条件**的执行器：条件视为已满足（概率 roll 照常）。
+// 用途 = 单元准入门（`UnitAdmissionFn`）：魂印侧记录了"取消进度"时，注册期就把该单元
+// 换成这个执行器注册，从而**不改技能对象**也能表达"该条已永久无条件"。
+// ⚠️ 只跳过**本单元顶层**的条件；递归进 on_success/on_other 等分支子单元时各自按条件判。
+BranchKey execute_effect_unit_unconditional(BattleContext* ctx, const EffectArgs& args,
+                                            const EffectUnit& unit);
+
+// ── 单元准入门（core 侧存储，插件经 IEffectRegistry::registerUnitAdmission 写入）──
+// core 的注册路径（Skills::register_branch）逐单元询问；任一钩子返回 true → 该单元跳过
+// 条件求值。见 plugin_interface.h 的 UnitAdmissionFn 注释（为什么要有这个东西）。
+// 存储进程全局：注册表实例可能是 EffectFactory 也可能是 SoulMarkManager，两处都写到这儿。
+// 用 typedef（非 using 别名）：两个头都要声明它，typedef 允许相同类型的重复声明。
+typedef bool (*UnitAdmissionFn)(BattleContext*, int owner, int skill_id, int unit_index,
+                                int condition);
+void add_unit_admission(UnitAdmissionFn fn);
+// 逐单元询问：无钩子返回 false（照常按条件求值）。
+bool unit_admission_grants(BattleContext* ctx, int owner, int skill_id, int unit_index,
+                           int condition);
+
 #endif // EFFECT_UNIT_H

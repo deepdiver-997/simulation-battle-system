@@ -120,7 +120,17 @@ void BattleContext::init_battle() {
     install_default_damage_floor();
     pink_damage_pipeline_.clear();
     install_default_pink_mitigation();
+    // ⚠️ 必须排在 `pink_damage_pipeline_.clear()` **之后**：本函数也往粉伤管线注册
+    //    （星哲 34 的增粉），放在 clear 之前会被整条清掉——红伤侧不受影响（那边没有 clear）。
+    install_default_abnormal_mods();   // 异常状态自带的增/减伤与增粉（2026-09-18）
     install_common_trait_effects(this);
+    // 死亡归因初值 -1（"无来源"）。不能靠零初始化：0 是合法方 id，会被误读成"第 0 方击杀"。
+    // clearAllEffects 也复位它（连续对局复用同一 context 的场景）。
+    for (int side = 0; side < 2; ++side) {
+        for (int slot = 0; slot < 6; ++slot) {
+            last_damage_actor[side][slot] = -1;
+        }
+    }
 }
 
 void BattleContext::install_default_pink_mitigation() {
@@ -399,6 +409,146 @@ void BattleContext::install_default_damage_amp_extra() {
     }
 }
 
+// ── 异常状态自带的伤害/回复修正（2026-09-18）────────────────────────────────
+//
+// 官方 effect_des kind=2 的逐条文本驱动。**全部用"常驻管线条目 + 回调里实时查异常"**：
+// 异常状态**不是回合类效果** —— `abnormal_status_end_round` 在 context、不参与断回合、
+// 也没有"每回合重写"的注册点，所以**绝不能**写 `ws.damage_add_pct` 那类回合槽
+// （ws 每回合 `memset` 清 0 → 会退化成"只在施加那回合生效"的静默失败，
+//   见 battleWorkspace.h 的字段表）。放在这里的条目是 TEAM 绑定的，换宠不作废。
+//
+// 阶段归属判据（与 693/犀牛那套同源，官方 L352）：
+//   · 原文**没有**"额外"二字 → 通用通道（增伤 AMP / 减伤 REDUCE_PCT）
+//   · 原文**有**"额外"二字   → 非通用（乘法）通道 AMP_EXTRA
+//
+// 清单（原文见 abnormal-types.h 或数据库 effect_des.kind=2）：
+//   14 狂暴    「造成的攻击伤害翻倍」              → AMP 攻击方 +100
+//   33 星赐    「造成的攻击伤害提升30%」            → AMP 攻击方 +30
+//   26 虚弱诅咒「造成的攻击伤害额外降低50%」        → AMP_EXTRA 攻击方 -50
+//   25 致命诅咒「受到的攻击伤害额外提升50%」        → AMP_EXTRA 承受方 +50
+//   11 衰弱    「按衰弱回合数受到攻击伤害额外提升 25/50/100/250/500%」→ AMP_EXTRA 承受方
+//   12 山神守护「每回合**对手**受到的攻击伤害减少80%」→ REDUCE_PCT 承受方（查对面）
+//   34 星哲    「造成的**固定伤害、百分比伤害**提升30%」→ 粉伤 AMP
+void BattleContext::install_default_abnormal_mods() {
+    for (int owner = 0; owner < 2; ++owner) {
+        // ① AMP·攻击方：狂暴（翻倍）/ 星赐（+30%）
+        register_default_damage_effect(
+            DamagePhase::AMP, owner, DamageEffectCategory::AMP,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                DamageSnapshot& d = ctx->resolvedDamage;
+                if (d.attackerId < 0 || d.attackerId > 1 || bucket_owner != d.attackerId
+                    || d.final <= 0) {
+                    return;
+                }
+                int pct = 0;
+                if (ctx->has_active_abnormal_status(bucket_owner,
+                        static_cast<int>(AbnormalStatusId::Berserk))) {
+                    pct += 100;
+                }
+                if (ctx->has_active_abnormal_status(bucket_owner,
+                        static_cast<int>(AbnormalStatusId::StarBlessing))) {
+                    pct += 30;
+                }
+                if (pct == 0) {
+                    return;   // 无异常 → 零行为（不碰 ws.damage_add_pct 那条既有通道）
+                }
+                d.addPct += pct;
+                d.final = d.final * (100 + pct) / 100;
+            });
+
+        // ② AMP_EXTRA·攻击方：虚弱诅咒（造成的攻击伤害额外降低50%）
+        register_default_damage_effect(
+            DamagePhase::AMP_EXTRA, owner, DamageEffectCategory::AMP,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                DamageSnapshot& d = ctx->resolvedDamage;
+                if (d.attackerId < 0 || d.attackerId > 1 || bucket_owner != d.attackerId
+                    || d.final <= 0) {
+                    return;
+                }
+                if (ctx->has_active_abnormal_status(bucket_owner,
+                        static_cast<int>(AbnormalStatusId::WeaknessCurse))) {
+                    d.final = d.final * 50 / 100;
+                }
+            });
+
+        // ③ AMP_EXTRA·承受方：致命诅咒（受到攻击伤害额外 +50%）/ 衰弱（按回合数 +25%~500%）
+        register_default_damage_effect(
+            DamagePhase::AMP_EXTRA, owner, DamageEffectCategory::AMP,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                DamageSnapshot& d = ctx->resolvedDamage;
+                if (d.defenderId < 0 || d.defenderId > 1 || bucket_owner != d.defenderId
+                    || !d.isRed || d.final <= 0) {
+                    return;
+                }
+                if (ctx->has_active_abnormal_status(bucket_owner,
+                        static_cast<int>(AbnormalStatusId::DeathCurse))) {
+                    d.final = d.final * 150 / 100;   // 额外 +50%
+                }
+                const int weakness = static_cast<int>(AbnormalStatusId::Weakness);
+                if (ctx->has_active_abnormal_status(bucket_owner, weakness)) {
+                    // 官方 11：「若衰弱的**回合数**为 1/2/3/4/5 及以上，则受到的攻击伤害
+                    // 额外提升 25%/50%/100%/250%/500%」。语料 idx=119「**衰弱层数取决于衰弱回合数**」
+                    // → 层数 = 异常图标上显示的剩余回合数（`end - roundCount`，clamp 1..5）。
+                    // ⚠️ 口径**待实测**：另一种读法是"施加以来的第几个回合"，两者在长时长衰弱上不同。
+                    const int remaining = ctx->get_abnormal_status_end_round(bucket_owner, weakness)
+                                        - ctx->roundCount;
+                    static constexpr int kWeaknessPct[5] = {25, 50, 100, 250, 500};
+                    int idx = remaining < 1 ? 0 : (remaining > 5 ? 4 : remaining - 1);
+                    d.final = d.final * (100 + kWeaknessPct[idx]) / 100;
+                }
+            });
+
+        // ④ REDUCE_PCT·承受方：山神守护（"每回合**对手**受到的攻击伤害减少80%"）
+        //    ⚠️ 判定方是**对面**：山神守护挂在 A 身上时，减伤落在 B 的受击上。
+        //    减伤区 → MITIGATE 类别（可被"挡伤失效"抑制），与其它减伤先后见本阶段注册序。
+        register_default_damage_effect(
+            DamagePhase::REDUCE_PCT, owner, DamageEffectCategory::MITIGATE,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                DamageSnapshot& d = ctx->resolvedDamage;
+                if (d.defenderId < 0 || d.defenderId > 1 || bucket_owner != d.defenderId
+                    || !d.isRed || d.final <= 0) {
+                    return;
+                }
+                if (ctx->has_active_abnormal_status(1 - bucket_owner,
+                        static_cast<int>(AbnormalStatusId::MountainGuardian))) {
+                    d.final = d.final * 20 / 100;   // 减少 80%
+                }
+            });
+
+        // ⑤ 粉伤 AMP·来源方：星哲（造成的固定伤害、百分比伤害提升30%）
+        //    粉伤管线每阶段按 {actor, target} 各走一趟 → 用 resolvedPink.actor 自守。
+        //    真伤不走粉伤管线（deal_damage 只把 FIXED/PERCENT/PERCENT_VALUE 分流进去）
+        //    → 天然只作用于固定/百分比，与官方文本一致。
+        register_default_pink_effect(
+            PinkDamagePhase::AMP, owner,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                PinkDamageResolved& r = ctx->resolvedPink;
+                if (r.actor < 0 || r.actor > 1 || bucket_owner != r.actor || r.final <= 0) {
+                    return;
+                }
+                if (ctx->has_active_abnormal_status(r.actor,
+                        static_cast<int>(AbnormalStatusId::StarWisdom))) {
+                    r.final = r.final * 130 / 100;
+                }
+            });
+    }
+}
+
 // 保底伤害（FLOOR 阶段）——"造成的伤害不少于{0}"（effect 447 族，133 个技能在用）。
 // 官方时点链（L345）：「犀牛魂印—通用增伤—693增伤—**保底伤害**—护盾」：保底在
 // GUARD_DETECT/AMP/减伤区之后、锁伤（CAP）之前 → 前面被减下去的伤由它抬回 {0}，
@@ -452,6 +602,12 @@ void BattleContext::install_default_damage_block() {
                 }
                 if (!damage.isRed || damage.final <= 0) {
                     return;  // 只挡红伤（技能攻击伤害），已被挡下的不重复处理
+                }
+                if (damage.skip_routine_block) {
+                    // 属性伤害不吃**常规**挡伤（用户 2026-09-18 口径，见 DamageSnapshot 注释）：
+                    // "免疫下N次攻击伤害"票不响应它；但**系别条件性**抵挡（如岚"免疫非本系技能
+                    // 伤害"）是插件自己注册的 BLOCK 条目，不看本标志、按 attribute_element 自行判。
+                    return;
                 }
                 // 次数型免伤（"免疫下N次攻击伤害"）：纯查询命中才消费——非次数型（窗口/永久）
                 // 命中也不扣，故两个调用都要走。
@@ -802,7 +958,7 @@ std::string BattleContext::getStateJson() const {
     oss << "\"levels\":[";
     for (int i = 0; i < kAbilityLevelSlotCount; ++i) {
         oss << ability_levels[0][i];   // 等级本体在 context（不再读 pet）
-        if (i < 5) oss << ",";
+        if (i + 1 < kAbilityLevelSlotCount) oss << ",";
     }
     oss << "],";
     append_skills(oss, pet0);
@@ -823,7 +979,7 @@ std::string BattleContext::getStateJson() const {
     oss << "\"levels\":[";
     for (int i = 0; i < kAbilityLevelSlotCount; ++i) {
         oss << ability_levels[1][i];   // 同上
-        if (i < 5) oss << ",";
+        if (i + 1 < kAbilityLevelSlotCount) oss << ",";
     }
     oss << "],";
     append_skills(oss, pet1);
@@ -928,7 +1084,7 @@ std::string BattleContext::getFullStateJson() const {
         oss << "\"levels\":[";
         for (int i = 0; i < kAbilityLevelSlotCount; ++i) {
             oss << ability_levels[robot_id][i];   // 等级本体在 context（见字段注释）
-            if (i < 5) oss << ",";
+            if (i + 1 < kAbilityLevelSlotCount) oss << ",";
         }
         oss << "],";
         oss << "\"elementalAttributes\":[" << pet.elementalAttributes[0] << "," << pet.elementalAttributes[1] << "],";

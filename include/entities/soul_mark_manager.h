@@ -34,6 +34,9 @@ public:
     void registerSkillEffects(
         const std::vector<std::pair<int, EffectFn>>& effects) override;
 
+    // 单元准入门（IEffectRegistry）：soul_lib 走本注册表；门是进程全局（effect_unit 存）。
+    void registerUnitAdmission(UnitAdmissionFn fn) override;
+
     // 手动注册效果（不通过动态库）
     void registerEffect(int soulmarkId, EffectFn effect);
 

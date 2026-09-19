@@ -305,6 +305,11 @@ void EffectFactory::registerSkillEffects(
     }
 }
 
+void EffectFactory::registerUnitAdmission(UnitAdmissionFn fn) {
+    // 单元准入门与 EffectFactory 的缓存无关，存进 effect_unit 的进程全局（读侧在那儿）。
+    add_unit_admission(fn);
+}
+
 size_t EffectFactory::getLoadedLibraryCount() const {
     return loaded_libraries_.size();
 }

@@ -3,11 +3,14 @@
 #include <entities/elf-pet.h>
 #include <fsm/battleContext.h>
 
-void DamagePipeline::run(BattleContext* ctx, int attacker, int defender) {
+void DamagePipeline::run(BattleContext* ctx, int attacker, int defender, uint32_t phase_mask) {
     if (!ctx) {
         return;
     }
     for (DamagePhase phase : kOrder) {
+        if ((phase_mask & phase_bit(phase)) == 0) {
+            continue;   // 该阶段被排除（属性伤害只跑子集，见头文件说明）
+        }
         // 攻击方先结算，防御方后结算（顺序可随游戏知识调整）
         const int owners[2] = {attacker, defender};
         for (int owner : owners) {

@@ -66,6 +66,19 @@ enum class ImmunityType {
     // 与 hp_zero_converted（咤克斯式**转化**：短路且给咤加咒怨层）的区别：本票是纯免疫，
     // 没有转化收益；两者在原语里是并列的短路条件。
     INSTANT_KILL,
+    // **无法处于能力提升状态**（能力提升被封锁）：目标的正等级无法成立——
+    // 任何"把等级往上抬"的动作在本票命中时**整次失败、等级一点不动**。
+    //   官方原文（三只精灵同族写法）：混沌魔君索伦森 3414 effect_icon 1011
+    //   「消除成功则以回合类效果的形式令对手2回合内**无法处于能力提升状态**」；
+    //   同族：920（魔君索伦森 3312）、1362（里奥斯 3786，"处于烧伤状态则…"）、
+    //         1612（4018，"对手处于冻伤状态则当回合…"）。
+    // 查询点（**只挡"往上抬"**，见 battle_primitives.h 的 StatChangeResult::BLOCKED）：
+    //   stat_change（delta>0 的自身增益）/ transfer_stat_boosts（to 侧）/ stat_reversal（负翻正）。
+    //   —— 与 STAT_CLEAR 的区别：STAT_CLEAR 护"已有提升不被拿走"，本票禁止"获得提升"。
+    // ⚠️ 官方说"以回合类效果的形式"，但本引擎的 IMMUNE 类是**天然不可被断回合**的
+    //   （RuleTicket::source_valid_id 恒 0，只随上下场清；封回血 HEAL_BLOCK 同此口径）。
+    //   即：断回合**不能**提前解掉本封锁，与官方可能有偏差——记入待拍板，别默默当已实现。
+    STAT_BOOST,
 };
 
 // 规则大类。细分在 subtype(见 RuleTicket)：
@@ -79,7 +92,24 @@ enum class RuleCategory {
     HIT_INVALID_ATTACK,    // 只对**攻击技能**生效
     HIT_INVALID_ATTRIBUTE, // 只对**属性技能**生效
     REFLECT,     // 回弹：target 免疫异常时反弹给施放方(apply_anomaly 反射)。支持 counts/rounds/source 锚
+    // 「无视」凭证（穿盔 / 穿透限伤）：官方词条分两派，**按"受作用的是哪条伤害路径"拆成两个类别**
+    // ——与上面 HIT_INVALID_ATTACK/ATTRIBUTE 完全同款（用户 2026-09-13 定的拆法：拆开就没有"这条到底
+    // 管哪种技能"的歧义；**要两条路都管就注册两条**，不是给一条加 mask）。
+    //   · 「下{0}次**攻击技能**无视攻击免疫效果」（1926 = 霍光·无罔之心）→ **只注册 PENETRATE_ATTACK**，
+    //     counts=2 + ON_STAGE：攻击技能跑伤害管线时**必然查询并消耗一次**；属性伤害走另一条路
+    //     （`deal_attribute_damage`，查 PENETRATE_ATTRIBUTE）→ **不命中、也不消耗**。
+    //   · 「无视伤害限制效果」（697）/「使自身**所有技能**无视…」（2177）→ **注册两条**
+    //     （薇尔诗·白皑之纷争式"直接无视、无附加词条"），窗口型 rounds=1/counts=0：
+    //     **当回合查询多次都不失效**（`consume_penetrate` 只扣次数型、跳过窗口型）。
+    // 复用 RuleCenter 是为了白拿这些：次数/回合两态、覆盖键刷新、断回合作废(source_valid_id)、
+    // 换宠清(scope=ON_STAGE)、每回合 tick —— 都不必再手写一遍。
+    PENETRATE_ATTACK,     // 作用于**攻击技能**的伤害结算
+    PENETRATE_ATTRIBUTE,  // 作用于**属性伤害**（`deal_attribute_damage` 那条路）
 };
+
+inline bool is_penetrate_category(RuleCategory c) {
+    return c == RuleCategory::PENETRATE_ATTACK || c == RuleCategory::PENETRATE_ATTRIBUTE;
+}
 
 // ③层命中失效类别 ↔ 技能类型的对应（is_attribute_skill = 本次用的是属性技能）。
 inline RuleCategory hit_invalid_category_for(bool is_attribute_skill) {
@@ -172,6 +202,12 @@ struct RuleTicket {
     int remaining_counts = 0;      // 次数（>0；响应即减，减到 0 注销）
     int remaining_rounds = 0;      // 回合（>0；tick 每回合减，响应不消耗；断回合清）
     int register_round = 0;        // 窗口/回合起算（与 roundCount 比较过期）
+
+    // ── 「无视」凭证(PENETRATE_*)参数 ───────────────────
+    // 管什么：对应官方两种词条（"无视攻击免疫效果"/"无视伤害限制效果"），可各自或同时授予。
+    bool pen_ignore_attack_immunity = false;
+    bool pen_ignore_damage_limit = false;
+    int  pen_level = 0;
 
     bool is_round_type() const { return remaining_rounds > 0; }
     bool responds_to(bool is_attribute_skill) const {
@@ -306,6 +342,120 @@ public:
                 all_.erase(it);
             }
             return true;  // 本次免疫被消耗
+        }
+        return false;
+    }
+
+    // ── 「无视」凭证（PENETRATE_*）：授予 / 查询 / 消费 ─────────────────────────
+    // 授予。`category` 必须是 PENETRATE_ATTACK / PENETRATE_ATTRIBUTE —— **要两条路都管就调两次**
+    //（照 HIT_INVALID 的拆法；不要给一条加 mask）。
+    //   counts>0 = **次数型**（攻击路径每用一次技能消费一次；扣到 0 注销）
+    //   rounds>0 = **窗口型**（响应**不**消耗，每回合 tick 递减、断回合清）
+    //     —— "当回合有效的全凭证，当回合查询多次都不失效"（薇尔诗·白皑之纷争）靠的就是这一档。
+    // 覆盖键 = (source_owner, source_effect_id, category) 刷新不追加。
+    int grant_penetrate(int source_owner, RuleCategory category, int target, int level,
+                        bool ignore_attack_immunity, bool ignore_damage_limit,
+                        int counts, int rounds, int register_round,
+                        EffectScope scope = EffectScope::ON_STAGE,
+                        int source_effect_id = -1, int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1
+            || !is_penetrate_category(category) || (counts <= 0 && rounds <= 0)) {
+            return 0;
+        }
+        const int sid = ++next_source_id_;
+        for (RuleTicket& t : all_) {
+            if (t.category == category && t.source_owner == source_owner
+                && t.source_effect_id == source_effect_id) {
+                t.target = target;
+                t.scope = scope;
+                t.remaining_counts = counts;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                t.pen_level = level;
+                t.pen_ignore_attack_immunity = ignore_attack_immunity;
+                t.pen_ignore_damage_limit = ignore_damage_limit;
+                t.source_valid_id = source_valid_id;
+                t.source_id = sid;
+                recount();
+                return sid;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = target;
+        t.category = category;
+        t.remaining_counts = counts;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.pen_level = level;
+        t.pen_ignore_attack_immunity = ignore_attack_immunity;
+        t.pen_ignore_damage_limit = ignore_damage_limit;
+        t.source_valid_id = source_valid_id;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+
+    // 查询结果：把 target 名下在该门上生效的条目**合并**（多次授予并存时取或、level 取高）。
+    struct PenetrationQuery {
+        bool valid = false;
+        bool ignore_attack_immunity = false;
+        bool ignore_damage_limit = false;
+        int level = 0;
+    };
+
+    // 纯查询（**不消费**）。窗口过期/被断回作的条目跳过。
+    PenetrationQuery query_penetrate(int target, RuleCategory category,
+                                     int current_round) const {
+        PenetrationQuery q;
+        if (target < 0 || target > 1 || !is_penetrate_category(category)) {
+            return q;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != category || t.target != target) continue;
+            if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
+                continue;  // 窗口已过
+            }
+            q.valid = true;
+            q.ignore_attack_immunity |= t.pen_ignore_attack_immunity;
+            q.ignore_damage_limit |= t.pen_ignore_damage_limit;
+            q.level = std::max(q.level, t.pen_level);
+        }
+        return q;
+    }
+
+    // 该门上还剩多少条凭证（**审计/测试用**：次数型扣完会自动注销，可据此断言"用完了"）。
+    int count_penetrate(int target, RuleCategory category) const {
+        int n = 0;
+        for (const RuleTicket& t : all_) {
+            if (t.category == category && t.target == target) {
+                ++n;
+            }
+        }
+        return n;
+    }
+
+    // 消费一次：**只扣次数型**（窗口/永久型跳过不扣）——语义同 consume_immune。    // 调用点：攻击路径每用一次技能扣一次（"必然查询消耗一次"）；属性伤害路径同理，
+    //   但无罔之心那类只注册了 PENETRATE_ATTACK → 属性那条路查的是另一个类别，**不命中也不消耗**。
+    bool consume_penetrate(int target, RuleCategory category, int current_round) {
+        if (target < 0 || target > 1 || !is_penetrate_category(category)) {
+            return false;
+        }
+        for (auto it = all_.begin(); it != all_.end(); ++it) {
+            RuleTicket& t = *it;
+            if (t.category != category || t.target != target) continue;
+            if (t.remaining_counts <= 0) continue;   // 仅次数型
+            if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
+                continue;
+            }
+            --t.remaining_counts;
+            if (t.remaining_counts <= 0) {
+                all_.erase(it);
+            }
+            return true;
         }
         return false;
     }

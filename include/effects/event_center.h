@@ -48,6 +48,23 @@ enum class EventType {
     // amount = 归零前体力。秒杀族（通用特性·瞬杀 1-5 星、技能/魂印秒杀）的统一检测点——
     // 它**不是伤害**（护盾/护罩/减伤不参与），所以不走 EVENT_TAKE_DAMAGE。
     EVENT_HP_TO_ZERO,
+    // **消逝**（vanish_spirit）：target = 被消逝方，slot = 槽位。
+    // ⚠️ 与 EVENT_DEATH 是**两个事件**：消逝蕴含阵亡但**不是死亡**——死亡可复活、
+    //    仍占位仍算背包/场下；消逝不可逆、从所有空间与位置基准剔除。
+    //    监听击败/亡语类效果请只认 EVENT_DEATH，避免把消逝当死亡处理。
+    EVENT_VANISH,
+    // **能力等级变化**（`write_ability_level`：所有改能力等级的路径的**唯一落点**）。
+    // target = 等级发生变化的一方（0/1）、stat_index = 能力下标（0=攻击…4=速度、5=体力）、
+    // level_after = 变化后的等级、level_delta = 本次变化量（正=提升）。
+    // ⚠️ **无 actor**：`stat_change` / `stat_drop` 等原语本身不带归因参数 → actor 恒 -1，
+    //    检测方只能判"谁的等级变了"，判不出"被谁改的"（自身增益与对手弱化在此同形）。
+    // 用途：**监测能力等级变化的窗口效果**——典型「每回合开始至战斗阶段结束时，若对手存在
+    //    高于自身的能力等级则令其变为与自身相同」（混沌魔君索伦森 1011）。
+    //    这类效果无法用"在某个时点注册一次"表达：同回合内对方会在**它自己的时点桶**里强化，
+    //    而同一 State 的桶按 (owner 0 → owner 1) 定序跑（房主/挑战方判定同源问题）——
+    //    先跑的一方看到的是旧等级，压制迟到一拍、**连带影响出手先后**。
+    //    事件是唯一的"写后即知"通道 → 挂在本事件上的压制天然与时点定序无关。
+    EVENT_STAT_CHANGED,
 };
 
 /**
@@ -73,6 +90,17 @@ struct BattleEvent {
     int grant_id = -1;
     // 盔事件专用：true = 盔**真正生效**（挡住了本次技能）；false = 被穿（penetrable + 穿盔凭证）。
     bool blocked = false;
+    // ── 以下为死亡族事件（EVENT_DEATH）扩展字段（**追加在末尾**，别插在中间）──
+    // 死亡发生的**槽位**（0..5）。用途：薇尔诗 2513「相邻/隔位精灵死亡」类效果要判
+    //   "死的是哪一槽"——只给 side 判不出。非死亡事件为 -1。
+    int slot = -1;
+    // 本次倒下的**成因**（DefeatCause 的整数值）。用途：拦截器按成因过滤
+    //   （官方 idx=339：消耗全部体力穿所有残留免死、但不穿复活）。非死亡事件为 0。
+    int cause = 0;
+    // ── 能力等级变化族（EVENT_STAT_CHANGED）扩展字段（**追加在末尾**）──
+    int stat_index = -1;   // 能力下标（0=攻击 1=特攻 2=防御 3=特防 4=速度 5=体力）；非该族为 -1
+    int level_after = 0;   // 变化**之后**的等级（检测方通常只关心"是不是正等级"）
+    int level_delta = 0;   // 本次变化量（正=提升、负=下降）；便于"只认提升"的检测方早退
     static constexpr int kNoEventState = -999;
 };
 
@@ -169,6 +197,15 @@ public:
     }
 
     /**
+     * set_delivery_sink - 投递时把事件**同时抄一份**给外部（事件带录制用）。
+     *
+     * 为什么在投递处抄而不是 emit 处：emit 只入队，可能因为反馈环超波次被丢弃；
+     * 抄在投递处，记下来的与 watcher 真正看到的完全一致。
+     * 传 nullptr 关闭抄送。抄送是纯观测，不改变任何投递行为。
+     */
+    void set_delivery_sink(std::vector<BattleEvent>* sink) { sink_ = sink; }
+
+    /**
      * drain - FSM 在 State 桶之后调用，统一投递待处理事件。
      * @param ctx          拥有本 EventCenter 的 BattleContext（传给 watcher fn）
      * @param current_round 当前回合（窗口过期判定）
@@ -189,6 +226,9 @@ public:
             std::deque<BattleEvent> wave = std::move(pending_);
             pending_.clear();
             for (const BattleEvent& event : wave) {
+                if (sink_ != nullptr) {
+                    sink_->push_back(event);
+                }
                 deliver(ctx, current_round, event, watcher_valid_id);
             }
         }
@@ -297,6 +337,7 @@ private:
     std::unordered_map<int, EventWatcher> watchers_;          // id -> watcher
     std::unordered_map<EventType, std::vector<int>> by_type_; // type -> watcher ids
     std::deque<BattleEvent> pending_;                         // 待投递事件队列
+    std::vector<BattleEvent>* sink_ = nullptr;                // 投递抄送目标（事件带）
     bool draining_ = false;                                   // 是否正在 drain（日志/调试定位用）
     int next_id_ = 1;
 };

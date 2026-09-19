@@ -1,6 +1,7 @@
 #include <effects/effect_unit.h>
 
 #include <cstdlib>
+#include <vector>
 
 #include <fsm/battleContext.h>
 
@@ -72,12 +73,17 @@ bool condition_holds(BattleContext* ctx, const EffectArgs& args, const EffectUni
         case UnitCondition::TargetHasAnomaly: {
             const int actor = resolve_actor(args, unit);
             const int target = resolve_target(actor, unit);
-            for (int end : ctx->abnormal_status_end_round[target]) {
-                if (end != 0) {
-                    return unit.condition == UnitCondition::TargetHasAnomaly;  // 有异常
+            // ⚠️ 判活必须用 `roundCount < end_round`，**不能**用 `end != 0`：
+            //    `abnormal_status_end_round` 存的是"失效回合"、**过期不回写**（引擎旧习惯），
+            //    故 `end != 0` 对早已过期的槽仍判"有异常"（假阳性）。本线加了
+            //    `tick_abnormal_statuses` 之后回合扣减点会回写清 0，但**回合中途**（异常在
+            //    本回合开始时过期、扣减点还没到）仍会读到旧值 —— 所以判据本身也要对。
+            for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
+                if (ctx->has_active_abnormal_status(target, id)) {
+                    return unit.condition == UnitCondition::TargetHasAnomaly;
                 }
             }
-            return unit.condition == UnitCondition::TargetNoAnomaly;  // 无异常
+            return unit.condition == UnitCondition::TargetNoAnomaly;
         }
         case UnitCondition::TargetHpBelow: {
             const int actor = resolve_actor(args, unit);
@@ -201,12 +207,15 @@ BranchKey run_primitive(BattleContext* ctx, const EffectArgs& args, const Effect
 
 }  // namespace
 
-BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args, const EffectUnit& unit) {
+// 执行器主体。skip_condition = 单元准入门放行（"该条已永久无条件"）：跳过**本单元顶层**
+// 的条件求值，其余（概率 roll、原语、分支递归）不变；递归进分支子单元时各自按条件判。
+BranchKey execute_effect_unit_impl(BattleContext* ctx, const EffectArgs& args,
+                                   const EffectUnit& unit, bool skip_condition) {
     if (!ctx) {
         return BranchKey::Invalid;
     }
     // 前置条件（第二刀）：不满足 → 效果不触发（走 on_other/无动作），先于概率 roll。
-    if (!condition_holds(ctx, args, unit)) {
+    if (!skip_condition && !condition_holds(ctx, args, unit)) {
         return unit.on_other ? execute_effect_unit(ctx, args, *unit.on_other) : BranchKey::Never;
     }
     // 概率前置：未触发 → on_other 兜底（或返回 Never）
@@ -234,4 +243,40 @@ BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args, const 
         return execute_effect_unit(ctx, args, *branch);
     }
     return key;
+}
+
+BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args, const EffectUnit& unit) {
+    return execute_effect_unit_impl(ctx, args, unit, /*skip_condition=*/false);
+}
+
+BranchKey execute_effect_unit_unconditional(BattleContext* ctx, const EffectArgs& args,
+                                            const EffectUnit& unit) {
+    return execute_effect_unit_impl(ctx, args, unit, /*skip_condition=*/true);
+}
+
+// ── 单元准入门存储（进程全局）──
+// 注册表实例可能是 EffectFactory（moves_lib）也可能是 SoulMarkManager（soul_lib），
+// 两处都实现 IEffectRegistry::registerUnitAdmission 并转到这儿，读侧（Skills::register_branch）
+// 只认这一份。
+namespace {
+std::vector<UnitAdmissionFn>& unit_admission_hooks() {
+    static std::vector<UnitAdmissionFn> hooks;
+    return hooks;
+}
+}  // namespace
+
+void add_unit_admission(UnitAdmissionFn fn) {
+    if (fn) {
+        unit_admission_hooks().push_back(fn);
+    }
+}
+
+bool unit_admission_grants(BattleContext* ctx, int owner, int skill_id, int unit_index,
+                           int condition) {
+    for (UnitAdmissionFn fn : unit_admission_hooks()) {
+        if (fn && fn(ctx, owner, skill_id, unit_index, condition)) {
+            return true;   // 任一钩子放行即放行（门是全局的，条数按 dylib 计）
+        }
+    }
+    return false;
 }

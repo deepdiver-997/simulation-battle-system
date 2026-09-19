@@ -66,6 +66,29 @@ struct SoulMarkHooks {
     SoulMarkHookFn on_exit = nullptr;
 };
 
+// ════════════════════════════════════════════════════════════════════
+// 单元准入门（注册期钩子，插件提供）
+//
+// 干什么：技能的**条件效果单元**（组合语法解析出的 EffectUnit）在注册到效果桶之前，
+// core 逐条问一次；返回 true = 本条**跳过条件求值**、按无条件注册。
+//
+// 为什么需要：万相乖离"永久取消第五技能首条未取消过的效果中的触发条件"这类**进度型**
+// 改写，若用"把技能对象的 condition 改成 None"表达有两个毛病——
+//   ① 进度被持久写进 `Skills`（core 对象被插件改写；同一批 pet 打第二局会把进度带过去；
+//      且历史实测"给 Skills 加成员"会引出依赖布局的 UB）；
+//   ② 想重置就得另存一份原值台账，两份状态必须同步。
+// 改成"**进度（计数器）留在魂印侧 + 注册期按进度放行**"后：技能对象只读，
+// 重置 = 计数器清零，一份状态。
+//
+// 参数：owner = 执行方；skill_id = 正在执行的技能 id；unit_index = 单元在该技能
+//       `parsed_units_` 里的下标；condition = 该单元当前条件（UnitCondition 整数值）。
+// 语义：返回 false = 照常按条件求值；**不做**"强制跳过本单元不注册"（需要时加返回值，
+//       而不是加一个布尔）。
+// 时机：per-use（每次技能执行、注册分支时逐条问），不是加载期——加载期没有 BattleContext。
+// 用 typedef：effect_unit.h 也声明同名同型（typedef 允许重复声明，using 别名不允许）。
+typedef bool (*UnitAdmissionFn)(BattleContext*, int owner, int skill_id, int unit_index,
+                                int condition);
+
 // Plugin interface version for compatibility checking
 constexpr const char* kPluginInterfaceVersion = "1.0";
 
@@ -93,6 +116,9 @@ public:
         (void)soulmark_id;
         (void)hooks;
     }
+
+    // 注册**单元准入门**（见 UnitAdmissionFn 注释）。默认空实现，不强制既有实现者改写。
+    virtual void registerUnitAdmission(UnitAdmissionFn fn) { (void)fn; }
 
     // Register a skill/move effect
     virtual void registerSkillEffect(int effect_id, EffectFn effect_fn) = 0;
@@ -175,6 +201,16 @@ inline bool add_soul_program(int id, std::vector<SoulMarkNodeRef> nodes) {
     return true;
 }
 
+// 单元准入门：**每 dylib 至多一条**（全局钩子，不按 id 分）。多条时按注册顺序任一命中即放行。
+inline std::vector<UnitAdmissionFn>& unit_admissions() {
+    static std::vector<UnitAdmissionFn> table;
+    return table;
+}
+inline bool add_unit_admission(UnitAdmissionFn fn) {
+    unit_admissions().push_back(fn);
+    return true;
+}
+
 // 把本 dylib 的三张表一次性推给 registry（在 `plugin_register` 里调一次）。
 inline void flush(IEffectRegistry* registry) {
     if (!registry) {
@@ -188,6 +224,9 @@ inline void flush(IEffectRegistry* registry) {
     }
     for (const SoulProgramEntry& e : soul_programs()) {
         registry->registerSoulMarkProgram(e.id, e.nodes);
+    }
+    for (UnitAdmissionFn fn : unit_admissions()) {
+        registry->registerUnitAdmission(fn);
     }
 }
 
@@ -207,6 +246,13 @@ inline void flush(IEffectRegistry* registry) {
     namespace {                                                                     \
     [[maybe_unused]] const bool kSoulProgramReg_##id =                              \
         ::plugin_reg::add_soul_program((id), {__VA_ARGS__});                        \
+    }
+
+// 单元准入门（全局一条）：UNIT_ADMISSION(fn) —— fn 签名见 UnitAdmissionFn。
+#define UNIT_ADMISSION(fn)                                                          \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kUnitAdmissionReg_##fn =                            \
+        ::plugin_reg::add_unit_admission(&(fn));                                    \
     }
 
 // Utility to convert effect ID to function name

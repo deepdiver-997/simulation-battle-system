@@ -3,6 +3,7 @@
 
 #include <effects/effect.h>
 #include <effects/rule_center.h>  // SealKind / SkillInvalidNotifyResult / EffectScope
+#include <effects/spirit_lifecycle.h>  // 存活/死亡/消逝 三态 + DeadScope + DefeatCause
 
 class BattleContext;
 
@@ -128,6 +129,37 @@ inline bool try_apply_anomaly(BattleContext* ctx,
 }
 
 // ----------------------------------------------------------------
+// 异常自然结算点（到期衍化 + 到期/回合扣减点伤害 + 过期回写）
+// ----------------------------------------------------------------
+
+/**
+ * tick_abnormal_statuses - **异常自然结算点**：在"回合扣减点"跑一遍异常的三部曲。
+ *
+ * 为什么需要它：引擎的异常过期一直是**纯读比较**（`roundCount < end_round`，从不清槽），
+ * 于是"异常到期的那个瞬间"根本不存在 → 官方衍化（"焚烬结束后转化为烧伤"）**无处落脚**。
+ * 本函数补上这个时点，顺序依官方 idx=59「回合结束时**先转化异常，再回合扣减**」与
+ * idx=429《时点表》「异常沉默，束缚，烈焰诅咒均在该时点结算」：
+ *
+ *   ① **回合扣减点档伤害**：仍生效中的"每回合结束后"异常（沉默 30 / 烈焰诅咒 24）；
+ *   ② **到期项**（`end_round <= roundCount`，本回合起已不再生效的那些）：
+ *      ②a "…结束时"档伤害（束缚 28）；
+ *      ②b **衍化**（`abnormal_derivation`）——直接写转出异常的 `end_round` + 附带弱化
+ *          （`stat_drop_piercing`，**无视免弱**）：冰封→冻伤+速度-1、焚烬→烧伤+命中-1、
+ *          诅咒→随机（烈焰诅咒/致命诅咒/虚弱诅咒）、感染→中毒+攻击&特攻-1、超频→1~2 回合瘫痪；
+ *   ③ **过期回写**：把 `end_round <= roundCount` 的槽全部清 0
+ *      —— 顺手修掉"过期不回写 → `end != 0` 判'有异常'是假阳性"的历史问题。
+ *
+ * ⚠️ 衍化**不走 `apply_anomaly`**：那是"新施加"，会重跑免疫/抗性/转化/弹控全链，而官方语义是
+ *    "同一异常改变了形态"（idx=59「精灵还是算作处于异常，可以正常触发某些'处于异常则xx'效果」）。
+ *    写成 apply_anomaly 会让"冰封→冻伤"被目标的冻伤免疫挡掉，与官方相反。
+ *
+ * ⚠️ `abnormal_status_end_round` 本身是 **on-stage 作用域**（换宠已清），故只处理在场精灵即可。
+ *
+ * @return 本次实际衍化出的异常条数（0 = 无衍化）
+ */
+int tick_abnormal_statuses(BattleContext* ctx, int target);
+
+// ----------------------------------------------------------------
 // 断回合
 // ----------------------------------------------------------------
 enum class BreakResult {
@@ -153,6 +185,13 @@ enum class DamageKind {
                    //   不再按目标最大体力换算）——"附加自身已损失体力50%的百分比伤害"
                    //   （谱尼能量刻印）这类"值由来源算出、但走百分比抗性/护罩"的效果用。
     TRUE,          // 真实伤害（护盾护罩都不响应）
+    // **属性伤害**（《赛学必修16—伤害类型》的独立一类）：由**属性技能**造成、声明系别与点数、
+    // 数值 = 点数 × 克制倍数。走**红伤**落血（emit EVENT_TAKE_DAMAGE、进死亡归因），
+    // 但**护盾/护罩不响应它**（用户 2026-09-18 口径："属性直伤其实不会被护盾/护罩抵挡"）。
+    // ⚠️ 它**不是**真伤：真伤"无法减免"，属性伤害仍吃**锁伤**与**系别条件性抵挡**
+    //    （见 `deal_attribute_damage` 的阶段子集）。单独列一档就是为了让"不吃护盾"与
+    //    "不是真伤"这两件事各自可读，不要图省事借用 FIXED/TRUE。
+    ATTRIBUTE,
 };
 
 /**
@@ -244,6 +283,9 @@ enum class StatChangeResult {
     SUCCESS,       // 成功变更
     AT_CAP,        // 到上限/下限（等级越界，未变更）
     INVALID_PARAM, // 无效参数（target/stat 非法）
+    // 目标处于"**无法处于能力提升状态**"（ImmunityType::STAT_BOOST：混沌魔君索伦森 1011
+    // 的 2 回合封锁）→ 本次**提升**整次失败、等级一点不动。只挡 delta>0 的方向。
+    BLOCKED,
 };
 
 // 弱化原语的返回（见 stat_drop）。
@@ -259,8 +301,19 @@ enum class StatDropResult {
  * 返回"发生了什么"，效果程序据此分支（如"提升失败则附加固定伤害"）。
  *
  * @param target 目标方 (0/1)
- * @param stat   能力下标（0=攻击 1=特攻 2=防御 3=特防 4=速度 5=体力）
+ * @param stat   能力下标（0=攻击 1=特攻 2=防御 3=特防 4=速度 5=体力 **6=命中**）
+ *               —— **5 = 命中等级**（官方能力提升六项之一，2026-09-18 口径更正）：
+ *               只作用于精度公式（skills.cpp 的 query_usage ①）；`NumericalPropertyIndex`
+ *               的第 6 项是**体力**（属性值，不是等级），两套索引只在 0..4 重合。
  * @param delta  变化量（正=提升，负=下降；越界则 AT_CAP 不变更）
+ *
+ * ⚠️ **不查免弱（STAT_DROP）**——自身增益/原始变更用它；"对手施加的弱化"用 stat_drop。
+ * ⚠️ 但**查 STAT_BOOST**（"无法处于能力提升状态"）：delta>0 且目标被封锁 → BLOCKED、
+ *    等级一点不动。查的是"往上抬"的方向，往下压（delta<0）不受影响。
+ * ⚠️ 本函数是所有"等级往上/往下改"的原语写入路径之一，调用它会 emit
+ *    `EVENT_STAT_CHANGED`（本体/视图同步 + 监测级的事件）——**不要绕过它直写
+ *    `ctx->ability_levels`**，否则监测能力等级变化的效果（索伦森 1011 的压制 / 后续
+ *    "对手强化时…"一族）看不到这次变化。
  */
 StatChangeResult stat_change(BattleContext* ctx, int target, int stat, int delta);
 
@@ -278,9 +331,30 @@ StatChangeResult stat_change(BattleContext* ctx, int target, int stat, int delta
  *      原理不同：那个护的是"已有的提升被拿走"，这个是把等级往下压。
  *   3. **不突破 -6**：到 -6 即停（钳制），不越界（区别于 stat_change 的 AT_CAP 拒绝）。
  *
+ * @param stat   能力下标（0..5，5=命中等级，见 stat_change 的说明）
  * @param amount 下降量（正数；<=0 → INVALID_PARAM）
  */
 StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount);
+
+/**
+ * stat_drop_piercing - **穿透版弱化**：不查免弱、直接压等级。
+ *
+ * 专供"**异常衍化带来的弱化**"（冰封 15→速度-1、焚烬 22→命中-1、感染 27→攻击&特攻-1）：
+ * 语料 idx=37「**异常转化为弱化会无视免弱**」、idx=466「不能免疫异常带来的弱化（焚烬，冰封，感染）」。
+ *
+ * 与 stat_drop 的唯一差异：**第一件事不是查 `ImmunityType::STAT_DROP`**
+ * （查了就会被"免弱"整条挡掉，与官方口径正好相反）。其余一致：
+ * 不查 STAT_CLEAR（强化保护可穿）、钳 -6、本体/视图一并同步。
+ *
+ * ⚠️ `stat` 域与 stat_drop **相同**（0..5，5 = 命中等级）—— 本原语与它的差别只在**免弱**，
+ *    不在域名。命中等级不写 `battle_attrs`（那只由 `NumericalPropertyIndex` 索引），
+ *    只作用于精度公式（skills.cpp 的 query_usage ①）。
+ * ⚠️ 写入走 `write_ability_level`（等级写入唯一落点）：衍化产生的等级变化同样会 emit
+ *    `EVENT_STAT_CHANGED`，窗口型监听器（如索伦森 1011 的压制）能"写后即知"。
+ *
+ * @param amount 下降量（正数；<=0 → INVALID_PARAM）
+ */
+StatDropResult stat_drop_piercing(BattleContext* ctx, int target, int stat, int amount);
 
 // ----------------------------------------------------------------
 // 恢复体力 / 固定伤害
@@ -421,6 +495,28 @@ FixedDamageResult deal_pink_damage(BattleContext* ctx, int target, int amount,
 FixedDamageResult deal_true_damage(BattleContext* ctx, int target, int amount, int actor);
 
 /**
+ * deal_attribute_damage - **属性伤害**结算出口（《赛学必修16—伤害类型》）。
+ *
+ * 属性伤害 = 由**属性技能**造成的**技能伤害**，数值 = 声明点数 × **克制倍数**（不涉及攻防值），
+ * 效果文本里通常直接声明系别与点数（"附加 300 点电系伤害"）。它**有系别**——
+ * 固定/百分比/真实三种官方明确"不存在系别概念"，它是第三种技能伤害。
+ *
+ * ★ 结算形式（用户 2026-09-18 口径）：**只吃克制关系，最后以红伤形式结算**
+ *   → 这里走 `DamageKind::NORMAL`（红伤），因此**吃护盾/增伤/减伤/锁伤/挡伤与对应免疫**，
+ *     并 emit `EVENT_TAKE_DAMAGE`、进死亡漏斗。**不要**用 FIXED（那是粉伤，且无系别）。
+ *
+ * @param target  承受方 (0/1)
+ * @param points  声明点数（效果文本里的"X 点"）
+ * @param element 造成伤害的**系别**（元素 id 对，如 次元·龙 = {17,15}）；
+ *                克制倍数 = 该系别 vs `ws.view_elementalAttributes[target]`
+ *                （复用官方克制表，双属性按官方组合相乘）。
+ *                倍率 0（免疫）或结算不足 1 点 → **不打伤害**，返回 SUCCESS。
+ * @param actor   施放方（未知传 -1）
+ */
+FixedDamageResult deal_attribute_damage(BattleContext* ctx, int target, int points,
+                                        const int element[2], int actor);
+
+/**
  * HpZeroResult - 体力归零原语的结算结果
  */
 enum class HpZeroResult {
@@ -498,6 +594,156 @@ DrainHpResult drain_hp(BattleContext* ctx, int actor, int target, int fraction_d
  * 恢复走 heal 原语（封回血/恢复效果修正生效；被封则吸不到血）。
  */
 DrainHpResult drain_hp_amount(BattleContext* ctx, int actor, int target, int amount);
+
+// ----------------------------------------------------------------
+// 精灵生命周期：存活 / 死亡 / 消逝（三态定义与官方依据见 effects/spirit_lifecycle.h）
+//
+// 消逝与死亡是**两种机制**，别混用：
+//   死亡 = 体力归零（可复活；仍占位、仍算背包/场下）
+//   消逝 = 体力上限归零（不可复活；从所有空间与位置基准里剔除）
+// 数值削减（空元卪"击败后减少体力上限"类）走 reduce_max_hp_*，下限钳 1，
+// **永远不会**造成消逝——这条不变量是 is_vanished 判据成立的前提。
+// ----------------------------------------------------------------
+
+/**
+ * count_dead - 阵亡计数（官方四口径，判别轴是措辞）。
+ *
+ * scope 取 ROSTER(背包) / OFF_FIELD(场下) / NOT_ON_STAGE(不在场) / ALL(全部阵亡)，
+ * 见 DeadScope 注释（飞王=ROSTER、唐大=OFF_FIELD、帝君/西叶=ALL）。
+ * **额外精灵只进 NOT_ON_STAGE 与 ALL**；**已消逝的四个口径都不计**。
+ *
+ * 用于"己方每有 N 只阵亡则 XX"类效果——一次调用拿到当前值，
+ * 不要在效果里手写 for(slot<6)（那会把消逝的、把额外精灵都算错）。
+ */
+int count_dead(const BattleContext* ctx, int side, DeadScope scope);
+
+/**
+ * reduce_max_hp_pct - 削减体力上限（"减少自身体力上限的X%"）。
+ *
+ * 官方取整（idx=274 尤纳斯算例）：**削减向上取整**（576×0.9=518.4 → 519）。
+ * floor = 下限（默认 1）：**钳到 1 就不再降**。下限的存在保证上限不会被削到 0，
+ * 从而"上限==0"与"被消逝"严格等价（见 spirit_lifecycle.h 头注释）。
+ * 削减后当前体力若超过新上限则同步压低；已消逝目标直接拒绝（消逝不可逆）。
+ *
+ * @return 新的体力上限；参数非法/目标已消逝返回 -1
+ */
+int reduce_max_hp_pct(BattleContext* ctx, int side, int slot, int pct, int floor = 1);
+
+/**
+ * raise_max_hp_pct - 提升体力上限（"提升X%的体力上限"、"记录体力上限"类）。
+ * 官方取整：**提升向下取整**（571×1.01=576.71 → 576）。已消逝目标拒绝。
+ * @return 新的体力上限；参数非法/目标已消逝返回 -1
+ */
+int raise_max_hp_pct(BattleContext* ctx, int side, int slot, int pct);
+
+/**
+ * reduce_max_hp_flat - 削减体力上限（**点数版**："每回合结束后减少200点体力上限"）。
+ *
+ * 契约与 reduce_max_hp_pct 完全一致：下限钳 floor（默认 1，"上限==0 ⇔ 被消逝"
+ * 不变量的守卫）、削减后当前体力超出则同步压低、已消逝目标拒绝。
+ * 为什么要点数版：点数衰减用百分比公式凑不准——p=ceil(amount*100/max) 的取整方向
+ * 随 max 漂移（999 减 200 会得到 790 而不是 799），点数削减就该用点数原语。
+ *
+ * @return 新的体力上限；参数非法/目标已消逝返回 -1
+ */
+int reduce_max_hp_flat(BattleContext* ctx, int side, int slot, int amount, int floor = 1);
+
+/**
+ * raise_max_hp_flat - 提升体力上限（**点数版**："获得其消逝前体力上限的10%"，空元之录）。
+ * 与 raise_max_hp_pct 同一套契约：提升上限**不动当前体力**、已消逝目标拒绝。
+ * @return 新的体力上限；参数非法/目标已消逝返回 -1
+ */
+int raise_max_hp_flat(BattleContext* ctx, int side, int slot, int amount);
+
+/**
+ * defeat_pet - **死亡漏斗**（精灵倒下的唯一登记点，含场下精灵）。
+ *
+ * 契约（顺序固定）：
+ *   1) 目标 hp > 0 → NOT_DOWN（调用方应保证先把体力打到 0）；
+ *   2) 该槽本次死亡已登记 → ALREADY_DEAD（幂等，可安全重复调用）；
+ *   3) 逐个询问 death_interceptors（**消耗体力成因会跳过 sees_hp_consume=false 的**，
+ *      即残留体力免死对消耗体力无效、复活有效——官方 idx=339）；
+ *      任一条返回 true 且把 hp 写回 > 0 → INTERCEPTED（死亡不成立）；
+ *   4) 登记 pet_death_notified + emit EVENT_DEATH(actor=击杀方, target=倒下方,
+ *      slot=槽位, cause=成因)。
+ *
+ * ⚠️ 为什么必须覆盖场下：官方 idx=62/440 圣光灵神「若于**场下或回合结束后**死亡时
+ *    100%复活」，idx=225 咤克斯条目「背包存在朱雀和灵神这种真二命魂印，会在后场触发
+ *    魂印复活」。只在场上判死会漏掉这类。
+ *
+ * @param actor 击杀方（未知传 -1）
+ */
+DefeatResult defeat_pet(BattleContext* ctx, int side, int slot, int actor, DefeatCause cause);
+
+/**
+ * revive_pet - 复活（真2命 / 重生类）。把体力写为 hp（钳到上限），并复位死亡登记
+ * （同一只宠"死亡→复活→再死"要能再发一次 EVENT_DEATH）。
+ *
+ * ⚠️ **已消逝的目标拒绝**（官方 idx=251 重生之翼"被消逝的精灵除外"；消逝不可逆）。
+ * 官方体力口径（idx=224）：**后场复活不是回满**，而是回到"游戏开始时记录的体力"
+ * ——记录由效果侧自理（存 pet.soulmark_storage），本原语只负责落地。
+ *
+ * @return 实际写入的体力；参数非法/已消逝返回 -1
+ */
+int revive_pet(BattleContext* ctx, int side, int slot, int hp);
+
+/**
+ * VanishResult - 消逝原语的结果。
+ */
+enum class VanishResult {
+    VANISHED,          // 本次消逝成功（上限归零 + 登记阵亡；**不发 EVENT_DEATH**）
+    ALREADY_VANISHED,  // 已被消逝（幂等；后到的消逝方拿不到收益——官方 idx=198
+                       // "已经被消逝过的精灵，自然就不会触发…消逝以及后续的重置"）
+    INVALID,           // 参数非法
+};
+
+/**
+ * vanish_spirit - **消逝原语**：把目标体力上限与当前体力一并归零。
+ *
+ * 语义（官方）：消逝蕴含阵亡，但**不是死亡事件**——它比死亡更强，故：
+ *   - 不 emit EVENT_DEATH（否则会误触发击败/亡语类效果）；
+ *   - 登记 pet_death_notified（使对账扫描不再为它发死亡事件）；
+ *   - 从"背包/场上/场下/不在场"四个空间与位置基准中全部剔除（由 is_vanished 承载）。
+ * 可作用于存活目标（官方 idx=223「令对手主动消耗全部体力并消逝」）。
+ *
+ * @return VANISHED / ALREADY_VANISHED（先到先得）/ INVALID
+ */
+VanishResult vanish_spirit(BattleContext* ctx, int side, int slot, int actor);
+
+/**
+ * vanish_dead_spirits - 对某一方"已阵亡精灵"批量消逝（空元之录 / 魂帝登场时点 / 无为觉者
+ * "自身击败对手后令对方全部阵亡精灵消逝"共用入口）。
+ *
+ * @param count         最多消逝几只（<=0 = 不限，全消）；空元/魂帝按"双方各1只"传 1
+ * @param include_extra 是否同时消逝该方**已阵亡的额外精灵**（官方 idx=149 #3：
+ *                      空元消逝可让已死亡的金龙玄龙失效 → 传 true）。
+ *                      ⚠️ 结算顺序：先本体后额外（本体的"可以吃"是常态，
+ *                      额外精灵是补丁面）。
+ * @return 实际消逝的数量（0 = 没有可消逝的目标）。**"任意一方消逝成功则获得收益"
+ *         类效果就靠这个返回值分支**（官方 idx=33：魂帝"任意一方消逝成功则获得1具尸骸"）。
+ */
+int vanish_dead_spirits(BattleContext* ctx, int side, int count, bool include_extra);
+
+/**
+ * register_death_interceptor - 注册死亡拦截器（免死 / 真2命复活）。
+ * 同 source_effect_id 重复注册为覆盖（幂等，供效果每次登场重注册）。
+ * 生命周期：随 clearAllEffects 清空；效果侧切换失效请自行调 remove_death_interceptors。
+ */
+void register_death_interceptor(BattleContext* ctx, DeathInterceptor interceptor);
+
+/** 注销某来源的全部死亡拦截器（效果失效/被消逝时撤掉自己的那条）。 */
+void remove_death_interceptors(BattleContext* ctx, int source_effect_id);
+
+/**
+ * sync_pending_deaths - **对账兜底**：扫双方 6 槽，把"hp<=0 且未登记死亡"的补登记
+ * （cause=EFFECT），并把"hp>0 且登记过"的复位（复活后能再死一次）。
+ *
+ * 为什么需要：引擎里存在**绕过原语的直写死亡**（咤克斯连锁击杀对场下宠直写 hp=0、
+ * 反弹伤害直写 hp -= n）。纯钩子模型在这些路径上全漏；读方查状态不查事件流，
+ * 所以漏一次钩子只丢一次通知、不丢事实——由本函数在固定时点补齐。
+ * 幂等，可在多个时点重复调用。
+ */
+void sync_pending_deaths(BattleContext* ctx);
 
 // （kill 原语已删除，2026-09-17）：旧的"直接 hp=0"秒杀绕过秒杀体系（不查秒杀免疫票/
 // hp_zero_converted/瞬杀抑制、不 emit EVENT_HP_TO_ZERO），唯一调用方（EffectUnit 的

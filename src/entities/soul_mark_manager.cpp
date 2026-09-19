@@ -273,6 +273,11 @@ void SoulMarkManager::registerSkillEffects(
     (void)effects;
 }
 
+void SoulMarkManager::registerUnitAdmission(UnitAdmissionFn fn) {
+    // soul_lib 走的是 SoulMarkManager 这个注册表实例；门本身是进程全局（effect_unit.cpp 存）。
+    add_unit_admission(fn);
+}
+
 size_t SoulMarkManager::getLoadedLibraryCount() const {
     return loaded_libraries_.size();
 }

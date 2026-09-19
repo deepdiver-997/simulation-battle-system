@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include <abnormal-system/abnormal-types.h>
 #include <effects/effect_meta.h>
 #include <effects/effect_unit_parser.h>
 #include <effects/effect_unit_loader.h>
@@ -88,6 +89,8 @@ State effect_register_state(int effect_id) {
             return State::BATTLE_FIRST_ATTACK_DAMAGE;
         case 1256:  // 王·酷烈风息 "造成的伤害低于X"：需伤害结算后读 resolvedDamage.final
         case 101:   // "伤害数值的{0}%恢复自身"（吸血）：同上，伤害结算后按最终伤害回血
+        case 422:   // "附加所造成伤害值{0}%的固定伤害"：伤害结算后读**裸伤台账**
+                    // （ws.raw_attack_damage，"管线前"的值；见 battleWorkspace.h 三值说明）
         case 1221:  // 王·酷烈风息 "反转自身能力下降"：攻击技能**先结算伤害再反转**——
                     // 反转不参与本次伤害（本次用反转前等级，提升留给下次），故伤害结算后操作 levels
         case 521:   // 反转自身能力下降状态（无参基本形，1221 的主子句同族）：同上口径
@@ -95,6 +98,28 @@ State effect_register_state(int effect_id) {
         case 1960:  // 希拓·神煌炎舞斩 "击败对手则令自身N回合内强化无法被消除或吸取"
                     // → 击败对手后时点（本轮线性序最后，本技能效果仍在桶里）
             return State::BATTLE_AFTER_DEFEATING_OPPONENT;
+        // ── 空元之诗（空元行者 4586；官方 effect_icon 1791）────────────────────
+        // 「空元行者技能中的空元之诗效果**不因原本的行动而触发**，每次行动结束后，若本回合
+        //   所选技能的空元之诗效果生效且条件满足，空元行者会抹除一篇空妄诗章，抹除成功后
+        //   进行**一次额外行动触发空元之诗效果**」
+        // 这 5 条子效果（渍/镀/柱/烙/均，各挂在一把 4586 技能上，全库唯一宿主）**本来就是
+        // 技能的 side_effect**：默认时点（BATTLE_FIRST_SKILL_EFFECT）落在普通行动里 →
+        // 会"因原本的行动而触发"，与官方口径相反。
+        // ★ 所以"门控"与"payload"是**同一个决定**：把它们的注册时点直接挪到额外行动时点。
+        //   于是 ①普通行动里注册不进来 → 结构上不可能触发（不是靠执行期早退）；
+        //        ②额外行动桶里它就在 → "声明内容"由既有桶模型天然承载，无需 payload 结构。
+        //   两条要求一次满足，且不改 `UnitAdmissionFn`（避免动插件接口）。
+        // ⚠️ 依赖 state_for_owner 的 BATTLE_FIRST_EXTRA_ACTION 镜像（上方已加）。
+        case 2086:  // 空元之诗·渍：若技能无效，则消除对手回合类效果、能力提升效果，
+                    //            消除成功任意一项则令对手诅咒
+        case 2087:  // ·镀：若对手处于控制类异常状态，则己方免疫下2次受到的异常状态
+        case 2088:  // ·柱：若对手处于回合类效果，则对手每有1个技能PP值不为满附加50点
+                    //       次元·龙系伤害且对手下回合无法主动切换精灵
+        case 2089:  // ·烙：若自身为先出手，则此技能每剩余1点PP值附加50点次元·龙系伤害，
+                    //       下次击败对手后恢复自身全部体力与PP值
+        case 2090:  // ·均：附加双方体力上限差值50%的次元·龙系伤害，自身体力上限高于对手时
+                    //       额外吸取对手第五技能剩余的PP值，低于对手时附加伤害翻倍
+            return State::BATTLE_FIRST_EXTRA_ACTION;
         default:
             return State::BATTLE_FIRST_SKILL_EFFECT;
     }
@@ -131,6 +156,12 @@ SkillExecResult default_branch_for_effect(int effect_id) {
         case 2006:
         case 2501:
         case 2126:  // 烬灭神咒剑：技能无效时消除对手回合类/能力提升 + 焚烬
+            return SkillExecResult::SKILL_INVALID;
+        case 2086:  // 空元之诗·渍：「**若技能无效**，则消除对手回合类效果、能力提升效果…」
+                    // 它的整个条件就是"技能无效"→ 必须挂在 SKILL_INVALID 分支上，
+                    // 否则技能 miss/被盔时该效果根本不注册（那条正是它唯一的用武之地）。
+                    // 时点仍是额外行动（见 effect_register_state）——分支决定"哪一趟注册"，
+                    // 时点决定"哪一趟执行"，两者正交。
             return SkillExecResult::SKILL_INVALID;
         default:
             return SkillExecResult::HIT;
@@ -170,13 +201,16 @@ void materialize_attack_credential(BattleContext* ctx, int owner, const Skills& 
     cred.ignore_damage_limit |= skill.penetration_flags.ignore_damage_limit;
     cred.force_execute |= skill.penetration_flags.force_execute;
     cred.level = std::max(cred.level, skill.penetration_flags.level);
-    for (const auto& grant : ctx->penetration_grants[owner]) {
-        if (grant.remaining <= 0) {
-            continue;
-        }
-        cred.ignore_attack_immunity |= grant.ignore_attack_immunity;
-        cred.ignore_damage_limit |= grant.ignore_damage_limit;
-        cred.level = std::max(cred.level, grant.level);
+    // 次数型/窗口型「无视」凭证：查 **RuleCenter 的 PENETRATE_ATTACK 门**。
+    // ⚠️ 这里查的是"攻击技能"那条路 —— 只注册了 PENETRATE_ATTRIBUTE 的凭证（薇尔诗式全凭证
+    //    若只登记属性侧）不会被算进攻击凭证；反之 1926「下N次**攻击技能**无视」（无罔之心）
+    //    只登记攻击侧，属性伤害那条路查另一个门 → 既不命中也不消耗（用户 2026-09-18 口径）。
+    const RuleCenter::PenetrationQuery pen =
+        ctx->rule_center_.query_penetrate(owner, RuleCategory::PENETRATE_ATTACK, ctx->roundCount);
+    if (pen.valid) {
+        cred.ignore_attack_immunity |= pen.ignore_attack_immunity;
+        cred.ignore_damage_limit |= pen.ignore_damage_limit;
+        cred.level = std::max(cred.level, pen.level);
     }
     // 魂印条件凭证（SET 端）：使用 PP=0 技能 + force_execute_on_pp0 → 强制执行（无为觉者 2260）。
     if (ctx->force_execute_on_pp0[owner] && skill.pp == 0) {
@@ -199,6 +233,17 @@ EffectResult effect_run_parsed_unit(BattleContext* ctx, const EffectArgs& args) 
         return EffectResult::kOk;
     }
     execute_effect_unit(ctx, args, *unit);
+    return EffectResult::kOk;
+}
+
+// 同上，但**跳过本单元的条件**（单元准入门放行时 register_branch 换用本执行器）。
+// 语义 = "该条已永久无条件"；概率 roll 与分支递归照常。
+EffectResult effect_run_parsed_unit_unconditional(BattleContext* ctx, const EffectArgs& args) {
+    const auto* unit = static_cast<const EffectUnit*>(args.extra);
+    if (!ctx || !unit) {
+        return EffectResult::kOk;
+    }
+    execute_effect_unit_unconditional(ctx, args, *unit);
     return EffectResult::kOk;
 }
 
@@ -548,6 +593,35 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
                     ctx->effective_common_trait(1 - owner, TraitKind::Evasion)) {
                 accuracy = accuracy * (100 - e->args[0]) / 100;
             }
+            // 命中等级（view_levels 槽 **5**，官方能力提升六项之一）——2026-09-18 接入精度公式。
+            // 来源有两类：① 异常衍化族（焚烬 22 结束后"转化为烧伤与命中等级-1"，
+            // 见 abnormal-types.h 的 abnormal_derivation）；② 效果层"令对手命中等级±n"
+            // （`stat_change/stat_drop` 的 `stat=5`，既有插件 stat_dispel.cpp 已在用）。
+            // 倍率表见 `hit_level_accuracy_pct()`：**负档沿用引擎既有的官方档位表**
+            // （-1→85% … -6→25%，原误置在 getTempAbilityValue 里），正档暂无官方表 → 通用等级换算。
+            // ⚠️ 必中技能（cred.must_hit）在上面就分流了，走不到这里 → 命中等级治不了必中。
+            {
+                const int hit_level = ctx->ws.view_levels[owner][kAbilityLevelIndexHit];
+                if (hit_level != 0) {
+                    accuracy = accuracy * hit_level_accuracy_pct(hit_level) / 100;
+                }
+            }
+            // 异常状态对**攻击技能命中率**的修正（官方 effect_des 10/13）：
+            //   混乱(10)「攻击技能的命中率**减少80%**」  → ×20%
+            //   易燃(13)「攻击技能命中率**降低30%**」    → ×70%
+            // 官方措辞都限定"攻击技能" → gate `!is_attribute`（本轮分支本就只处理非必中技能）。
+            // 顺序：摆在命中等级之后、`hit_chance` 之前；乘法链的 int 截断会有 ±1 差异，
+            // 固定放在最末让结果可复现。
+            if (!is_attribute) {
+                if (ctx->has_active_abnormal_status(
+                        owner, static_cast<int>(AbnormalStatusId::Confusion))) {
+                    accuracy = accuracy * 20 / 100;
+                }
+                if (ctx->has_active_abnormal_status(
+                        owner, static_cast<int>(AbnormalStatusId::Flammable))) {
+                    accuracy = accuracy * 70 / 100;
+                }
+            }
             const float dodge_chance = ctx->ws.dodge_rate[1 - owner];
             const int hit_chance = accuracy - static_cast<int>(dodge_chance * 100);
             // 通用特性·虚无：**有概率闪避对手攻击技能**（必修6：本质是闪避、不是挡伤）——
@@ -584,6 +658,9 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
         // ⚠️ 必须单列一个开关：`crit_rate_mod` 是**乘算**修正，技能自身 `crit_rate == 0`
         //    时 `0 × 任何数 = 0`，表达不了"必定"（`crit_rate==0` 就是"永不必暴"）。
         float rate = critical_strike_rate * ctx->ws.crit_rate_mod[owner];
+        // **加算通道**（effect 32 蓄气族"+1/16"）：加法百分点，见 battleWorkspace.h 注释。
+        // add>0 时 rate>0 → 下方掷点自然解锁（add 是引爆效果，base=0 照样能暴）。
+        rate += ctx->ws.crit_rate_add[owner];
         // 通用特性·会心（必修6 ①②）：**0 星（args[0]<=1）的 6.25%（1/16）与技能初始暴击率
         // **加法**结算；**1-5 星是独立二次结算**（"只要有一个触发则当次攻击必定暴击"）。
         // args[0]=75/88/100/120/140 → ×10 即万分数（75→750/10000=7.5%）。
@@ -640,6 +717,32 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
     }
     if (nr == SkillInvalidNotifyResult::HIT_INVALID) {
         return SkillUsageResult::HIT_INVALID; // 封属·命中失效 → 效果失效、无补偿
+    }
+
+    // ②.1 **异常驱动的技能无效**（2026-09-18）
+    //
+    // 走 `SEALED`（→ SKILL_INVALID，**技能无效** + 补偿分支），**不是** `HIT_INVALID`
+    // （命中效果失效、不补偿）：官方与语料把两者分得很清（idx=170「**属性技能命中效果失效是封属性，
+    // 而属性技能无效是封属**，这一点不要搞错」），用户 2026-09-18 也特别强调"注意是无效不是命中效果失效"。
+    // 放在 ②.5 之前：无效比命中失效更强（前者走补偿，后者不走），语义上应先判。
+    // ⚠️ 排在 ② 门判定**之后**：故意让盔/威/封属先响应并**消费次数类条目**（与 miss 同约定
+    //    "一次技能使用会消耗所有响应它的次数类盔"）；本条只是"没有别的无效时的收口"。
+    // ⚠️ 被 `cred.force_execute` 绕过（与失明/盔/威同款：强制执行无视一切无效）。
+    if (!cred.force_execute) {
+        // 沉默 30：官方 effect_des 30「该状态下精灵**第五技能无效**，且每回合结束后受到…百分比伤害」；
+        // 语料 idx=473《机制讲解—龙威》「沉默：**第五效果必定无效**」。
+        // 按**替换后**的技能槽判 —— idx=51「骑士对决…转化为第五**会受到沉默影响**」。
+        if (ctx->has_active_abnormal_status(owner, static_cast<int>(AbnormalStatusId::Silence))
+            && ctx->executing_skill_slot(owner) == kFifthSkillSlot) {
+            return SkillUsageResult::SEALED;
+        }
+        // 失神 29：官方 effect_des 29「该状态下精灵使用**属性技能 50% 无效**」；
+        // 语料 idx=473「失神：50 概率属性无效」。
+        if (is_attribute
+            && ctx->has_active_abnormal_status(owner, static_cast<int>(AbnormalStatusId::Distraction))
+            && (std::rand() % 100) < 50) {
+            return SkillUsageResult::SEALED;
+        }
     }
 
     // ②.5 ③层"命中效果失效"（防御方按次挂载）：**按技能类型分别消费**。
@@ -761,6 +864,11 @@ State state_for_owner(State state, int owner, const BattleContext* ctx) {
             return State::BATTLE_SECOND_ACTION_END;
         case State::BATTLE_FIRST_AFTER_ACTION_END:
             return State::BATTLE_SECOND_AFTER_ACTION_END;
+        // 额外行动（2026-09-18）：之诗子效果（2086~2090）就是注册到这个时点的
+        // （见 effect_register_state），后出手方必须镜像到 SECOND 侧，否则两个
+        // owner 的节点会挤在 FIRST 桶里、后手方那一条永不执行。
+        case State::BATTLE_FIRST_EXTRA_ACTION:
+            return State::BATTLE_SECOND_EXTRA_ACTION;
         default:
             return state;
     }
@@ -868,6 +976,19 @@ void Skills::register_branch(BattleContext* ctx, int owner, SkillExecResult resu
             const EffectMeta* meta = EffectMetaCatalog::instance().find(effect.id);
             if (meta && meta->nullify.hit_effect_invalidatable) {
                 continue;
+            }
+        }
+        // 单元准入门（注册期）：条件效果单元逐条问一次魂印侧的门。放行 → **本条换成
+        // "跳过条件"的执行器**（技能对象只读，"已永久无条件"由魂印侧的进度表达）。
+        // 见 plugin_interface.h 的 UnitAdmissionFn（万相乖离的取消进度）。
+        if (effect.logic == &effect_run_parsed_unit && effect.args.extra) {
+            const auto* unit = static_cast<const EffectUnit*>(effect.args.extra);
+            if (unit >= parsed_units_.data() && unit < parsed_units_.data() + parsed_units_.size()) {
+                const int unit_index = static_cast<int>(unit - parsed_units_.data());
+                if (unit_admission_grants(ctx, owner, id, unit_index,
+                                          static_cast<int>(unit->condition))) {
+                    effect.logic = &effect_run_parsed_unit_unconditional;
+                }
             }
         }
 

@@ -48,6 +48,36 @@ bool field_has_on_stage_death(const BattleContext* ctx) {
         || ctx->seerRobot[1].elfPets[ctx->on_stage[1]].hp <= 0;
 }
 
+// 死亡漏斗（defeat_pet）的调用点：把"体力已归零的在场精灵"登记为阵亡，
+// 期间逐个询问死亡拦截器（残留体力免死 / 真2命复活），拦下则不死、回合照常继续。
+//
+// 位置：两个死亡结算时点，**在时点桶之后**——桶里注册的"死亡时点免死"节点
+// （谱尼 1038 轮回式快照回档）先有机会把 hp 写回，随后才轮到拦截器层。
+//
+// ⚠️ 官方免死有两种检测模型（idx=319《赛学选修9—免死检测》），这里只覆盖①：
+//   ① **固定时点检测**（"绝大多数魂印免死精灵"，时点=额外行动之后的死亡结算时点）
+//      ← 本处即该时点，也是"消耗全部体力"以外一切致死的收敛点；
+//   ② **范围即时检测**（库贝萨/帝皇之御/空元行者/光螳螂/战螳螂/葬生魔莲/凌雪樱/
+//      星光鲁斯王，命中即检）——需要伤害结算内的即时判定，**待做**
+//      （落点应是伤害管线 DETECT 阶段之后，不在 FSM 时点桶里）。
+// 击杀方归因取 last_damage_actor（deal_damage/force_hp_to_zero 写入）；无记录传 -1。
+void funnel_on_stage_deaths(BattleContext* ctx, DefeatCause cause) {
+    if (!ctx) {
+        return;
+    }
+    for (int side = 0; side < 2; ++side) {
+        const int slot = ctx->on_stage[side];
+        if (slot < 0 || slot >= 6) {
+            continue;
+        }
+        if (ctx->seerRobot[side].elfPets[slot].hp > 0) {
+            continue;
+        }
+        const int actor = ctx->last_damage_actor[side][slot];
+        defeat_pet(ctx, side, slot, (actor >= 0 && actor <= 1) ? actor : -1, cause);
+    }
+}
+
 bool has_blocking_control_status(const BattleContext* ctx, int robot_id) {
     if (!ctx || robot_id < 0 || robot_id > 1) {
         return false;
@@ -57,11 +87,91 @@ bool has_blocking_control_status(const BattleContext* ctx, int robot_id) {
         if (!ctx->has_active_abnormal_status(robot_id, status_id)) {
             continue;
         }
-        if (is_control_abnormal_status(static_cast<AbnormalStatusId>(status_id))) {
-            return true;
+        if (!is_control_abnormal_status(static_cast<AbnormalStatusId>(status_id))) {
+            continue;
         }
+        // 狂信(41) 是**条件**禁行动（官方 effect_des 515）：
+        //   「控制类异常状态，该状态下**对手为信仰对象时**自身无法行动」
+        // → 跳过它，交给下面的专门判定；其余控制类照旧整段禁行动。
+        if (status_id == static_cast<int>(AbnormalStatusId::Fanaticism)) {
+            continue;
+        }
+        return true;
+    }
+
+    // 狂信：**只有"此刻在场的对手正好就是自己的信仰对象"时才禁行动**。
+    // 两段式语义（语料）：「如果对手进入狂信后，信仰我方在场精灵时，如果此时我方切换为
+    // **非信仰对象的精灵**，那么对手挂着狂信异常**依然可以正常出招**」——信仰对象是**存下来的引用**，
+    // 判的是"当前在场上的是不是它"。所以不能把它当无条件控制类。
+    if (ctx->has_active_abnormal_status(robot_id,
+            static_cast<int>(AbnormalStatusId::Fanaticism))
+        && ctx->opponent_is_faith_target(robot_id)) {
+        return true;
     }
     return false;
+}
+
+// 攻击技能**命中时**的异常交互（官方 effect_des 8/13）。
+//
+// 共同判据（照抄 `common_trait.cpp` 的 instant_kill_gate 形状）：
+//   · `ws.skill_exec_result[mover] != SKILL_INVALID` —— 引擎把 **MISS 与 盔/威/封属 都映射成
+//     SKILL_INVALID**（`skills.cpp` 的 write_skill_resolution），所以这一条恰是"未 miss 且没被拦"。
+//     ⚠️ 因此"打盔算不算命中"在本判据下 = **不算**（官方只说"未 miss"，这是拍板点）。
+//     ⚠️ HIT_INVALID（命中效果失效/白板）**算命中**（query_usage 返回 HIT）→ 会触发。
+//   · `ws.skill_type_view[mover] != Attribute` —— 官方两条都限定"**攻击**技能"；
+//     不加 gate 会让"对手放属性技能也解睡眠"。
+//
+// ① 睡眠(8)「对手使用攻击技能且未miss时**睡眠解除**」→ 清**受击方**的睡眠槽。
+// ② 易燃(13)「**被火系攻击技能命中时转化为烧伤**」→ 条件是**本次结算系别**含火。
+//    这是**条件转化**（源异常还没过期）→ 必须自己把易燃槽清 0，再直写烧伤；
+//    ⚠️ 不能用 `apply_anomaly`（那是"新施加"，会重跑免疫/抗性/弹控，把转化变成施加——
+//       与衍化族同一条理由，见 tick_abnormal_statuses 的注释）。
+//    ⚠️ 用**视图系别**（`ws.skill_element_view`，效果 2490「以XX系别结算」会改写）还是
+//       静态系别（`resolve_executing_skill(...)->element`）在 2490 场景下不同 → 本实现取
+//       **视图**（"被火系攻击技能命中"指本次结算系别），口径记档待实测。
+void anomaly_on_attack_hit_hook(BattleContext* ctx, int mover) {
+    if (!ctx || mover < 0 || mover > 1) {
+        return;
+    }
+    if (ctx->ws.skill_exec_result[mover] == SkillExecResult::SKILL_INVALID) {
+        return;   // 未命中（miss / 被盔 / 被威 / 被封属）
+    }
+    if (ctx->ws.skill_type_view[mover] == static_cast<int>(SkillType::Attribute)) {
+        return;   // 官方两条都只对"攻击技能"
+    }
+    const int victim = 1 - mover;
+    ElfPet& victim_pet = ctx->getPet(victim);
+    if (victim_pet.hp <= 0) {
+        return;
+    }
+
+    // ① 睡眠解除
+    if (ctx->has_active_abnormal_status(victim,
+            static_cast<int>(AbnormalStatusId::Sleep))) {
+        ctx->set_abnormal_status_end_round(victim,
+            static_cast<int>(AbnormalStatusId::Sleep), 0);
+    }
+
+    // ② 易燃 → 烧伤（条件转化；火系 id = 3，见 elemental-attributes 的 skill_types 映射）
+    constexpr int kElementFire = 3;
+    if (!ctx->has_active_abnormal_status(victim,
+            static_cast<int>(AbnormalStatusId::Flammable))) {
+        return;
+    }
+    const int e0 = ctx->ws.skill_element_view[mover][0];
+    const int e1 = ctx->ws.skill_element_view[mover][1];
+    if (e0 != kElementFire && e1 != kElementFire) {
+        return;
+    }
+    constexpr int kBurn = static_cast<int>(AbnormalStatusId::Burn);
+    constexpr int kFlammable = static_cast<int>(AbnormalStatusId::Flammable);
+    ctx->set_abnormal_status_end_round(victim, kFlammable, 0);       // 源形态消失
+    const int rounds = random_anomaly_duration();
+    ctx->set_abnormal_status_end_round(victim, kBurn, ctx->roundCount + rounds);
+    // 与 apply_anomaly 的成功路径同款事件（EVENT_ANOMALY_APPLIED=任意异常落地、
+    // EVENT_CONTROLLED=控场类额外发；烧伤是弱化类 → 只发前者）。emit 只入队，
+    // FSM 在本 State 桶之后统一 drain。
+    ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_APPLIED, mover, victim});
 }
 
 bool is_skill_action(const BattleContext* ctx, int robot_id) {
@@ -69,6 +179,65 @@ bool is_skill_action(const BattleContext* ctx, int robot_id) {
         return false;
     }
     return ctx->roundChoice[robot_id][0] == static_cast<int>(BattleFsm::ActionType::SELECT_SKILL);
+}
+
+// 超频(35)「该状态下精灵的技能先制+1 且**行动开始时恢复所选择技能的全部PP值**」
+// （官方 effect_des 35）。先制 +1 在先手权时点（见 handle_BattleFirstMoveRight），
+// 这里是**行动开始时点**的另一半——两处时点，别合并。
+//
+// "所选择技能"取 `roundChoice[side][1]`（玩家点的那一格），不是 `executing_skill_slot()`
+// （那个优先返回**替换后**的槽）。官方原文明写"所**选择**技能" → 取点选格。
+// ⚠️ **口径待实测**：米修莉式 kFull 替换 + 超频时，恢复"点的那格"还是"打的那格"未定；
+//    沉默(30) 那条按替换后算（语料 idx=51 有明确依据），本条暂无依据故取字面。
+// ⚠️ 不 gate "能否行动"（被控/嗑药/死亡）：官方只写"行动开始时"，是否仍回 PP 未写清。
+//    两个 ACTION_START 处理器即使 `should_skip_action_flow` 也会先跑，故实际行为是"照回"。
+void overclock_restore_selected_pp(BattleContext* ctx, int side) {
+    if (!ctx || side < 0 || side > 1) {
+        return;
+    }
+    if (!ctx->has_active_abnormal_status(side,
+            static_cast<int>(AbnormalStatusId::Overclock))) {
+        return;
+    }
+    if (!is_skill_action(ctx, side)) {
+        return;   // 本回合不是"选择技能"（切宠/嗑药）→ 没有"所选技能"
+    }
+    const int slot = ctx->roundChoice[side][1];
+    if (slot < 0 || slot >= 5) {
+        return;
+    }
+    Skills& sk = ctx->seerRobot[side].elfPets[ctx->on_stage[side]].skills[slot];
+    if (sk.pp >= 0 && sk.maxPP >= 0) {   // -1 = 无限 PP，不能写
+        sk.pp = sk.maxPP;
+    }
+}
+
+
+// 能否**主动**切换精灵。
+//
+// 官方 effect_des kind=2：
+//   19 瘫痪「控制类异常状态，**限制类**异常状态，该状态下精灵无法行动、**主动切换**」
+//   32 凝滞「弱化类异常状态，**限制类**异常状态，该状态下精灵**无法切换**，同时免疫受到的控制类异常状态」
+// 语料 idx=355《赛学必修1》：「还有个**限制类**异常状态，顾名思义就是限制对方切换，嗑药等等，
+// 目前只有**凝滞和瘫痪**」；idx=147 复述「限制类就凝滞和瘫痪」。
+//
+// ⚠️ 只拦**主动**切换：死后换宠（必须补位，否则对局卡死）走 `is_forced=true` 绕过。
+// ⚠️ 与 `ElfPet::is_locked` 无关，别混：那个是 pet 级"能否被换**上场**"且引擎从不 set
+//    （语义方向相反）。目前"限制切换"的唯一来源是限制类异常；"下N回合无法主动切换"这类
+//    **回合类锁切**效果（全库 17 条 effect）以后接在同一处，别另开门。
+bool has_blocking_restriction_status(const BattleContext* ctx, int robot_id) {
+    if (!ctx || robot_id < 0 || robot_id > 1) {
+        return false;
+    }
+    for (int status_id = 0; status_id <= kOfficialAbnormalStatusMaxId; ++status_id) {
+        if (!is_restriction_abnormal_status(static_cast<AbnormalStatusId>(status_id))) {
+            continue;
+        }
+        if (ctx->has_active_abnormal_status(robot_id, status_id)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int resolve_selected_skill_index(const BattleContext* ctx, int robot_id) {
@@ -229,7 +398,21 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
     // 见 BattleContext::skill_use_seq 注释）。位置在物化之前的效果注册之前都行，
     // 与威力物化同点最直观。
     ++ctx->skill_use_seq[robot_id];
-    ctx->ws.skill_power_view[robot_id].materialize(skill.power);
+    // 烧伤(2)「攻击技能的威力会减少50%」（官方 effect_des 2）——在**引擎打底**这一层施减：
+    // ⚠️ 必须走 `materialize()` 而**不是**赋/加（那会置 rewritten → 白送一次"变威力重算"，
+    //    连带暴击破防与伤害浮动重掷，见 battleWorkspace.h 的 SkillView 注释）。
+    // ⚠️ 先后：威力物化在 ON_SKILL_HIT，而效果改威力在 SKILL_EFFECT（更晚）→ 烧伤减的是
+    //    **面板值**，效果再在其上 `+delta`（= power/2 + delta）。"先加成再减半"要改到
+    //    SKILL_EFFECT 之后，那会引入 rewritten，不采纳。
+    {
+        int base_power = skill.power;
+        if (skill.type != SkillType::Attribute
+            && ctx->has_active_abnormal_status(robot_id,
+                   static_cast<int>(AbnormalStatusId::Burn))) {
+            base_power = base_power / 2;
+        }
+        ctx->ws.skill_power_view[robot_id].materialize(base_power);
+    }
     // 连击次数视图层：**每次技能使用掷一次**（"1回合做 x~y 次攻击"的 x~y 是随机区间），
     // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗 rand()。
     ctx->ws.combo_view[robot_id].materialize(skill.roll_combo_count());
@@ -323,8 +506,9 @@ void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
     ctx->on_stage[robot_id] = target_slot;
     // ③'' 登场特性槽：新精灵的通用特性拷入 context（查询/行为函数读槽，见 trait_state.h）
     ctx->sync_on_stage_trait(robot_id);
-    // ③' 新精灵登场：死亡通知标记复位（同一方后续新死亡要重新通知亡语类 watcher）
-    ctx->death_notified[robot_id] = false;
+    // ③' 新精灵登场：死亡登记复位（这只宠若再次阵亡要能再发一次 EVENT_DEATH。
+    //     per-slot 而非 per-side——场下精灵也会死，per-side 一个布尔表达不了）
+    ctx->pet_death_notified[robot_id][target_slot] = false;
     // ④ 新精灵魂印激活（登场：STAGE 节点注册 + early 信号 + on_enter 钩子）+ 登记更新器
     {
         ElfPet& new_pet = ctx->getPet(robot_id);
@@ -566,6 +750,11 @@ void apply_resolved_damage(BattleContext* ctx) {
 // 两条出口共用（正常出口 / 技能无效出口），区别只在之前有没有跑 ATTACK_DAMAGE 时点桶。
 void finish_attack_damage(BattleContext* ctx, int attacker_id) {
     apply_variable_power_recalc(ctx, attacker_id);
+    // ★ 裸伤台账（**唯一写入点**，见 battleWorkspace.h 的三值说明）：必须在变威力重算
+    // 之后（重算会重跑公式并覆盖第一次结果）、管线之前（管线会逐阶段改写 final）。
+    // 消费方：effect 422「附加所造成伤害值{0}%的固定伤害」族——实测口径是"挡伤/锁伤
+    // 改变不了它"，所以这里取的是公式值而非管线后的值。
+    ctx->ws.raw_attack_damage[attacker_id] = ctx->resolvedDamage.final;
     // 伤害修正管线：按 DamagePhase 顺序执行双方伤害效果，读写 resolvedDamage
     ctx->damage_pipeline_.run(ctx, attacker_id, 1 - attacker_id);
     // 白板（③层 kFullNull）：命中效果失效且伤害归 0（保留伤害 kEffectsOnly 不动）
@@ -573,6 +762,25 @@ void finish_attack_damage(BattleContext* ctx, int attacker_id) {
         ctx->resolvedDamage.final = 0;
     }
     apply_resolved_damage(ctx);
+    // 雷解(42)「该状态下自身**造成攻击伤害后**，附加伤害值60%的真实伤害」（官方 effect_des 42；
+    // 2026-09-18 扩表后接入）。
+    // ⚠️ 取"**伤害值**"用的是**裸伤台账**（`ws.raw_attack_damage`）——与本引擎既有的
+    //    "所造成伤害值"读法一致（effect 422 族同样读它，口径是"挡伤/锁伤改变不了它"，见
+    //    `finish_attack_damage` 上方注释）。换用管线后的值会变成"被挡了就少附"，口径不同。
+    // ⚠️ 附的是**真伤** → 不吃护盾/护罩/抗性，也**不被臣服拦**（臣服只拦红伤/粉伤，
+    //    官方与用户 2026-09-18 口径：真伤拦不住）——`deal_damage(TRUE)` 天然如此。
+    // ⚠️ 末尾再判一次归零后的存活：防御方已被打死者不再补一段（避免多出一条归因）。
+    if (ctx->has_active_abnormal_status(
+            attacker_id, static_cast<int>(AbnormalStatusId::ThunderRelease))) {
+        const int dealt = ctx->ws.raw_attack_damage[attacker_id];
+        const int victim = 1 - attacker_id;
+        if (dealt > 0 && ctx->getPet(victim).hp > 0) {
+            const int extra = dealt * 60 / 100;
+            if (extra > 0) {
+                deal_damage(ctx, victim, extra, DamageKind::TRUE, attacker_id);
+            }
+        }
+    }
     // 通用特性·瞬杀 1-5 星：红伤**结算完之后**强制体力归零（用户 2026-09-15 实测口径；
     // 走 force_hp_to_zero 原语。犀牛式回血挂 EVENT_TAKE_DAMAGE、drain 在状态桶之后
     // → 回血晚于归零）。0 星的"条件式红伤拉高"在管线的 TRAIT_REPLACE（链首）。
@@ -654,13 +862,25 @@ int resolve_pet_max_hp(const ElfPet& pet) {
     return max_hp;
 }
 
+// 行动开始时的异常扣血 —— **逐段分档**结算（2026-09-18 重写）。
+//
+// 官方 effect_des kind=2 逐条给出时点与档位，语料 idx=472 归纳为三档：
+//   TruePercent 真实百分比（中毒/烧伤/冻伤/寄生）—— 1/8 最大体力、**真实伤害**；
+//   Fixed       固定档（流血 80 / 混乱 50×5%）；
+//   Percent     百分比档（沉默/烈焰诅咒/束缚）—— 不在本档（分别在回合扣减点/结束时，见
+//               tick_abnormal_statuses）。
+// 旧实现的问题：每条各 `max(1, max_hp/8)` 求和、填进一个 DamageSnapshot、**裸 `pet.hp -=`**，
+// 于是护盾/护罩/伤害抗性/免粉/E05 事件/死亡归因**全不参与**。现在逐段走 `deal_damage`。
+//
+// 仍保留"先算快照、跑完桶再落血"的两段式（原有语义）：数值在 stage 冻结，
+// 不受随后 ACTION_START 桶里效果改体力上限/解异常的影响。
 void stage_action_start_abnormal_damage(BattleContext* ctx, int robot_id) {
     if (robot_id < 0 || robot_id > 1) {
         return;
     }
 
     ctx->ws.action_start_abnormal_damage_pending[robot_id] = false;
-    ctx->ws.action_start_abnormal_damage[robot_id] = DamageSnapshot{};
+    ctx->ws.action_start_abnormal_damage_count[robot_id] = 0;
 
     ElfPet& pet = ctx->seerRobot[robot_id].elfPets[ctx->on_stage[robot_id]];
     if (pet.hp <= 0) {
@@ -672,41 +892,37 @@ void stage_action_start_abnormal_damage(BattleContext* ctx, int robot_id) {
         return;
     }
 
-    int total_damage = 0;
+    int count = 0;
     for (int status_id = 0; status_id <= kOfficialAbnormalStatusMaxId; ++status_id) {
         if (!ctx->has_active_abnormal_status(robot_id, status_id)) {
             continue;
         }
         const auto status = static_cast<AbnormalStatusId>(status_id);
-        if (!deals_damage_at_action_start(status)) {
+        const AbnormalDamageProfile profile = abnormal_damage_profile(status);
+        if (profile.timing != AbnormalDamageTiming::ActionStart) {
             continue;
         }
-
-        const int status_damage = std::max(1, max_hp / 8);
-        total_damage += status_damage;
+        // 概率档（官方 10 混乱只有 5%）：掷点放在 stage 期，快照里只留"这一回合确实要扣的段"。
+        if (profile.chance_pct < 100 && (std::rand() % 100) >= profile.chance_pct) {
+            continue;
+        }
+        int amount = profile.numerator;
+        if (profile.denominator > 0) {
+            amount = std::max(1, max_hp * profile.numerator / profile.denominator);
+        }
+        if (amount <= 0 || count >= 8) {
+            continue;
+        }
+        ctx->ws.action_start_abnormal_damage_ids[robot_id][count] = status_id;
+        ctx->ws.action_start_abnormal_damage_amounts[robot_id][count] = amount;
+        ++count;
     }
 
-    if (total_damage <= 0) {
+    if (count <= 0) {
         return;
     }
 
-    DamageSnapshot snapshot;
-    snapshot.attackerId = robot_id;
-    snapshot.defenderId = robot_id;
-    snapshot.base = total_damage;
-    snapshot.afterAdd = total_damage;
-    snapshot.afterMul = total_damage;
-    snapshot.final = total_damage;
-    snapshot.addPct = 0;
-    snapshot.mulCoef = 1.0;
-    snapshot.isRed = false;
-    snapshot.isDirect = true;
-    snapshot.isFixed = true;
-    snapshot.isTrueDamage = true;
-    snapshot.isWhiteNumber = true;
-    snapshot.isCrit = false;
-
-    ctx->ws.action_start_abnormal_damage[robot_id] = snapshot;
+    ctx->ws.action_start_abnormal_damage_count[robot_id] = count;
     ctx->ws.action_start_abnormal_damage_pending[robot_id] = true;
 }
 
@@ -719,23 +935,37 @@ void settle_staged_action_start_abnormal_damage(BattleContext* ctx, int robot_id
         return;
     }
 
-    const DamageSnapshot& snapshot = ctx->ws.action_start_abnormal_damage[robot_id];
-    if (snapshot.final <= 0) {
-        ctx->ws.action_start_abnormal_damage_pending[robot_id] = false;
-        ctx->ws.action_start_abnormal_damage[robot_id] = DamageSnapshot{};
-        return;
-    }
-
-    ElfPet& pet = ctx->seerRobot[robot_id].elfPets[ctx->on_stage[robot_id]];
-    if (pet.hp > 0) {
-        pet.hp -= snapshot.final;
-        if (pet.hp < 0) {
-            pet.hp = 0;
+    const int count = ctx->ws.action_start_abnormal_damage_count[robot_id];
+    for (int i = 0; i < count; ++i) {
+        ElfPet& pet = ctx->seerRobot[robot_id].elfPets[ctx->on_stage[robot_id]];
+        if (pet.hp <= 0) {
+            break;   // 前一段已打死 → 后续段不再结算（串联伤害不越过死亡）
+        }
+        const int status_id = ctx->ws.action_start_abnormal_damage_ids[robot_id][i];
+        const int amount = ctx->ws.action_start_abnormal_damage_amounts[robot_id][i];
+        const AbnormalDamageProfile profile =
+            abnormal_damage_profile(static_cast<AbnormalStatusId>(status_id));
+        DamageKind kind = DamageKind::FIXED;
+        switch (profile.tier) {
+            case AbnormalDamageTier::TruePercent: kind = DamageKind::TRUE; break;
+            case AbnormalDamageTier::Percent:     kind = DamageKind::PERCENT_VALUE; break;
+            case AbnormalDamageTier::Fixed:       kind = DamageKind::FIXED; break;
+            case AbnormalDamageTier::None:        continue;
+        }
+        const int hp_before = pet.hp;
+        // 归因方 = 异常携带者自身（异常扣血是"自己扣自己"；寄生把血回给对面在下面处理）。
+        deal_damage(ctx, robot_id, amount, kind, /*actor=*/robot_id);
+        // 寄生（官方 3/4）："同时对手会恢复等量的体力" —— 按**实际扣掉的量**回给对面。
+        if (profile.heal_opponent_equal) {
+            const int actual = hp_before - ctx->getPet(robot_id).hp;
+            if (actual > 0) {
+                heal_amount(ctx, 1 - robot_id, actual);
+            }
         }
     }
 
     ctx->ws.action_start_abnormal_damage_pending[robot_id] = false;
-    ctx->ws.action_start_abnormal_damage[robot_id] = DamageSnapshot{};
+    ctx->ws.action_start_abnormal_damage_count[robot_id] = 0;
 }
 
 } // namespace
@@ -808,28 +1038,37 @@ void BattleFsm::addStateAction(State state, HandlerType action) {
 }
 
 void BattleFsm::run(BattleContext* battleContext) {
-    std::lock_guard<std::mutex> guard(battleContext->run_mutex);
+    {
+        std::lock_guard<std::mutex> guard(battleContext->run_mutex);
 
-    // 单步模式或命中断点 → 只执行一个状态就返回
-    bool single_shot = battleContext->debug_step_mode ||
-        battleContext->breakpoints.count(static_cast<int>(battleContext->currentState)) > 0;
+        // 单步模式或命中断点 → 只执行一个状态就返回
+        bool single_shot = battleContext->debug_step_mode ||
+            battleContext->breakpoints.count(static_cast<int>(battleContext->currentState)) > 0;
 
-    // 控制块全程持有 unique_ptr，FSM 使用 raw pointer
-    // 如果需要等待输入，调用 wait_for_input 后直接返回
-    // 数据到达时控制块会再次调用 run
-    while(true) {
-        if (runInternal(battleContext)) {
-            // 需要等待输入，退出 run 让控制块处理
-            return;
+        // 控制块全程持有 unique_ptr，FSM 使用 raw pointer
+        // 如果需要等待输入，调用 wait_for_input 后直接返回
+        // 数据到达时控制块会再次调用 run
+        while (true) {
+            if (runInternal(battleContext)) {
+                // 需要等待输入，退出 run 让控制块处理
+                break;
+            }
+            if (battleContext->currentState == State::FINISHED) {
+                break;
+            }
+            if (single_shot) {
+                // 命中后清除本次断点触发（避免下次 run 再次停在同一状态）
+                // 但保留断点设置本身，下次到达该状态时仍会停
+                break;
+            }
         }
-        if (battleContext->currentState == State::FINISHED) {
-            return;
-        }
-        if (single_shot) {
-            // 命中后清除本次断点触发（避免下次 run 再次停在同一状态）
-            // 但保留断点设置本身，下次到达该状态时仍会停
-            return;
-        }
+    }  // ← 先释放 run_mutex
+
+    // 交出控制权的统一输出时点：事件带 + 快照 + 待输入提示。
+    // 刻意放在 run_mutex **之外** —— 输出要投递到网络线程，不该占着推进锁。
+    // 控制块用"采样序号有没有前进"去重，重复进入这里不会重复发。
+    if (battleContext->control_block_ != nullptr) {
+        battleContext->control_block_->on_fsm_paused(battleContext);
     }
 }
 
@@ -855,6 +1094,9 @@ bool BattleFsm::runInternal(BattleContext* battleContext) {
         // 事件投递点：State 桶执行完后、推进下一个 State 前统一 drain。
         // 原语成功路径末尾只 emit 入队，由这里投递给 watcher。
         battleContext->event_center_.drain(battleContext, battleContext->roundCount);
+        // 时点采样必须在 **drain 之后**：这样这条采样带上的是本时点投递的全部事件
+        // （事件中心的抄送钩子在投递处写入，见 event_center.h 的 set_delivery_sink）。
+        record_tape_sample(battleContext, before_state);
         return false;
     } else {
         std::cerr << "No handler for state: " << static_cast<int>(battleContext->currentState) << std::endl;
@@ -862,7 +1104,49 @@ bool BattleFsm::runInternal(BattleContext* battleContext) {
     }
 }
 
-void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType actionType, int index) {
+// 录一条时点采样。关着 tape 时整函数立即返回，不产生任何开销与行为差异。
+void BattleFsm::record_tape_sample(BattleContext* ctx, State state) {
+    if (!ctx->tape_.enabled()) {
+        return;
+    }
+    if (ctx->tape_.overflowed()) {
+        // 说明取走路径断了（没人走 on_fsm_paused 的取带分支）。
+        // 宁可丢带，也不让一条无人消费的连接把内存吃光。
+        return;
+    }
+
+    // on_stage 在很前的时点可能还没定下来，越界时记 -1，而不是读越界内存。
+    auto take = [ctx](int side, int& hp, int& max_hp) {
+        const int slot = ctx->on_stage[side];
+        if (slot < 0 || slot >= 6) {
+            hp = -1;
+            max_hp = -1;
+            return;
+        }
+        const ElfPet& pet = ctx->seerRobot[side].elfPets[slot];
+        hp = pet.hp;
+        max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
+    };
+
+    int hp[2] = {0, 0};
+    int max_hp[2] = {0, 0};
+    take(0, hp[0], max_hp[0]);
+    take(1, hp[1], max_hp[1]);
+
+    int levels[2][kSampleLevelSlots] = {};
+    for (int side = 0; side < 2; ++side) {
+        for (int slot = 0; slot < kSampleLevelSlots; ++slot) {
+            levels[side][slot] = ctx->ability_levels[side][slot];
+        }
+    }
+
+    ctx->tape_.record(static_cast<int>(state), ctx->roundCount, ctx->current_player_id_, hp, max_hp,
+                      levels, ctx->ws.pendingDamage.final, ctx->ws.resolvedDamage.final);
+}
+
+void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType actionType, int index,
+                          bool is_forced) {
+
     int &on_stage = battleContext->on_stage[robotId];
     if (on_stage < 0 || on_stage >= 6) {
         std::cerr << "Invalid on-stage pet index: " << on_stage << std::endl;
@@ -892,6 +1176,13 @@ void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType 
         case ActionType::CHOOSE_PET:
             if (index < 0 || index >= 6) {
                 std::cerr << "Invalid pet index: " << index << std::endl;
+                return;
+            }
+            // 限制类异常（凝滞 32 / 瘫痪 19）→ **主动**切换被禁（官方 effect_des 19/32）。
+            // is_forced 只由死后补位（handle_ChooseAfterDeath）传 true —— 死亡后必须能补位。
+            if (!is_forced && has_blocking_restriction_status(battleContext, robotId)) {
+                std::cerr << "Cannot switch pet: restricted by abnormal status (stasis/crippled)"
+                          << std::endl;
                 return;
             }
             if (robot.elfPets[index].hp > 0 && robot.elfPets[index].is_locked == false) {
@@ -1148,6 +1439,28 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
     memset(battleContext->ws.guaranteed_first, 0, sizeof(battleContext->ws.guaranteed_first));
     battleContext->execute_registered_actions(0, State::BATTLE_FIRST_MOVE_RIGHT);
     battleContext->execute_registered_actions(1, State::BATTLE_FIRST_MOVE_RIGHT);
+    // ── 异常状态对先制的修正（2026-09-18）──
+    // 位置是**唯一点**：两个 MOVE_RIGHT 桶跑完之后、任何先制比较之前。为什么不写成注册进
+    // MOVE_RIGHT 桶的效果——桶内顺序由容器(soul_mark→skill)与 owner(0→1)决定，写成效果体时
+    // "靠后改先制"的那些会逃过失效（用户要保证的正是这个方向，但也会让该失效的漏掉）。
+    // 放这里**一次覆盖所有先制来源**（`Skills::on_selected` 的基础先制、2000/785 类、效果加先制），
+    // 而"靠后改变先制"的效果只要在**本点之后**发生就仍然有效。
+    //
+    //   束缚(28)「先制效果**失效**」→ 清零该方先制等级（官方 effect_des 28）
+    //   超频(35)「技能**先制+1**」  → 清零动作**之后**再 +1 → 天然不被束缚废掉
+    //                                （用户 2026-09-18 口径：「有的靠后改变先制的效果依旧可以绕过束缚」）
+    // ⚠️ 必先（`guaranteed_first`）**不动**：官方"必先"比"先制"更强，是独立比较项（见下面几行）。
+    //    若实测要求束缚也废必先，改的是必先比较那一行，不是这里。
+    for (int side = 0; side < 2; ++side) {
+        if (battleContext->has_active_abnormal_status(
+                side, static_cast<int>(AbnormalStatusId::Bind))) {
+            battleContext->ws.preemptive_level[side] = 0;
+        }
+        if (battleContext->has_active_abnormal_status(
+                side, static_cast<int>(AbnormalStatusId::Overclock))) {
+            battleContext->ws.preemptive_level[side] += 1;
+        }
+    }
     // 回合类效果的先手权已经被写入ws.preemptive_level供后续使用，这里先判断是否有效果直接决定先手权
     if (pr != PreemptiveRight::NONE) {
         log("Preemptive right determined by effects.");
@@ -1220,6 +1533,7 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
 void BattleFsm::handle_BattleFirstActionStart(BattleContext* battleContext) {
     log("Battle: First Action Start.");
     const int first_mover_id = resolve_first_mover_id(battleContext);
+    overclock_restore_selected_pp(battleContext, first_mover_id);   // 超频(35)：行动开始时回满所选技能 PP
     stage_action_start_abnormal_damage(battleContext, first_mover_id);
     battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_ACTION_START);
     settle_staged_action_start_abnormal_damage(battleContext, first_mover_id);
@@ -1257,6 +1571,7 @@ void BattleFsm::handle_BattleFirstOnSkillHit(BattleContext* battleContext) {
         trait_contact_poison_hook(battleContext, first_mover_id);
         // 被动属性降低特性（反抗/反驳/忽略/草率/慌张）：受**特殊攻击**命中时令对方降 1 级。
         trait_passive_stat_drop_hook(battleContext, first_mover_id);
+        anomaly_on_attack_hit_hook(battleContext, first_mover_id);
     }
     battleContext->generateState();
 }
@@ -1273,6 +1588,8 @@ void BattleFsm::handle_BattleFirstSkillEffect(BattleContext* battleContext) {
 void BattleFsm::handle_BattleFirstAttackDamage(BattleContext* battleContext) {
     log("Battle: First Attack Damage.");
     const int first_mover_id = resolve_first_mover_id(battleContext);
+    // 裸伤台账：每次攻击尝试从 0 开始（被盔/被威的无效出口不会写入 → 读方拿到 0 而不是上一击的残留）
+    battleContext->ws.raw_attack_damage[first_mover_id] = 0;
     if (!battleContext->ws.skill_resolution_flags[first_mover_id].allowAttackDamagePipeline) {
         clear_damage_snapshot(battleContext->pendingDamage);
         clear_damage_snapshot(battleContext->resolvedDamage);
@@ -1326,13 +1643,22 @@ void BattleFsm::handle_BattleFirstAfterActionEnd(BattleContext* battleContext) {
 void BattleFsm::handle_BattleFirstExtraAction(BattleContext* battleContext) {
     log("Battle: First Extra Action.");
     const int first_mover_id = resolve_first_mover_id(battleContext);
-    battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_EXTRA_ACTION);
+    // 额外行动（通用机制）：只有**声明过**才跑该时点桶（官方"A行动结束之后，可以**根据效果**
+    // 进行一次追加的行动"——效果是前提）。本状态同时是"跳过主流程"（嗑药/换宠/被控/死宠）
+    // 的跳转目标，那条路进来时 pending 为 false → 纯空转通过，行为与引入本机制前一致。
+    if (battleContext->consume_extra_action_declaration(first_mover_id)) {
+        battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_EXTRA_ACTION);
+    }
     battleContext->generateState();
 }
 
 void BattleFsm::handle_BattleFirstMoverDeath(BattleContext* battleContext) {
     log("Battle: First Mover Death.");
     battleContext->execute_registered_actions(-1, State::BATTLE_FIRST_MOVER_DEATH);
+    // 死亡漏斗：时点桶跑完（"死亡时点免死"节点已把 hp 写回的走这里放行）→ 再问拦截器层。
+    // 必须在 field_has_on_stage_death **之前**：免死成功则不该跳到回合结束，
+    // 后手方照常行动（残留 1 血的意义就是活下来继续打）。
+    funnel_on_stage_deaths(battleContext, DefeatCause::DAMAGE);
     if (field_has_on_stage_death(battleContext)) {
         log("Battle: Death occurred during first mover flow, skipping second mover flow and round end.");
         battleContext->currentState = State::BATTLE_OLD_ROUND_END_1;
@@ -1344,6 +1670,7 @@ void BattleFsm::handle_BattleFirstMoverDeath(BattleContext* battleContext) {
 void BattleFsm::handle_BattleSecondActionStart(BattleContext* battleContext) {
     log("Battle: Second Action Start.");
     const int second_mover_id = resolve_second_mover_id(battleContext);
+    overclock_restore_selected_pp(battleContext, second_mover_id);   // 超频(35)：同上（后手镜像）
     stage_action_start_abnormal_damage(battleContext, second_mover_id);
     battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_ACTION_START);
     settle_staged_action_start_abnormal_damage(battleContext, second_mover_id);
@@ -1376,6 +1703,7 @@ void BattleFsm::handle_BattleSecondOnSkillHit(BattleContext* battleContext) {
         trait_contact_poison_hook(battleContext, second_mover_id);
         // 被动属性降低特性（反抗/反驳/忽略/草率/慌张）：受**特殊攻击**命中时令对方降 1 级。
         trait_passive_stat_drop_hook(battleContext, second_mover_id);
+        anomaly_on_attack_hit_hook(battleContext, second_mover_id);
     }
     battleContext->generateState();
 }
@@ -1392,6 +1720,8 @@ void BattleFsm::handle_BattleSecondSkillEffect(BattleContext* battleContext) {
 void BattleFsm::handle_BattleSecondAttackDamage(BattleContext* battleContext) {
     log("Battle: Second Attack Damage.");
     const int second_mover_id = resolve_second_mover_id(battleContext);
+    // 裸伤台账：每次攻击尝试从 0 开始（同先手方）
+    battleContext->ws.raw_attack_damage[second_mover_id] = 0;
     if (!battleContext->ws.skill_resolution_flags[second_mover_id].allowAttackDamagePipeline) {
         log("Second mover's skill does not allow attack damage pipeline, skipping damage stage.");
         clear_damage_snapshot(battleContext->pendingDamage);
@@ -1443,7 +1773,10 @@ void BattleFsm::handle_BattleSecondAfterActionEnd(BattleContext* battleContext) 
 void BattleFsm::handle_BattleSecondExtraAction(BattleContext* battleContext) {
     log("Battle: Second Extra Action.");
     const int second_mover_id = resolve_second_mover_id(battleContext);
-    battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_EXTRA_ACTION);
+    // 同 handle_BattleFirstExtraAction：声明过才跑桶。
+    if (battleContext->consume_extra_action_declaration(second_mover_id)) {
+        battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_EXTRA_ACTION);
+    }
     battleContext->generateState();
 }
 
@@ -1464,6 +1797,8 @@ void BattleFsm::handle_BattleRoundEnd(BattleContext* battleContext) {
 void BattleFsm::handle_BattleSecondMoverDeath(BattleContext* battleContext) {
     log("Battle: Second Mover Death.");
     battleContext->execute_registered_actions(-1, State::BATTLE_SECOND_MOVER_DEATH);
+    // 同先手方：桶之后问拦截器（残留体力免死 / 真2命复活）
+    funnel_on_stage_deaths(battleContext, DefeatCause::DAMAGE);
     battleContext->generateState();
 }
 
@@ -1477,6 +1812,16 @@ void BattleFsm::handle_BattleRoundReductionAllRoundMinus(BattleContext* battleCo
     log("Battle: Round Reduction All Round Minus.");
     // 先执行注册在本时点的效果（包括断回合效果本身）
     battleContext->execute_registered_actions(-1, State::BATTLE_ROUND_REDUCTION_ALL_ROUND_MINUS);
+    // ★ 异常的自然结算点（2026-09-18）：回合扣减点档伤害（沉默 30/烈焰诅咒 24）→ 清过期槽
+    //   → **衍化**（焚烬→烧伤+命中-1、冰封→冻伤+速度-1、诅咒→随机三种、感染→中毒+攻/特攻-1、
+    //   超频→1~2 回合瘫痪）；"…结束时"档伤害（束缚 28）也在这一步。
+    // ⚠️ 必须在 rule_center_.tick_rounds() **之前**：官方 idx=59「回合结束时**先转化异常，
+    //    再回合扣减**」，且 cleanup_expired_effects 会先扫一遍规则表，放后面次第就反了。
+    // ⚠️ 官方顺序（idx=429 时点表「①看挑战方机制：房主方先判定，挑战方后判定」）：
+    //    按存活顺序逐方结算，两方都跑（异常是 per-side 的，不存在"只跑一方"）。
+    for (int side = 0; side < 2; ++side) {
+        tick_abnormal_statuses(battleContext, side);
+    }
     // 回合型盔/威/封属每回合递减，到 0 注销（次数型不动）
     battleContext->rule_center_.tick_rounds();
     // 然后统一清理所有已过期的回合类效果
@@ -1533,18 +1878,14 @@ void BattleFsm::handle_BattleAfterDefeated(BattleContext* battleContext) {
     const bool dead0 = battleContext->seerRobot[0].elfPets[battleContext->on_stage[0]].hp <= 0;
     const bool dead1 = battleContext->seerRobot[1].elfPets[battleContext->on_stage[1]].hp <= 0;
 
-    // 死亡事件收敛点：线性序每回合必经此处，on-stage 精灵死亡在此统一 emit EVENT_DEATH
-    // （杀手信息不携带，actor=target=死亡方）。供"战斗开始注册的死亡监控"类 watcher 使用
-    //（如薇尔诗 2513 场域的死后清除——必须独立于魂印开闭路径，见魂印档案 §4.3）。
-    // 每方只发一次；死宠在 CHOOSE_AFTER_DEATH 被强制替换（perform_switch 复位标记），
-    // 故正常流程下一只宠只通知一次。
-    for (int side = 0; side < 2; ++side) {
-        const bool dead = (side == 0) ? dead0 : dead1;
-        if (dead && !battleContext->death_notified[side]) {
-            battleContext->death_notified[side] = true;
-            battleContext->event_center_.emit(BattleEvent{EventType::EVENT_DEATH, side, side, 0});
-        }
-    }
+    // 死亡事件收敛点（**对账兜底**）：本时点每回合必经，故在此把双方全部 6 槽扫一遍：
+    //   - 补登记"hp<=0 且从未登记"的死亡（含**场下**那些绕过原语的直写：咤克斯连锁击杀
+    //     对场下宠直写 hp=0、反弹伤害直写 hp-=n）→ cause=EFFECT；
+    //   - 把"登记过又活着"的复位（复活后允许再死一次）。
+    // 场宠的正常死亡在 FIRST/SECOND_MOVER_DEATH 的漏斗里已经登记过，这里是幂等的第二道网
+    //（读方一律查状态、不查事件流，所以漏一次钩子只丢一次通知，不会丢事实）。
+    // ⚠️ 消逝**不在此列**：消逝不是死亡，不发 EVENT_DEATH（见 vanish_spirit）。
+    sync_pending_deaths(battleContext);
 
     if (!dead0 && !dead1) {
         battleContext->currentState = State::BATTLE_AFTER_DEFEATING_OPPONENT;
@@ -1580,7 +1921,9 @@ void BattleFsm::handle_ChooseAfterDeath(BattleContext* battleContext) {
             battleContext, this);
         return;
     }
-    operation(battleContext, buf[0], static_cast<ActionType>(buf[1]), buf[2]);
+    // is_forced=true：这是**死后补位**，不是主动切换 —— 限制类异常（凝滞/瘫痪）拦不住它，
+    // 否则宠物阵亡后无法补位会导致对局卡死。其余校验（hp>0 / is_locked / 槽位范围）照走。
+    operation(battleContext, buf[0], static_cast<ActionType>(buf[1]), buf[2], /*is_forced=*/true);
     // 死亡换宠：死宠离场 → 实际执行换宠（清死宠公共状态 → 新宠登场激活）
     perform_switch(battleContext, buf[0], buf[2]);
     battleContext->generateState();

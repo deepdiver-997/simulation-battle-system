@@ -180,6 +180,9 @@ public:
     void registerSkillEffects(
         const std::vector<std::pair<int, EffectFn>>& effects) override;
 
+    // 单元准入门（IEffectRegistry）：存进 effect_unit 的进程全局（见 UnitAdmissionFn 注释）。
+    void registerUnitAdmission(UnitAdmissionFn fn) override;
+
     // 手动注册效果（不通过动态库）
     void registerEffect(int effectId, EffectFn effect);
 

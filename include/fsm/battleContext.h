@@ -24,6 +24,8 @@
 #include <effects/pink_damage_pipeline.h>
 #include <effects/trait_state.h>
 #include <effects/common_trait_effects.h>
+#include <effects/spirit_lifecycle.h>
+#include <effects/state_tape.h>
 #include <entities/soul_mark.h>
 #include <fsm/state.h>
 
@@ -84,6 +86,18 @@ public:
     // 全 context 唯一的事件中心。原语成功路径末尾 emit，FSM 在 State 桶后 drain 投递。
     // 断回合补偿 = 监听 EVENT_BREAK 的 watcher（经 register_break_callback 注册）。
     EventCenter event_center_;
+
+    //--- 时点采样（事件带）---
+    // FSM 在每个时点执行完、事件 drain 之后录一条采样。**纯只读观测**，
+    // 关着的时候一个字节都不记、不影响任何判定（71 个场景用例默认关）。
+    // 服务端对局通过 enable_tape(true) 打开；输出见 server 层的 on_fsm_paused。
+    StateTape tape_;
+
+    void enable_tape(bool on) {
+        tape_.set_enabled(on);
+        // 录制目标挂在事件中心上：投递时同步抄一份（与 watcher 看到的完全一致）。
+        event_center_.set_delivery_sink(tape_.event_sink());
+    }
 
     //--- 统一规则容器 ---
     // 免疫(纯查询) + 盔威封属/命中失效(消费) + ③层命中失效 合一。
@@ -149,18 +163,8 @@ public:
         hp_zero_converted[target_side] = converted;
     }
 
-    //--- 次数型穿透授予（挂在自己身上，"下1次攻击无视伤害限制"类）---
-    // 跨回合持久；成功使用攻击技能后统一消费（每槽 remaining-1，0 移除）。
-    // 切换精灵/清场时随 invalidate_on_stage_effects / clearAllEffects 一并清理。
-    struct PenetrationGrant {
-        int owner = -1;
-        int remaining = 0;         // 剩余次数
-        int level = 0;
-        bool ignore_attack_immunity = false;
-        bool ignore_damage_limit = false;
-        int source = -1;
-    };
-    std::vector<PenetrationGrant> penetration_grants[2];  // [授予方]
+    // 「无视」凭证的作用路径见 `RuleCategory::PENETRATE_ATTACK` / `PENETRATE_ATTRIBUTE`
+    //（授予走 `grant_penetration`，**由 RuleCenter 承载**；此处不再维护手写清单）。
         //--- 次数型攻击伤害增伤（"自身下N次攻击造成的伤害提升X%"类，31272王·酷烈风息 1256）---
     // 跨回合持久；成功使用攻击技能后消费（remaining-1，0 移除）。伤害结算累加该方 pct。
     struct AttackDamageBoost {
@@ -224,15 +228,94 @@ public:
     // 现在的归属：**权威状态在本容器**，随上下场清（与 `abnormal_status_end_round` 同类语义）；
     //   `ws.view_levels` 仍是**回合内视图**（伤害公式读它，每回合从本容器重基，
     //   见 battleFsm.cpp 的 view 同步点）——本体/视图分离不变，只是"本体"从 pet 换到了 context。
-    // 索引：0=攻击 1=特攻 2=防御 3=特防 4=速度 5=体力（同 stat_change 的 stat 参数）。
+    // 索引（**6 槽**，2026-09-18 口径更正：此前注释把槽 5 误标成"体力"）：
+    //   0=攻击 1=特攻 2=防御 3=特防 4=速度 **5=命中**
+    // 依据（用户 2026-09-18 口径 + 引擎内既有事实）：
+    //   · **能力提升状态官方就是 6 种** = 双攻 + 双防 + 速度 + 命中；**没有"体力等级"**。
+    //   · **基础数值**（`numerical_properties` / `battle_attrs`）也是 6 项，但第 6 项是**体力**；
+    //     两套索引只在 0..4（攻/特攻/防/特防/速）重合，不是同一套东西。
+    //   · `resources/moves_lib/stat_dispel.cpp:403-409` 早已写明该映射："官方序
+    //     [攻,防,特攻,特防,速,**命中**] → 引擎序 `kStatMap[6]={0,2,1,3,4,5}`，**5命中→5**"，
+    //     并且已经真的在调 `stat_change(self, 5, delta)` → 槽 5 事实上一直是命中。
+    //   · `getTempAbilityValue` 里那句"命中等级为负时的特殊处理"（返回 85/70/55/45/35/25）
+    //     本就是给槽 5 用的，只是被误放在一个按 `NumericalPropertyIndex` 取**属性值**的函数里
+    //     （该函数从不以 HP 被调用 → 一直是死分支）。本线把该档位表搬到精度公式处。
+    // ⚠️ 槽 5 只作用于**精度公式**（skills.cpp 的 query_usage ①）；`getTempAbilityValue` 的
+    //    `NumericalPropertyIndex` 域仍是 0..5，且**体力(5)不吃等级**（体力没有等级）。
+    // 槽位常量见 abnormal-system/abnormal-types.h 的 kAbilityLevelIndexHit（两者必须相等）。
     // ⚠️ 不要与官方数据的能力码混用（官方码序逐族不同，见 trait_state.h 的
-    //    trait_stat_index_from_code 说明）。
-    static constexpr int kAbilityLevelSlotCount = 6;   // 与 stat 参数域一致（0..5）
+    //    trait_stat_index_from_code 说明；上引 stat_dispel 的 kStatMap 就是其中一套）。
+    static constexpr int kAbilityLevelSlotCount = 6;   // 0..5（5=命中）
     int ability_levels[2][kAbilityLevelSlotCount]{};
+
+    // 事件带的等级数组宽度写死在 effects/state_tape.h（内核头不能反向依赖 context）。
+    // 在这里钉住一致性：两处漂了就编译失败，而不是静默少采/多采几槽。
+    static_assert(kSampleLevelSlots == kAbilityLevelSlotCount,
+                  "state_tape.h 的 kSampleLevelSlots 必须与 kAbilityLevelSlotCount 一致");
 
     int& ability_level(int side, int stat) { return ability_levels[side][stat]; }
     int ability_level(int side, int stat) const { return ability_levels[side][stat]; }
-    /** 换宠/开战清除：一方 6 项等级全归 0，并同步 ws 视图（视图是公式读取源）。 */
+
+    //--- 信仰对象（狂信 41 的配套状态）---
+    // 定义与生命期依据见 abnormal-system/abnormal-types.h 的 FaithTarget 注释。
+    // **存在当前在场精灵自己的 `soulmark_storage` 上**（下场保留）→ 三个访问器都读写 on-stage pet。
+    // ⚠️ 读的是"这只宠的信仰对象是谁"，与"它此刻是否在场"无关；判"对手是否为信仰对象"要拿它
+    //    跟 `on_stage[1-side]` 比（两段式），不要直接当布尔用。
+    FaithTarget faith_target(int side) const {
+        if (side < 0 || side > 1) {
+            return FaithTarget{};
+        }
+        const ElfPet& pet =
+            seerRobot[side].elfPets[on_stage[side]];
+        const auto it = pet.soulmark_storage.find(kFaithTargetStorageKey);
+        if (it == pet.soulmark_storage.end()) {
+            return FaithTarget{};
+        }
+        const FaithTarget* t = std::any_cast<FaithTarget>(&it->second);
+        return t ? *t : FaithTarget{};
+    }
+
+    /** 写信仰对象。⚠️ 只由"狂信进入时的**条件写**"与"魂印的**强制改写**"两处调用，
+     *  调用方自己决定要不要先判空（狂信判空、教皇魂印不判）。 */
+    void set_faith_target(int side, int target_side, int target_slot) {
+        if (side < 0 || side > 1) {
+            return;
+        }
+        seerRobot[side].elfPets[on_stage[side]].soulmark_storage[kFaithTargetStorageKey] =
+            FaithTarget{target_side, target_slot};
+    }
+
+    /** 信仰对象被指向的那只精灵是否就是 side **此刻在场上**的对手（狂信 41 的禁行动条件）。 */
+    bool opponent_is_faith_target(int side) const {
+        if (side < 0 || side > 1) {
+            return false;
+        }
+        const FaithTarget t = faith_target(side);
+        const int opp = 1 - side;
+        return t.side == opp && t.slot >= 0 && t.slot == on_stage[opp];
+    }
+
+    //--- 本次执行所用技能的槽位（0..4；-1 = 未知/非技能动作）---
+    // 与 battleFsm 的 `resolve_executing_skill` 同口径、同优先级：
+    // ① context 的 `pending_skill_replacement`（米修莉式）→ ② `ws.skill_effect_source`
+    // （艾欧丽娅式）→ ③ 玩家点的槽位 `roundChoice[..][1]`。
+    // 用途：沉默(30)「第五技能**无效**」要判"本次打的是不是第五技能"——官方/语料按**替换后**的
+    // 技能算（idx=51「同时转化为第五会受到沉默影响」），所以不能只读 roundChoice。
+    int executing_skill_slot(int robotId) const {
+        if (robotId < 0 || robotId > 1) {
+            return -1;
+        }
+        const SkillReplaceSource* carriers[2] = {&pending_skill_replacement[robotId],
+                                                &ws.skill_effect_source[robotId]};
+        for (const SkillReplaceSource* src : carriers) {
+            if (src->active && src->slot >= 0 && src->slot < 5) {
+                return src->slot;
+            }
+        }
+        const int chosen = roundChoice[robotId][1];
+        return (chosen >= 0 && chosen < 5) ? chosen : -1;
+    }
+    /** 换宠/开战清除：一方全槽等级（含命中槽）归 0，并同步 ws 视图（视图是公式读取源）。 */
     void clear_ability_levels(int side) {
         if (side < 0 || side > 1) {
             return;
@@ -252,10 +335,36 @@ public:
     // 消费方：各"场下源 → 场上目标"效果入口统一查（星皇 903 之赐/之佑的统一门，档案 §4.2.4）。
     bool block_offstage_to_onstage = false;
 
-    //--- EVENT_DEATH 已通知标记 ---
-    // 死亡事件收敛在 BATTLE_AFTER_DEFEATED（线性序每回合必经）；on-stage 死亡方在此 emit。
-    // 每方一次（防止极端同回合双死后 replace 流程重复通知亡语类 watcher）；换宠时复位。
-    bool death_notified[2]{};
+    //--- 每槽死亡已登记标记 ---
+    // 死亡漏斗（defeat_pet）登记过该槽的本次死亡 → true。**per-slot**（不是 per-side）：
+    // 场下精灵也会死（帝君之陨类效果、消耗全部体力印记、咤连锁击杀），per-side 一个布尔
+    // 表达不了"另一方还有几只场下宠各自死没死"。
+    // 复位点：
+    //   - perform_switch：登场的那只复位（一只宠一生可被登记多次——死亡→复活→再死）；
+    //   - sync_pending_deaths：扫到 hp>0（已复活）时复位；
+    //   - 消逝：置位（消逝蕴含阵亡，但**不发** EVENT_DEATH——见 defeat_pet/vanish_spirit）。
+    bool pet_death_notified[2][6]{};
+
+    //--- 死亡拦截器（免死 / 真2命复活）---
+    // defeat_pet 在判定死亡成立**之前**按序询问；返回 true 且目标 hp 已写回 > 0 → 不死。
+    // ⚠️ 残留体力免死与复活是**两层**，对「消耗全部体力」可见性不同（官方 idx=339），
+    //    用 DeathInterceptor::sees_hp_consume 区分，见 spirit_lifecycle.h 头注释。
+    // clearAllEffects 清空。
+    std::vector<DeathInterceptor> death_interceptors;
+
+    //--- 额外精灵（独立容器，**不进 6 槽数组**）---    // 官方的三个状态 + "不在背包/不在场上/不在场下，只属于不在场"（idx=149）。
+    // 代表性来源：魂帝咽咎尸骸（开局即有一条 DEAD 条目——**开局尸体不走死亡钩子**，
+    // 从根上避开"游戏开始时获得的尸体不被消逝"那类 bug）、乔特鲁德黑白龙。
+    // 本体死亡或被消逝不影响这里的条目（idx=149 #6）。clearAllEffects 清空。
+    std::vector<ExtraSpirit> extra_spirits[2];
+
+    //--- 最近一次造成伤害的来源方（按槽）---
+    // **死亡归因**用：EVENT_DEATH 的 actor = 击杀方，由此区分
+    // 「自身击败对手后」（actor == 自己）与「己方其他精灵被击败后」（actor != 自己）
+    // ——空元之录的空妄诗章归因条款正是这两条（初稿 idx=209）。
+    // 只在**体力确实下降**（或秒杀归零）时写入；护盾完全挡下、目标已死不写（不覆盖上一次）。
+    // clearAllEffects 清零。
+    int last_damage_actor[2][6]{};
 
     //--- 技能效果执行表 ---
     // TimedBucket 封装：注册/同源去重/时点执行/过期清理/epoch 作废/回合计数（见 effects/timed_bucket.h）。
@@ -367,36 +476,39 @@ public:
     //--- 回合结束 ---
     void advanceRound() { ++roundCount; }
 
-    //--- 次数型穿透授予 API ---
-    // 授予"下N次攻击无视免疫/伤害限制"（如魂印/技能给的一次性穿透）。跨回合持久，
-    // 成功使用攻击技能后由 consume_penetration_grants_after_attack 统一消费。
+    //--- 「无视」凭证授予 API（穿盔 / 穿透限伤）---
+    // **由 RuleCenter 承载**（`RuleCategory::PENETRATE_ATTACK` / `PENETRATE_ATTRIBUTE`）。
+    // 为什么不再用手写 vector：那种写法只有**次数**、没有**回合窗口**——"当回合有效的全凭证，
+    //   当回合查询多次都不失效"（薇尔诗·白皑之纷争）根本表达不出来；而且覆盖键刷新、
+    //   断回合作废、换宠清、每回合 tick 全都要自己再写一遍。RuleCenter 这些都已经有了。
+    // `category` 决定它作用于**哪条伤害路径**（**要两条路都管就调两次**，照 HIT_INVALID 的拆法）：
+    //   · PENETRATE_ATTACK    → 攻击技能跑伤害管线时查询并**必然消耗一次**（`materialize_attack_credential`）
+    //   · PENETRATE_ATTRIBUTE → 属性伤害（`deal_attribute_damage`）查询并消耗
+    //     ⇒ 霍光·无罔之心「下2次**攻击技能**无视」只登记攻击侧 → 属性直伤走另一条路，
+    //       **不命中也不消耗**（用户 2026-09-18 口径）。
+    // counts>0 = 次数型（每次使用消费一次）；rounds>0 = 窗口型（响应不消耗、tick 减、断回合清）。
     // 内联实现：插件动态库不链接 sim_core，需头文件可见（仿 843 先例）。
     int grant_penetration(int owner, int level, bool ignore_attack_immunity,
-                          bool ignore_damage_limit, int count, int source_id = -1) {
-        if (owner < 0 || owner > 1 || count <= 0) {
+                          bool ignore_damage_limit, int counts, int rounds,
+                          RuleCategory gate,
+                          EffectScope scope = EffectScope::ON_STAGE,
+                          int source_effect_id = -1) {
+        if (owner < 0 || owner > 1) {
             return -1;
         }
-        penetration_grants[owner].push_back(
-            PenetrationGrant{owner, count, level, ignore_attack_immunity,
-                             ignore_damage_limit, source_id});
-        return static_cast<int>(penetration_grants[owner].size()) - 1;
+        return rule_center_.grant_penetrate(owner, gate, owner, level, ignore_attack_immunity,
+                                            ignore_damage_limit, counts, rounds, roundCount,
+                                            scope, source_effect_id,
+                                            round_effect_valid_id[owner]);
     }
 
-    // 成功使用攻击技能后统一消费：每槽 remaining-1，0 移除。
-    // 即使对手无阻挡也消费（"下一次攻击"语义），miss/sealed 不消费（调用方保证）。
+    // 成功使用攻击技能后统一消费（**攻击门**）：即使对手无阻挡也消费（"下一次攻击"语义），
+    // miss/sealed 不消费（调用方保证）。只扣**次数型**；窗口型不扣（RuleCenter 语义）。
     void consume_penetration_grants_after_attack(int owner) {
         if (owner < 0 || owner > 1) {
             return;
         }
-        auto& grants = penetration_grants[owner];
-        for (auto it = grants.begin(); it != grants.end();) {
-            --it->remaining;
-            if (it->remaining <= 0) {
-                it = grants.erase(it);
-            } else {
-                ++it;
-            }
-        }
+        rule_center_.consume_penetrate(owner, RuleCategory::PENETRATE_ATTACK, roundCount);
     }
 
     //--- 次数型攻击伤害增伤（"下N次攻击伤害提升X%"）────────────────
@@ -408,7 +520,7 @@ public:
         attack_boost_grants[owner].push_back(AttackDamageBoost{source_effect_id, count, pct});
     }
 
-    // 成功使用攻击技能后消费：每槽 remaining-1，0 移除（与 penetration_grants 同步）。
+    // 成功使用攻击技能后消费：每槽 remaining-1，0 移除（与穿透凭证同步）。
     void consume_attack_boost_grants_after_attack(int owner) {
         if (owner < 0 || owner > 1) {
             return;
@@ -508,6 +620,49 @@ public:
         }
     }
 
+    // ── 额外行动（通用机制；2026-09-18，官方 effect_des 331/317）────────────────
+    // **信号**：本回合该 owner 是否正处于额外行动时点。
+    // ★ 刻意**从 currentState 派生**而不是另存一个布尔位：额外行动的时点就是这两个状态
+    //   本身，派生值不可能与 FSM 失步；另存标志则"进入置位 / 离开清位"两处都要维护，
+    //   任何 early-return 漏清就会把后续的普通行动误判成额外行动（假信号比没信号更难查）。
+    // ⚠️ 语义边界：**"处于额外行动时点" ≠ "发生了额外行动"**——"跳过主流程"
+    //   （嗑药/换宠/被控/死宠）的跳转同样落在这个状态上，只是桶空跑。
+    //   判"真发生了额外行动"读 ws.extra_action_count / ws.extra_action_pending。
+    bool in_extra_action(int owner) const {
+        if (owner < 0 || owner > 1) {
+            return false;
+        }
+        if (currentState == State::BATTLE_FIRST_EXTRA_ACTION) {
+            return !is_second_mover(owner);
+        }
+        if (currentState == State::BATTLE_SECOND_EXTRA_ACTION) {
+            return is_second_mover(owner);
+        }
+        return false;
+    }
+
+    // **声明**一次额外行动（效果侧调用）：置 pending，供 FSM 在额外行动时点消费。
+    // 幂等——同回合同一方重复声明只算一次（"同回合多次额外行动"是后续议题，
+    // 字段 ws.extra_action_count 已留）。
+    void declare_extra_action(int owner) {
+        if (owner < 0 || owner > 1) {
+            return;
+        }
+        ws.extra_action_pending[owner] = true;
+    }
+
+    // **消费**一次额外行动声明（FSM 调用）：返回 true = 本回合确实声明过，调用方据此
+    // 执行额外行动时点桶。一次性——消费即清位并记数，避免一次声明被两个时点各跑一遍
+    // （同一回合里先手方的 FIRST_EXTRA_ACTION 与后手方的 SECOND_EXTRA_ACTION 都会问）。
+    bool consume_extra_action_declaration(int owner) {
+        if (owner < 0 || owner > 1 || !ws.extra_action_pending[owner]) {
+            return false;
+        }
+        ws.extra_action_pending[owner] = false;
+        ++ws.extra_action_count[owner];
+        return true;
+    }
+
     void register_skill_effect(State trigger, int owner, std::unique_ptr<ContinuousEffect> effect) {
         if (owner < 0 || owner > 1) {
             return;
@@ -535,7 +690,8 @@ public:
         // ON_STAGE 回合效果已全部失效，清各桶计数器（epoch 递增后它们都会被 cleanup 移除）
         skills_effects.reset_round_count(owner);
         soul_mark_effects.reset_round_count(owner);
-        penetration_grants[owner].clear();  // 次数型穿透授予不继承给新精灵
+        // 次数型穿透授予不继承给新精灵：改由 RuleCenter 承载，ON_STAGE 条目在上面
+        // 的 `rule_center_.clear_on_stage(owner, ...)` 里一并清掉。
         attack_boost_grants[owner].clear();  // 次数型攻击增伤不继承给新精灵
         force_execute_on_pp0[owner] = false;  // 魂印条件信号不继承给新精灵（待新魂印重新激活）
         ignore_pp[owner] = false;
@@ -565,8 +721,7 @@ public:
         soul_mark_effects.clear();
         updater_effects.clear();
         rule_center_.clear_all();  // 免疫 + 盔/威/封属 + ③层命中失效 一次清
-        penetration_grants[0].clear();
-        penetration_grants[1].clear();
+        // 穿透授予改由 RuleCenter 承载（rule_center_.clear_all() 上面已清）。
         attack_boost_grants[0].clear();
         attack_boost_grants[1].clear();
         force_execute_on_pp0[0] = false;
@@ -580,7 +735,19 @@ public:
         anomaly_conversion[0].clear();
         anomaly_conversion[1].clear();
         block_offstage_to_onstage = false;   // 场下源抑制场域（2513）战斗结束清
-        death_notified[0] = death_notified[1] = false;
+        for (int side = 0; side < 2; ++side) {
+            for (int slot = 0; slot < 6; ++slot) {
+                pet_death_notified[side][slot] = false;
+            }
+        }
+        death_interceptors.clear();          // 死亡拦截器（免死/真2命）随对局清
+        extra_spirits[0].clear();            // 额外精灵容器随对局清（黑白龙/咽咎尸骸…）
+        extra_spirits[1].clear();
+        for (int side = 0; side < 2; ++side) {
+            for (int slot = 0; slot < 6; ++slot) {
+                last_damage_actor[side][slot] = -1;   // 死亡归因不跨对局残留
+            }
+        }
         pending_skill_replacement[0] = SkillReplaceSource{};
         pending_skill_replacement[1] = SkillReplaceSource{};
         elf_element_view_bound_slot[0] = elf_element_view_bound_slot[1] = -1;
@@ -601,6 +768,8 @@ public:
         install_default_damage_floor();
         pink_damage_pipeline_.clear();
         install_default_pink_mitigation();
+        // ⚠️ 同 init_battle：本函数也注册粉伤条目，必须在粉伤 clear 之后。
+        install_default_abnormal_mods();   // 异常状态自带的增/减伤与增粉（2026-09-18）
         trait_state_[0].clear();
         trait_state_[1].clear();
         // 能力等级本体（on-stage 作用域）：新对局必须清零——否则复用同一批 pet 对象的场景
@@ -961,6 +1130,21 @@ public:
     void install_default_damage_amp_extra();
 
     /**
+     * 安装**异常状态自带的**伤害/回复修正（常驻、TEAM 绑定、换宠不作废）。
+     *
+     * 覆盖（官方 effect_des kind=2 逐条文本）：狂暴(14) 攻击伤害翻倍、星赐(33) 攻击伤害+30%、
+     * 虚弱诅咒(26) 攻击伤害额外-50%、致命诅咒(25) 受到攻击伤害额外+50%、
+     * 衰弱(11) 按回合数受到攻击伤害额外 +25%~500%、山神守护(12) 对手受到攻击伤害-80%、
+     * 星哲(34) 造成的固定/百分比伤害+30%。
+     *
+     * ⚠️ 为什么不写 ws 的回合槽：`ws` 每回合 `memset` 清空，而异常状态**没有**"每回合重写"
+     * 的注册点（它不在时点桶里、不参与断回合）→ 写 ws 会退化成"只在施加那回合生效"。
+     * 所以一律用"常驻条目 + 回调里实时 `has_active_abnormal_status`"。
+     * 由 `init_battle()` / `clearAllEffects()` 调用。
+     */
+    void install_default_abnormal_mods();
+
+    /**
      * 安装默认挡伤（BLOCK 阶段，BLOCK 类别）。
      * 把 RuleCenter 的"次数型免伤"（ImmunityType::DAMAGE，如"免疫下1次攻击伤害"）
      * 接进伤害结算管线：命中 → 归零本次伤害 + consume_immune 扣一次。
@@ -1021,6 +1205,111 @@ public:
     ElfPet& getPet(int robotId) { return seerRobot[robotId].elfPets[on_stage[robotId]]; }
     int opponent(int robotId) const { return 1 - robotId; }
 
+    //--- 生命周期与位置判定（消逝 / 有效序列）---
+    // 判据只有一处：**消逝 ⇔ hp<=0 且体力上限<=0**（spirit_lifecycle.h 头注释解释了
+    // 为什么"上限==0"能与"被消逝"严格等价——所有数值削减都经 reduce_max_hp_* 且下限钳 1）。
+    // 全部为 inline 成员：插件不链接 sim_core，这些查询必须头内可用。
+    bool is_vanished(int side, int slot) const {
+        if (side < 0 || side > 1 || slot < 0 || slot >= 6) {
+            return false;
+        }
+        const ElfPet& pet = seerRobot[side].elfPets[slot];
+        return pet.hp <= 0
+            && pet.numericalBase[NumericalPropertyIndex::HP] <= 0;
+    }
+
+    // 有效序列 = {0..5} 去掉已消逝，保持升序。**这就是"相邻/隔位/首末位"的判定基准**：
+    // 官方 idx=56「当二边精灵被消逝时会跨1位，直接跳过该精灵位置」——
+    // 阵亡**仍占位**（"相邻或隔位精灵只要满足任意一边死亡就可以拿到效果"），
+    // 只有消逝才挖空。所以这里只剔消逝，不剔阵亡。
+    //
+    // 为什么不压缩数组：slot 是全引擎的全局身份（on_stage / roundChoice / bound_slot /
+    // soulmark_storage / 各类免疫中心都按 slot 索引），压缩会让一个回合内的在途索引全失效。
+    // 数组是本体（定长、保身份），有效序列是视图（按需推导）——同 CLAUDE.md 原则 3。
+    // 6 个元素按需算，成本可忽略；**不做常驻缓存**（省掉一套失效逻辑）。
+    int effective_size(int side) const {
+        if (side < 0 || side > 1) {
+            return 0;
+        }
+        int n = 0;
+        for (int slot = 0; slot < 6; ++slot) {
+            if (!is_vanished(side, slot)) {
+                ++n;
+            }
+        }
+        return n;
+    }
+
+    // 槽位在有效序列中的序号（0 起）；已消逝返回 -1。官方用例（薇在 3 号位）：
+    // 4 号被消逝后，序列 {0,1,2,4,5} 里 {1,5} 是隔位、{2,5} 是相邻——与本函数一致。
+    int effective_pos(int side, int slot) const {
+        if (side < 0 || side > 1 || slot < 0 || slot >= 6 || is_vanished(side, slot)) {
+            return -1;
+        }
+        int pos = 0;
+        for (int s = 0; s < slot; ++s) {
+            if (!is_vanished(side, s)) {
+                ++pos;
+            }
+        }
+        return pos;
+    }
+
+    // 有效序号 → 槽位（反查）；越界返回 -1。
+    int slot_at_effective_pos(int side, int pos) const {
+        if (side < 0 || side > 1 || pos < 0) {
+            return -1;
+        }
+        int cur = 0;
+        for (int slot = 0; slot < 6; ++slot) {
+            if (is_vanished(side, slot)) {
+                continue;
+            }
+            if (cur == pos) {
+                return slot;
+            }
+            ++cur;
+        }
+        return -1;
+    }
+
+    // 有效序列上距 slot 偏移 k 的**槽位**（k=1 相邻位，k=2 隔位——官方"相邻/隔位"是
+    // 同一族，只在 ±1 与 ±2 上不同）。越界或自身已消逝返回 -1。
+    int effective_neighbor(int side, int slot, int k) const {
+        const int pos = effective_pos(side, slot);
+        if (pos < 0) {
+            return -1;
+        }
+        const int target = pos + (k < 0 ? -(-k) : k);
+        return slot_at_effective_pos(side, target);
+    }
+
+    // 首位 = 有效序列第 1 个；末位 = 有效序列最后一个。
+    // ⚠️ 待实测：官方文章只对"相邻/隔位"明写了消逝会跳过，首位/末位只有"不过多阐述"。
+    //    这里按同理实现（跳过已消逝），若实测相反改这两个函数即可。
+    bool is_effective_first(int side, int slot) const {
+        return effective_pos(side, slot) == 0;
+    }
+    bool is_effective_last(int side, int slot) const {
+        const int pos = effective_pos(side, slot);
+        return pos >= 0 && pos == effective_size(side) - 1;
+    }
+
+    // 额外精灵计数（按状态）。额外精灵**只**参与"不在场/全部阵亡"两类口径，
+    // 不参与"背包/场下"——计数口径统一由 count_dead 表达（见 battle_primitives.h）。
+    int count_extra_spirits(int side, ExtraSpiritState state) const {
+        if (side < 0 || side > 1) {
+            return 0;
+        }
+        int n = 0;
+        for (const ExtraSpirit& es : extra_spirits[side]) {
+            if (es.state == state) {
+                ++n;
+            }
+        }
+        return n;
+    }
+
     //--- 魂印源查询（源空间判定）---
     // 在 owner 方 6 个精灵槽中查找"携带指定魂印 id 且存活"的精灵，返回槽位；未找到返回 -1。
     //
@@ -1034,6 +1323,8 @@ public:
     //       故不存在多槽命中歧义（档案 §1）。
     // 注：inline 成员，供插件（moves_lib/soul_lib 不链接 sim_core，CLAUDE.md 3.9）直接调用。
     // 注：只认存活精灵——各子句普遍写作"自身存活于出战阵容时"，阵亡（hp<=0）不应继续提供效果。
+    // 注：已消逝同样不提供效果（官方 idx=172"涉及到队友存活或者死亡收益的，默认会被消逝"；
+    //     且消逝蕴含阵亡）——hp>0 判据天然覆盖，消逝的宠 hp 也已归零，无需额外条件。
     int find_pet_with_soulmark(int owner, int soulmark_id) const {
         if (owner < 0 || owner > 1 || soulmark_id <= 0) {
             return -1;
