@@ -310,6 +310,62 @@ void EffectFactory::registerUnitAdmission(UnitAdmissionFn fn) {
     add_unit_admission(fn);
 }
 
+void EffectFactory::registerCarryEffect(int effect_id, CarryEffectFn fn) {
+    // 携带类效果与技能效果的运行时分流：本 map 只在 loadSkills 装槽时读（加载期），
+    // 战斗执行期不再查（fn 已随 Skills 走），无热路径锁竞争。
+    carry_effects_[effect_id] = fn;
+}
+
+CarryEffectFn EffectFactory::find_carry_effect(int effect_id) const {
+    const auto it = carry_effects_.find(effect_id);
+    return it != carry_effects_.end() ? it->second : nullptr;
+}
+
+std::vector<int> EffectFactory::registered_effect_ids() const {
+    // effect_cache_ 走读锁；carry_effects_ 只在插件 flush（启动期）写、此后只读，
+    // 与 find_carry_effect 同口径不加锁。
+    std::shared_lock<std::shared_mutex> read_lock(cache_mutex_);
+    std::vector<int> ids;
+    ids.reserve(effect_cache_.size() + carry_effects_.size());
+    for (const auto& entry : effect_cache_) {
+        ids.push_back(entry.first);
+    }
+    for (const auto& entry : carry_effects_) {
+        ids.push_back(entry.first);
+    }
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
+}
+
+void EffectFactory::registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
+                                              PreBattlePatchFn fn) {
+    pre_battle_patches_.push_back(PreBattlePatchEntry{soulmark_id, phase, fn});
+}
+
+void EffectFactory::run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase) {
+    if (!ctx || pre_battle_patches_.empty()) {
+        return;
+    }
+    // 两个外层循环的顺序即语义：快照段要求"任何魂印面板修改之前"看到全部 12 只的
+    // 原始面板——所以必须**先跑完全场快照段、再跑全场修改段**（不能按槽位逐只走完
+    // 两段，否则先处理的精灵的修改段会污染后处理精灵的快照段）。
+    // 同一槽位命中多条（同魂印多补丁）按注册序。
+    for (int side = 0; side < 2; ++side) {
+        for (int slot = 0; slot < 6; ++slot) {
+            const ElfPet& pet = ctx->seerRobot[side].elfPets[slot];
+            if (pet.soulMark.id <= 0) {
+                continue;
+            }
+            for (const PreBattlePatchEntry& entry : pre_battle_patches_) {
+                if (entry.soulmark_id == pet.soulMark.id && entry.phase == phase) {
+                    entry.fn(ctx, side, slot);
+                }
+            }
+        }
+    }
+}
+
 size_t EffectFactory::getLoadedLibraryCount() const {
     return loaded_libraries_.size();
 }

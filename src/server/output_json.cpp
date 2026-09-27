@@ -61,6 +61,10 @@ const char* event_type_name(int event_type) {
         case EventType::EVENT_TAKE_PINK_DAMAGE: return "EVENT_TAKE_PINK_DAMAGE";
         case EventType::EVENT_HP_TO_ZERO: return "EVENT_HP_TO_ZERO";
         case EventType::EVENT_VANISH: return "EVENT_VANISH";
+        case EventType::EVENT_STAT_CHANGED: return "EVENT_STAT_CHANGED";
+        case EventType::EVENT_ANOMALY_EXPIRED: return "EVENT_ANOMALY_EXPIRED";
+        case EventType::EVENT_ANOMALY_RESISTED: return "EVENT_ANOMALY_RESISTED";
+        case EventType::EVENT_ANOMALY_IMMUNED: return "EVENT_ANOMALY_IMMUNED";
     }
     return "EVENT_UNKNOWN";
 }
@@ -133,6 +137,7 @@ std::string legal_actions_to_json(const LegalActions& legal) {
     std::ostringstream oss;
     oss << "{";
     oss << "\"canAct\":" << (legal.can_act ? "true" : "false");
+    oss << ",\"prospective\":" << (legal.prospective ? "true" : "false");
     oss << ",\"reason\":\"" << json_escape(legal.reason) << "\"";
     oss << ",\"mustChoosePet\":" << (legal.must_choose_pet ? "true" : "false");
 
@@ -170,7 +175,8 @@ std::string legal_actions_to_json(const LegalActions& legal) {
         const LegalMedicine& m = legal.medicines[i];
         if (i > 0) oss << ",";
         oss << "{\"index\":" << m.index
-            << ",\"type\":" << m.type
+            << ",\"itemId\":" << m.item_id
+            << ",\"name\":\"" << json_escape(m.name) << "\""
             << ",\"count\":" << m.count
             << ",\"usable\":" << (m.usable ? "true" : "false") << "}";
     }

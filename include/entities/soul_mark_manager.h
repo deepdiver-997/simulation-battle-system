@@ -37,6 +37,20 @@ public:
     // 单元准入门（IEffectRegistry）：soul_lib 走本注册表；门是进程全局（effect_unit 存）。
     void registerUnitAdmission(UnitAdmissionFn fn) override;
 
+    // 战前魂印补丁（IEffectRegistry）：soul_lib 走本注册表（soul_plugin 的 flush 落在
+    // 本管理器而非 EffectFactory——与魂印程序/钩子同一条通道）。见 PreBattlePhase 注释。
+    void registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
+                                   PreBattlePatchFn fn) override;
+
+    // 携带类效果（IEffectRegistry）：转发到 EffectFactory——loadSkills 装槽只查
+    // EffectFactory，而 soul_plugin 的 flush 落本管理器；不转发的话插件侧
+    // CARRY_EFFECT 会被默认空实现静默吞掉。
+    void registerCarryEffect(int effect_id, CarryEffectFn fn) override;
+
+    // 战前补丁扫描执行（init_battle 调；语义同 EffectFactory::run_pre_battle_patches，
+    // 只是注册表换成本管理器的）。见 PreBattlePhase 注释。
+    void run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase);
+
     // 手动注册效果（不通过动态库）
     void registerEffect(int soulmarkId, EffectFn effect);
 
@@ -51,6 +65,9 @@ public:
 
     // 获取已加载的动态库数量（调试用）
     size_t getLoadedLibraryCount() const;
+
+    // 已注册魂印 id 全集（单效果 ∪ 程序 ∪ 钩子），升序去重。覆盖率对账用。
+    std::vector<int> registered_soulmark_ids() const;
 
 private:
     SoulMarkManager() = default;
@@ -74,6 +91,8 @@ private:
     std::unordered_map<int, std::vector<SoulMarkNodeRef>> program_cache_;
     // 魂印钩子缓存：魂印ID -> 登场/离场钩子（只在插件显式注册时存在）。
     std::unordered_map<int, SoulMarkHooks> hooks_cache_;
+    // 战前魂印补丁（魂印ID+时段 -> fn；保注册序，见 PreBattlePhase 注释）。
+    std::vector<PreBattlePatchEntry> pre_battle_patches_;
     mutable std::shared_mutex cache_mutex_;
 
     // 加载的动态库（保持加载状态，防止函数指针失效）

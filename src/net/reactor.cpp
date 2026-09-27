@@ -201,6 +201,7 @@ void Connection::flush() {
     std::vector<WriteDoneHandler> completed;
     bool need_write_watch = false;
     bool fatal = false;
+    bool backlog_exceeded = false;
 
     {
         std::lock_guard<std::mutex> lk(write_mutex_);
@@ -232,6 +233,15 @@ void Connection::flush() {
             fatal = true;
             break;
         }
+
+        // 积压的**持续**检查：write() 入口只能拦住"已经超限还来写"的调用，
+        // 拦不住"每次进来都在上限之下、队列却在多次调用间爬过上限"——
+        // 对端不消费时积压单调上涨，超过硬顶就必须断开，否则无界内存 +
+        // 与对端互相僵死（台账记录的整测挂死正是这条路径，2026-09-22 抓到：
+        // 客户端阻塞在 send、服务端写队列越顶却无人触发断开）。
+        if (!fatal && queued_bytes_ >= reactor_->options_.max_write_queue_bytes) {
+            backlog_exceeded = true;
+        }
     }
 
     if (!fatal && need_write_watch != want_write_registered_) {
@@ -246,7 +256,11 @@ void Connection::flush() {
         cb();
     }
 
-    if (fatal) {
+    if (fatal || backlog_exceeded) {
+        if (backlog_exceeded) {
+            std::fprintf(stderr, "[net] write backlog exceeded %zu during flush on %s, closing\n",
+                         reactor_->options_.max_write_queue_bytes, peer_.c_str());
+        }
         do_close();
     }
 }
@@ -322,6 +336,11 @@ bool Reactor::listen(const std::string& host, std::uint16_t port, int backlog) {
         }
         int one = 1;
         ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+#ifdef SO_REUSEPORT
+        // 多 acceptor 形态：几个 reactor 各自 bind 同一端口（BSD / Linux 3.9+），
+        // 内核把新连接哈希分给某个监听 fd。单 acceptor 时设了也无害。
+        ::setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
+#endif
         if (::bind(fd, ai->ai_addr, static_cast<socklen_t>(ai->ai_addrlen)) == 0) {
             break;
         }
@@ -385,6 +404,15 @@ void Reactor::run() {
     while (!stop_requested_.load(std::memory_order_acquire)) {
         run_once(-1);
     }
+
+    // 收尾 drain：最后一轮 wait() 阻塞期间，其它线程可能刚 post 了闭包
+    // （唤醒字节已写进管道，但 loop 检测到 stop 后不再进入下一轮 run_once）。
+    // 不补这一趟，这些闭包就滞留在 posted_ 里直到 Reactor 析构——闭包若持有
+    // Reactor 自身的 shared_ptr（service 停机路径正是这种形态），生命周期就悬在
+    // "loop 线程已退出、对象未亡"的窗口上（台账记录过一次整测挂死，2026-09-21）。
+    // drain_posted 是 FIFO，这趟把已投递的消化完；stop 之后才 post 的属于调用方
+    // 错误，留在队列里随析构丢弃。
+    drain_posted();
 
     running_.store(false, std::memory_order_release);
 }
@@ -619,20 +647,52 @@ void Reactor::accept_ready() {
         }
         set_common_socket_options(cfd);
 
-        if (!poller_->control(cfd, true, false, PollOp::kAdd)) {
-            ::close(cfd);
-            continue;
+        // 归属路由：路由器决定这条连接归哪个 reactor（多 worker 轮询分发）。
+        // 没配路由器（单 reactor）就留在本 reactor。此刻 fd 还**没有**注册进任何
+        // poller —— 旧实现是立即注册进 acceptor 自己的 kqueue，多 worker 形态下
+        // 必须由属主 reactor 在自己的线程注册（见 adopt_connection）。
+        Reactor* owner = this;
+        if (connection_router_) {
+            if (Reactor* picked = connection_router_()) {
+                owner = picked;
+            }
         }
 
-        auto conn = ConnectionPtr(new Connection(this, cfd, format_peer(reinterpret_cast<sockaddr*>(&ss), ss_len)));
+        auto conn = ConnectionPtr(new Connection(owner, cfd, format_peer(reinterpret_cast<sockaddr*>(&ss), ss_len)));
+        owner->adopt_connection(conn);
+    }
+}
+
+void Reactor::adopt_connection(const ConnectionPtr& conn) {
+    auto do_adopt = [this, conn] {
+        if (conn->closed_.load(std::memory_order_acquire)) {
+            return;  // 移交路上已被关掉（防御；正常路径不会发生）
+        }
+        if (!poller_->control(conn->fd_, true, false, PollOp::kAdd)) {
+            std::fprintf(stderr, "[net] adopt: poller register failed: %s\n", std::strerror(errno));
+            conn->do_close();
+            return;
+        }
         register_connection(conn);
 
+        // accept 回调在注册之后、同一个投递批次里同步执行。
+        // 顺序保证：poller 的变更表要等下一次 wait() 才真正提交进内核，而本批次
+        // 跑完之前不会有 wait() —— 所以 handler 一定先于这条 fd 的任何读写事件就位，
+        // 不存在"事件到了但 handler 还没挂上"的窗口。
         if (accept_handler_) {
             accept_handler_(conn);
         } else {
             conn->do_close();
         }
+    };
+
+    if (in_loop_thread()) {
+        do_adopt();
+        return;
     }
+    // 跨线程移交：注册与 accept 回调都必须在属主线程做（poller 单线程纪律）。
+    // 移交窗口内到达的数据躺在内核接收缓冲里，水平触发模式注册后自然可见 —— 不丢。
+    post(do_adopt);
 }
 
 void Reactor::schedule_flush(const ConnectionPtr& conn) {

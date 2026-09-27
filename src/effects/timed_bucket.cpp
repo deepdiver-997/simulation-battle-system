@@ -55,10 +55,11 @@ void TimedBucket::cleanup(int current_round, const int (&epoch_valid_id)[2]) {
             }
 
             // pass 1：统计被移除的回合类效果数（用于回滚计数）。
+            // 一次性动作节点（isActionOneShot）从未计入计数，这里也不回滚。
             int removed_round = 0;
             for (const auto& [key, effect] : effects) {
                 (void)key;
-                if (!effect->isRoundEffect()) {
+                if (!effect->isRoundEffect() || effect->isActionOneShot()) {
                     continue;
                 }
                 if (effect->isExpired(current_round)
@@ -72,7 +73,9 @@ void TimedBucket::cleanup(int current_round, const int (&epoch_valid_id)[2]) {
             // - 非回合 ON_STAGE：被作废（切换后次数类效果也要移除）
             std::erase_if(effects, [&](const auto& kv) {
                 const ContinuousEffect& effect = *kv.second;
-                if (effect.isRoundEffect()) {
+                // 一次性动作节点沿用"回合类"的过期删除路径（duration==1，回合末自然过期），
+                // 但不参与回合计数（见 pass 1）。
+                if (effect.isRoundEffect() || effect.isActionOneShot()) {
                     return effect.isExpired(current_round)
                         || is_epoch_invalidated(effect, epoch_valid_id[p]);
                 }

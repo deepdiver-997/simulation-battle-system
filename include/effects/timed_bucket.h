@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include <effects/continuousEffect.h>
 #include <fsm/state.h>
@@ -62,7 +63,7 @@ public:
         if (!effect || owner < 0 || owner > 1) {
             return;
         }
-        if (effect->isRoundEffect()) {
+        if (effect->isRoundEffect() && !effect->isActionOneShot()) {
             ++active_round_count_[owner];
         }
         effect->valid_id_ = epoch_valid_id;
@@ -70,7 +71,8 @@ public:
         TimedEffectMap& effects = buckets_[trigger][owner];
         const uint64_t key = timed_effect_key(*effect);
         auto it = effects.find(key);
-        if (it != effects.end() && it->second->isRoundEffect()) {
+        if (it != effects.end() && it->second->isRoundEffect()
+            && !it->second->isActionOneShot()) {
             --active_round_count_[owner];
             if (active_round_count_[owner] < 0) {
                 active_round_count_[owner] = 0;
@@ -89,6 +91,47 @@ public:
     // 清理：(a) 自然过期（isExpired）、(b) 被 epoch 作废的 ON_STAGE 效果。
     // 同时扣减 active_round_count_。判定谓词只在此处写一次。
     void cleanup(int current_round, const int (&epoch_valid_id)[2]);
+
+    // 断回合（消"回合类效果"）：只终结**回合类**条目并移除；常驻魂印（duration=-1）
+    // 与 TEAM 条目保留 —— 作废它们是切换/清场（invalidate_on_stage_effects 递增
+    // epoch）的职责。旧实现由 BattleContext 递增 epoch 一刀切，会把 STAGE 常驻魂印
+    // 误杀（圣灵谱尼七刻印被神圣复苏的"消双方回合类效果"清掉，2026-09-22 实测）。
+    inline void break_round_effects(int owner, int current_round) {
+        if (owner < 0 || owner > 1) {
+            return;
+        }
+        // ⚠️ 断回合发生在某个时点桶的执行途中（1237 就在 SKILL_EFFECT 时点跑），
+        // 这里**只标记过期、不做 erase**——执行途中 erase 同桶条目会使外层迭代器失效。
+        // 实际移除交给 cleanup / execute_at 的 isExpired 惰性路径（计数一并扣减）。
+        for (auto& [state, per_player] : buckets_) {
+            (void)state;
+            for (auto& [key, effect] : per_player[owner]) {
+                (void)key;
+                if (effect->isRoundEffect() && !effect->isActionOneShot()
+                    && !effect->isExpired(current_round)) {
+                    effect->force_expire(current_round);
+                }
+            }
+        }
+    }
+
+    // 断回合后把**常驻**条目（isRoundEffect()==false）的 epoch 刷到最新：
+    // 断回合的 epoch 递增只该终结回合类条目和规则中心票，常驻魂印（七刻印等）
+    // 不属于回合类，刷 epoch 让它们在作废浪潮中幸存（切换作废路径不刷新，照常死）。
+    inline void refresh_permanent_epoch(int owner, int epoch) {
+        if (owner < 0 || owner > 1) {
+            return;
+        }
+        for (auto& [state, per_player] : buckets_) {
+            (void)state;
+            for (auto& [key, effect] : per_player[owner]) {
+                (void)key;
+                if (!effect->isRoundEffect()) {
+                    effect->valid_id_ = epoch;
+                }
+            }
+        }
+    }
 
     // 作废后归零回合计数（epoch 递增由 BattleContext 负责——该 epoch 由两个桶共享）。
     void reset_round_count(int owner) {

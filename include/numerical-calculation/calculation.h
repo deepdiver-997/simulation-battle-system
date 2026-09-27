@@ -9,13 +9,25 @@ class Calculation {
     public:
     static int calculateDamage(int attacker, const BattleWorkspace& ws, const Skills& skill) {
         int defender = 1 - attacker;
-        if(skill.type == SkillType::Attribute) return 0; // Status skills do not deal damage
+        // 技能类别**视图**（ws.skill_type_view，resolve_skill_execution 每次使用物化
+        // skill.type）——"转化"类效果（28810 魂·天忤太虚 2210：星赐→物理/星哲→特殊）
+        // 在 SKILL_EFFECT 时点改写视图，ATTACK_DAMAGE 阶段这里按**视图**选攻防项与
+        // 属性门。未转化的技能视图 == skill.type，行为与旧实现逐字节一致。
+        const int eff_type = ws.skill_type_view[attacker];
+        if (eff_type == static_cast<int>(SkillType::Attribute)) return 0; // Status skills do not deal damage
         // if(skill.element[1] == 0 && defender.elementalAttributes[1] == 0 && ElementalAttributes::elementalAttributesRestraints[skill.element[0]][defender.elementalAttributes[0]] == 0) {
         //     return 0; // No elemental attributes to calculate damage
         // }
         double damage = 0.0;
-        double Attack = ws.getTempAbilityValue(attacker, static_cast<NumericalPropertyIndex>(skill.type));
-        double Defense = ws.getTempAbilityValue(defender, static_cast<NumericalPropertyIndex>(static_cast<int>(skill.type) + 2));
+        double Attack = ws.getTempAbilityValue(attacker, static_cast<NumericalPropertyIndex>(eff_type));
+        // 套装线（2026-09-19 腐蚀者 387）："所有攻击技能忽略对手防御值和特防值的15%"——
+        // 防御在进公式前按 ws.defense_ignore_pct[defender] 折减（物理走防御、特殊走特防，
+        // 同一槽位字段按本技能的攻防项取值）。忽略的是**能力视图值**（含等级修正后的），
+        // 与官方"忽略防御值"口径一致；先手权速度比较/属性伤害不受影响。
+        double Defense = ws.getTempAbilityValue(defender, static_cast<NumericalPropertyIndex>(eff_type + 2));
+        if (ws.defense_ignore_pct[defender] > 0) {
+            Defense = Defense * (100 - ws.defense_ignore_pct[defender]) / 100.0;
+        }
         // 技能威力视图层：ws.skill_power_view（效果可改，如威力提升/随机威力）优先，
         // 未物化(0)回退技能静态 power。
         // ⚠️ 哨兵是 **-1（未物化）** 而不是 0：视图威力 0 是一个**合法值**——强制执行打盔时

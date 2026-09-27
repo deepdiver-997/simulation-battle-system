@@ -34,6 +34,12 @@ EffectArgs build_effect_args_for_skill(const official_data::SkillEffectRecord& r
 }
 
 bool monster_has_skill(const official_data::MonsterRecord& monster, int skill_id) {
+    // 第五技能（hide_moves，如圣灵谱尼神灵救世光）也算"属于这只精灵"；
+    // 它只能占第 5 槽的槽位规则由 PetFactory::create_skills_for_pet 把守。
+    if (std::find(monster.hidden_moves.begin(), monster.hidden_moves.end(), skill_id)
+        != monster.hidden_moves.end()) {
+        return true;
+    }
     return std::any_of(
         monster.learnable_moves.begin(),
         monster.learnable_moves.end(),
@@ -87,6 +93,16 @@ State effect_register_state(int effect_id) {
         case 6:
         case 8:
             return State::BATTLE_FIRST_ATTACK_DAMAGE;
+        case 1249:  // 两代五技共有"造成伤害的{0}%恢复自身体力(+条件等量百分比伤害)"：
+                    // 需伤害结算后读 ws.raw_attack_damage（攻伤台账），同 422/1256 族
+            return State::BATTLE_FIRST_ATTACK_DAMAGE;
+        case 2020:  // 末法迪知 "若自身处于异常状态则先制+3"：先制计算时点判定
+            return State::BATTLE_FIRST_MOVE_RIGHT;
+        case 2397:  // 王·天衍星霜 "击败对手时转移宙变之殢"：击败对手后时点（1960 同款）
+        case 865:   // 重生之翼·无上天命剑 "击败对手则获得{0}层神耀能量"：击败与否在
+                    // "击败对手后"时点才可知；归因读 pet 槽 kWingKillRoundKey
+                    // （魂印侧 EVENT_DEATH watcher 写；wing_skills.cpp，2026-09-23）
+            return State::BATTLE_AFTER_DEFEATING_OPPONENT;
         case 1256:  // 王·酷烈风息 "造成的伤害低于X"：需伤害结算后读 resolvedDamage.final
         case 101:   // "伤害数值的{0}%恢复自身"（吸血）：同上，伤害结算后按最终伤害回血
         case 422:   // "附加所造成伤害值{0}%的固定伤害"：伤害结算后读**裸伤台账**
@@ -94,7 +110,30 @@ State effect_register_state(int effect_id) {
         case 1221:  // 王·酷烈风息 "反转自身能力下降"：攻击技能**先结算伤害再反转**——
                     // 反转不参与本次伤害（本次用反转前等级，提升留给下次），故伤害结算后操作 levels
         case 521:   // 反转自身能力下降状态（无参基本形，1221 的主子句同族）：同上口径
+        case 1208:  // 天启帝君·天君启示录 "反转自身能力下降…成功则对手下N次攻击无效"：
+                    // 1221/521 同族（天启帝君 3550 线，2026-09-20）
+        case 505:   // 天启帝君·流风剑道 "打出致命一击则伤害值{0}%回血"：
+                    // 暴击与否与最终伤害都在结算后可知
+        case 1306:  // 天启帝君·纵横三千界 "造成的伤害低于350…"：1256 同款读 resolvedDamage.final
+        case 1307:  // 天启帝君·纵横三千界 "未击败对手则…"：击败与否在伤害落地后判定
+        case 1308:  // 天启帝君·纵横三千界 "击败对手则…"：同上（1307 的补集分支）
+        case 1382:  // 圣光莫妮卡·万籁俱寂 "命中后获得{0}层，若造成的伤害高于{1}则额外+{2}层"：
+                    // 伤害阈值在结算后可知（1256 同族；圣莫技能组 2026-09-25）
+        case 1054:  // 圣光莫妮卡·王·鸾歌余音 "反转自身能力下降，反转成功则对手{0}"：
+                    // 1221/521 反转族口径——攻击先结算伤害再反转
             return State::BATTLE_FIRST_AFTER_ACTION;
+        case 531:   // 莫塔里安·黯狱责罚 "造成的伤害低于280时每相差2点有1%概率使对手害怕"
+                    // → 概率由**最终伤害**决定，伤害结算后才知道（1256/1306 同族）
+        case 793:   // 莫塔里安·禁命永囚劫 "若造成的伤害低于{0}，则下{1}回合每回合造成{2}点固伤"
+                    // → 同上，读 final 判阈值
+            return State::BATTLE_FIRST_AFTER_ACTION;
+        case 1070:  // 莫塔里安·尘沙结天咒 "对手处于能力下降状态时自身先制+1"
+                    // → 先手权判定时读对手等级（固有效果族；每回合重判）
+        case 2079:  // 灵巢之主·无念归空净 "对手处于护盾状态时先制+1并无视对手护盾效果"
+        case 881:   // 阿尔忒弥斯·森语百兽谣 "若自身处于能力下降状态则技能先制+3"
+        case 2273:  // 阿尔忒弥斯·穿林响 "对手选择攻击技能时此技能先制+3"
+                    // → 同为条件先制族，一律挂先手权判定时点
+            return State::BATTLE_FIRST_MOVE_RIGHT;
         case 1960:  // 希拓·神煌炎舞斩 "击败对手则令自身N回合内强化无法被消除或吸取"
                     // → 击败对手后时点（本轮线性序最后，本技能效果仍在桶里）
             return State::BATTLE_AFTER_DEFEATING_OPPONENT;
@@ -120,6 +159,25 @@ State effect_register_state(int effect_id) {
         case 2090:  // ·均：附加双方体力上限差值50%的次元·龙系伤害，自身体力上限高于对手时
                     //       额外吸取对手第五技能剩余的PP值，低于对手时附加伤害翻倍
             return State::BATTLE_FIRST_EXTRA_ACTION;
+        case 1218:  // 神忏福音之章 "未击败对手则下{0}回合自身先制+{1}"：
+                    // "未击败"要在**伤害落地之后**判（1307 同款，官方 idx=401 第 6 条把
+                    // "未击败/击败"收纳在同一时点）→ 同 1307/2105 归位 AFTER_ACTION
+        case 984:   // 神游·浩渺星河 "未击败对手则下回合自身所有技能先制+{0}"
+                    // （启灵元神 33893）：1218 同款归位 AFTER_ACTION（2026-09-22）
+            return State::BATTLE_FIRST_AFTER_ACTION;
+        case 1323:  // 「造成伤害的{0}%恢复自身体力，暴击则附加恢复量等量的百分比伤害」
+                    // （协议IV·解 37357）：读**结算后**的 resolvedDamage.final / isCrit
+                    // → 挂 AFTER_ACTION（101 吸血同路，state_for_owner 镜像 SECOND）
+            return State::BATTLE_FIRST_AFTER_ACTION;
+        case 1533:  // 「造成的攻击伤害低于{0}时附加大量真实伤害」（启灵元神 33894）：
+                    // 读裸伤台账 ws.raw_attack_damage（ATTACK_DAMAGE 收尾才写入）→
+                    // 挂 AFTER_ACTION（422/雷解同款"造成的伤害"读法）
+            return State::BATTLE_FIRST_AFTER_ACTION;
+        case 2440:  // 「未击败对手时恢复当回合所造成攻击伤害的{0}%的体力，若未造成攻击
+                    // 伤害则对手{1}回合内无法主动切换精灵」（百罗鬼帝 38383 蔑天行·残虐）：
+                    // "未击败"与伤害量都要在伤害落地后判（1218/1533 同款归位）；
+                    // 裸伤读台账，未击败 = 对手 hp>0
+            return State::BATTLE_FIRST_AFTER_ACTION;
         default:
             return State::BATTLE_FIRST_SKILL_EFFECT;
     }
@@ -150,12 +208,16 @@ EffectResult effect_apply_base_priority(BattleContext* ctx, const EffectArgs& ar
  * 目前已知的"无效时触发"效果（数据可后续移入 DB 表）：
  *   - 2006：技能无效时，免疫下1次对手的攻击，免疫成功则令对手全属性+1（索杰德尔·无念归空净）
  *   - 2501：技能无效时，重新进行伤害结算且每260特攻威力翻倍1次（薇尔诗·乐园之初诞）
+ *   - 136 ：若Miss则自己恢复1/{0}体力（灵魂之歌 22410；盔挡下同走无效分支，口径同 2126）
+ *   - 2418：技能无效时，获得等同于对手最大体力1/3的护盾、护罩（大赤殓 38282）
  */
 SkillExecResult default_branch_for_effect(int effect_id) {
     switch (effect_id) {
         case 2006:
         case 2501:
         case 2126:  // 烬灭神咒剑：技能无效时消除对手回合类/能力提升 + 焚烬
+        case 136:   // 灵魂之歌：若Miss则自己恢复1/4体力
+        case 2418:  // 大赤殓：技能无效时获得对手最大体力1/3的护盾、护罩
             return SkillExecResult::SKILL_INVALID;
         case 2086:  // 空元之诗·渍：「**若技能无效**，则消除对手回合类效果、能力提升效果…」
                     // 它的整个条件就是"技能无效"→ 必须挂在 SKILL_INVALID 分支上，
@@ -163,6 +225,16 @@ SkillExecResult default_branch_for_effect(int effect_id) {
                     // 时点仍是额外行动（见 effect_register_state）——分支决定"哪一趟注册"，
                     // 时点决定"哪一趟执行"，两者正交。
             return SkillExecResult::SKILL_INVALID;
+        // 空元之诗·镀/柱/烙/均（2087~2090）：**固有效果**（用户 2026-09-20 口径）——
+        // 只因"封效果"类机制不触发；被封属 / 打在盔上 / miss（都走 SKILL_INVALID 补偿趟）
+        // 照常注册。归 INHERENT：HIT 与 SKILL_INVALID 两趟都注册（见 Skills::execute）。
+        // 它们各自的"若…则…"条件不在分支里判——由魂印侧在**抹除诗章之前**求值
+        // （vanish_kongyuan.cpp 的 soulmark_2175_poem_declare）。
+        case 2087:
+        case 2088:
+        case 2089:
+        case 2090:
+            return SkillExecResult::INHERENT;
         default:
             return SkillExecResult::HIT;
     }
@@ -249,8 +321,12 @@ EffectResult effect_run_parsed_unit_unconditional(BattleContext* ctx, const Effe
 
 } // namespace
 
-Skills::Skills(int id, const official_data::MonsterRecord& monster)
-    : id(id) {
+Skills::Skills(int id, const official_data::MonsterRecord& monster,
+               std::vector<EffectParamOverride> arg_overrides,
+               const DisabledEffects& disabled)
+    : id(id),
+      arg_overrides_(std::move(arg_overrides)),
+      disabled_(disabled) {
     if (id <= 0) {
         throw std::runtime_error("invalid skill id: " + std::to_string(id));
     }
@@ -262,6 +338,39 @@ Skills::Skills(int id, const official_data::MonsterRecord& monster)
     }
     if (!loadSkills()) {
         throw std::runtime_error("Failed to load skill with id: " + std::to_string(id));
+    }
+}
+
+// 词条参数覆盖（调试台"词条编辑"线，2026-09-26）。
+// arg_index 与 effect_info.info 模板的 {n} 占位符同下标；DB 省略的隐式尾参按 0 补齐。
+// 覆盖了本技能不存在的效果 → 抛错（try_start_battle 捕获后转 lineup rejected，
+// 用户在控制台立刻能看到手误）。
+void Skills::apply_arg_overrides() {
+    if (arg_overrides_.empty()) {
+        return;
+    }
+    for (const EffectParamOverride& ov : arg_overrides_) {
+        bool hit = false;
+        for (official_data::SkillEffectRecord& rec : rawEffectRecords) {
+            if (rec.effect_id != ov.effect_id) {
+                continue;
+            }
+            hit = true;
+            if (ov.arg_index < 0) {
+                throw std::runtime_error(
+                    "effect param override: negative arg index on effect " +
+                    std::to_string(ov.effect_id));
+            }
+            if (static_cast<std::size_t>(ov.arg_index) >= rec.args.size()) {
+                rec.args.resize(static_cast<std::size_t>(ov.arg_index) + 1, 0);
+            }
+            rec.args[static_cast<std::size_t>(ov.arg_index)] = ov.value;
+        }
+        if (!hit) {
+            throw std::runtime_error(
+                "effect param override: skill " + std::to_string(id) + " has no effect " +
+                std::to_string(ov.effect_id));
+        }
     }
 }
 
@@ -294,9 +403,41 @@ bool Skills::loadSkills() {
     element[0] = record->type_id;
     element[1] = 0;
     rawEffectRecords = record->effects;
+    // 效果禁用（2026-09-26 禁用基建）：在参数覆盖之前摘除——被禁效果视为不存在，
+    // 之后的参数覆盖对它报"效果不存在"（与手误路径一致）。
+    if (!disabled_.skill_effects.empty()) {
+        rawEffectRecords.erase(
+            std::remove_if(
+                rawEffectRecords.begin(), rawEffectRecords.end(),
+                [this](const official_data::SkillEffectRecord& rec) {
+                    return std::find(disabled_.skill_effects.begin(),
+                                     disabled_.skill_effects.end(),
+                                     rec.effect_id) != disabled_.skill_effects.end();
+                }
+            ),
+            rawEffectRecords.end()
+        );
+    }
+    // 词条参数覆盖（调试台线）：先改记录、后建效果——下方所有 build_effect_args_for_skill
+    // 读到的都是覆盖后的 args（注册分支/选择期/自定义程序全路径生效）。
+    apply_arg_overrides();
     effectBranches.clear();
     selection_effects_.clear();
     parsed_units_.clear();
+    // 携带类效果装槽（加载期识别）：逐条查携带注册表，命中即装。战斗期扫描只读本槽
+    // （init_battle），不再查注册表——见 Skills::carryEffects 注释。必须在
+    // rawEffectRecords 定型后执行；本函数失败即 throw，不存在半装槽状态外泄。
+    carryEffects.clear();
+    // 可用性修饰（魂印/印记带来的"PP=0 仍可释放"）同样是**战斗内动态写入**的槽
+    // （之铭·叵 每回合按面板槽刷），重载技能时必须清空——否则同一 Skills 对象被复用
+    // （换形态/重载数据）时上一轮的修饰会残留。
+    usabilityEffects.clear();
+    for (const auto& effect_record : rawEffectRecords) {
+        if (CarryEffectFn carry_fn =
+                EffectFactory::getInstance().find_carry_effect(effect_record.effect_id)) {
+            carryEffects.emplace_back(effect_record.effect_id, carry_fn);
+        }
+    }
     // 解析器的分支指针指向 parsed_units_ 内元素，reserve 足量防 realloc 悬垂。
     parsed_units_.reserve(rawEffectRecords.size() * 3 + 4);
 
@@ -330,8 +471,19 @@ bool Skills::loadSkills() {
         // 等执行期时点就太晚了（先手权早已结算完）。
         //   2000 大雪纷飞/烬灭神咒剑：若对手处于能力提升状态则先制+1且必定命中
         //   610  璨灵圣光：遇到天敌时先制+{0}
+        //   954  「若当前体力低于对手则先制+1」（协议I·激 37354 等 36 技通用模板）
+        //   1848 王·御影神罚族：对手处于能力下降状态时先制+2（神觉·米斯蒂克）
+        //   881  神火剑阵 37221：若自身处于能力下降状态则先制+3（2026-09-20 烧伤三精灵线）
         // 一般化的"选择期效果路由"（按 EffectMeta 分类而非硬编码 id）留数据驱动后续。
-        if (effect_record.effect_id == 2000 || effect_record.effect_id == 610) {
+        //   1532 神游·浩渺星河：对手不存在神印则攻击必定致命一击（2026-09-22 启灵线）——
+        //        必暴写 ws.must_crit，而暴击掷点在 query_usage ①.5（ON_SKILL_HIT），
+        //        执行期桶（SKILL_EFFECT 及以后）写必暴只惠及下次攻击；MOVE_RIGHT 是
+        //        掷点前最后一个可执行时点（且其效果体运行时本轮所有提交均已应用 →
+        //        神印发布槽为新鲜值）。PP 归零半边由效果体自延后到自身行动期
+        //        （见 qiling_skills.cpp：先/后手各挂一格、只在自己那格执行）。
+        if (effect_record.effect_id == 2000 || effect_record.effect_id == 610
+            || effect_record.effect_id == 954 || effect_record.effect_id == 1848
+            || effect_record.effect_id == 881 || effect_record.effect_id == 1532) {
             Effect sel = clone_effect(effect_record.effect_id, build_effect_args_for_skill(effect_record));
             if (sel.logic) {
                 selection_effects_.push_back(
@@ -382,13 +534,12 @@ bool Skills::loadSkills() {
             const int unit_idx =
                 load_effect_unit_from_json(custom_prog->unit_json, effect_record.args, parsed_units_);
             if (unit_idx >= 0) {
-                Effect unit_effect;
-                unit_effect.id = effect_record.effect_id;
-                unit_effect.logic = &effect_run_parsed_unit;
-                unit_effect.args = EffectArgs(
-                    build_effect_args_for_skill(effect_record).owned_int_args,
-                    &parsed_units_[static_cast<std::size_t>(unit_idx)]
-                );
+                // 全参构造（Effect 无默认构造）：left_round=0 → 一次性（本回合有效）。
+                Effect unit_effect(effect_record.effect_id, 0, 0, 0,
+                                   EffectArgs(
+                                       build_effect_args_for_skill(effect_record).owned_int_args,
+                                       &parsed_units_[static_cast<std::size_t>(unit_idx)]),
+                                   &effect_run_parsed_unit);
                 add_effect_node(
                     default_branch_for_effect(effect_record.effect_id),
                     SkillEffectNode(std::move(unit_effect), effect_register_state(effect_record.effect_id))
@@ -408,19 +559,34 @@ bool Skills::loadSkills() {
             effect_args.owned_int_args[4] = id;
             effect_args.refresh_views();
         }
+        // 元神神之宣告（27021）的免断**特判路由**：821 通用模板（25+ 技能共享，含轮回之狱）
+        // 保持不动，只有元神被官方特殊处理为 **n-1 回合**——最准确描述是
+        // 「1回合免断 ➕ 下1次免断」，不是描述上的 2 回合（语料《机制解析—免断》
+        // + 作者顶置；"元神2回合免断和圣雷2回合免断比起来，会少1回合"）。
+        // 内部变体 id = 技能id×10 = 270210（刻意避开 DB effect id 空间，DB 8000~9000
+        // 段现为空、4 位 id 空间仍会扩充），由 qiling 插件注册实现。
+        if (id == 27021 && effect_record.effect_id == 821) {
+            Effect variant = clone_effect(270210, build_effect_args_for_skill(effect_record));
+            if (variant.logic) {
+                add_effect_node(
+                    default_branch_for_effect(effect_record.effect_id),
+                    SkillEffectNode(std::move(variant),
+                                    effect_register_state(effect_record.effect_id)));
+            }
+            continue;
+        }
         Effect effect = clone_effect(effect_record.effect_id, std::move(effect_args));
         if (!effect.logic) {
             // 未注册函数：尝试解析模板为条件效果单元（组合语法），成功则注册通用执行器
             // （args.extra 指向 Skills::parsed_units_ 内单元）。失败维持跳过（现状）。
             const int unit_idx = parse_effect_unit(effect_record.info, effect_record.args, parsed_units_);
             if (unit_idx >= 0) {
-                Effect unit_effect;
-                unit_effect.id = effect_record.effect_id;
-                unit_effect.logic = &effect_run_parsed_unit;
-                unit_effect.args = EffectArgs(
-                    build_effect_args_for_skill(effect_record).owned_int_args,
-                    &parsed_units_[static_cast<std::size_t>(unit_idx)]
-                );
+                // 全参构造（Effect 无默认构造）：left_round=0 → 一次性（本回合有效）。
+                Effect unit_effect(effect_record.effect_id, 0, 0, 0,
+                                   EffectArgs(
+                                       build_effect_args_for_skill(effect_record).owned_int_args,
+                                       &parsed_units_[static_cast<std::size_t>(unit_idx)]),
+                                   &effect_run_parsed_unit);
                 add_effect_node(
                     default_branch_for_effect(effect_record.effect_id),
                     SkillEffectNode(std::move(unit_effect), effect_register_state(effect_record.effect_id))
@@ -437,10 +603,12 @@ bool Skills::loadSkills() {
     // 基值先制也作为一条选择期效果数据放进 selection_effects_：
     // on_selected 统一遍历注册到 MOVE_RIGHT 时点（即使本回合被控导致出招失败也生效）。
     // 条件先制效果（如"对手有护盾则先制+1"）由数据/插件在此之后追加。
-    Effect base_priority_effect;
-    base_priority_effect.id = 0;
-    base_priority_effect.logic = &effect_apply_base_priority;
-    base_priority_effect.args = EffectArgs(std::vector<int>{0, 1, priority});
+    // ⚠️ left_round=-1：先制是**即时结算**（注册后立刻在 MOVE_RIGHT 时点跑一次，
+    // 加完 preemptive_level 即使命）—— 必须是非回合类（duration=-1 → isRoundEffect()=false）：
+    // 若被当成回合类，会计入 has_round_effects，让 797/889"消回合成功"族误判对手
+    // "有回合类效果可断"（072 B1b 曾因此失败，根因链见 effect.h 的注释）。
+    Effect base_priority_effect(0, 0, 0, -1, EffectArgs(std::vector<int>{0, 1, priority}),
+                                &effect_apply_base_priority);
     selection_effects_.push_back(
         SkillEffectNode(std::move(base_priority_effect), State::BATTLE_FIRST_MOVE_RIGHT)
     );
@@ -520,6 +688,10 @@ void Skills::on_selected(BattleContext* ctx, int owner) {
     if (!ctx || owner < 0 || owner > 1) {
         return;
     }
+    if (std::getenv("SEL_DBG")) {
+        std::fprintf(stderr, "[sel] o=%d skill=%d nodes=%zu state=%d\n", owner, id,
+                     selection_effects_.size(), static_cast<int>(ctx->currentState));
+    }
     // 选择期效果统一注册到 MOVE_RIGHT 时点（含基值先制 + 条件先制）。
     // 走 registerEffect 统一处理（valid_id 绑定 + 同源去重），source_id = 技能 id。
     for (const SkillEffectNode& node : selection_effects_) {
@@ -571,7 +743,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             } else {
                 // 非必中技能：必定 miss。走到这里就是 miss（不再掷命中率）。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
-                                         cred.ignore_attack_immunity);
+                                         cred.ignore_attack_immunity, ctx->roundCount);
                 return SkillUsageResult::MISS;
             }
         } else if (!cred.must_hit) {
@@ -594,17 +766,26 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
                 accuracy = accuracy * (100 - e->args[0]) / 100;
             }
             // 命中等级（view_levels 槽 **5**，官方能力提升六项之一）——2026-09-18 接入精度公式。
-            // 来源有两类：① 异常衍化族（焚烬 22 结束后"转化为烧伤与命中等级-1"，
+            // 来源有三类：① 异常衍化族（焚烬 22 结束后"转化为烧伤与命中等级-1"，
             // 见 abnormal-types.h 的 abnormal_derivation）；② 效果层"令对手命中等级±n"
-            // （`stat_change/stat_drop` 的 `stat=5`，既有插件 stat_dispel.cpp 已在用）。
+            // （`stat_change/stat_drop` 的 `stat=5`，既有插件 stat_dispel.cpp 已在用）；
+            // ③ **视为修正** ws.hit_level_extra（2026-09-20 神觉·米斯蒂克 4676 的蚩庸之锁：
+            // "每有 1 层，自身视为命中等级额外 -1"——与命中强化相互抵消，官方口径）。
             // 倍率表见 `hit_level_accuracy_pct()`：**负档沿用引擎既有的官方档位表**
             // （-1→85% … -6→25%，原误置在 getTempAbilityValue 里），正档暂无官方表 → 通用等级换算。
-            // ⚠️ 必中技能（cred.must_hit）在上面就分流了，走不到这里 → 命中等级治不了必中。
+            // ⚠️ 必中技能（cred.must_hit）**绕过**它——必中技能走不到这里 → 命中等级治不了必中。
             {
-                const int hit_level = ctx->ws.view_levels[owner][kAbilityLevelIndexHit];
+                const int hit_level = ctx->ws.view_levels[owner][kAbilityLevelIndexHit]
+                                    + ctx->ws.hit_level_extra[owner];
                 if (hit_level != 0) {
                     accuracy = accuracy * hit_level_accuracy_pct(hit_level) / 100;
                 }
+            }
+            // 命中率修正倍率（默认 1.0；此前为无消费点的死字段，2026-09-19 套装线接入）：
+            // 圣芒佑界 476"己方精灵命中率提升15%"（战盔额外效果）每回合写 1.15。
+            // 与精准/回避同属乘算链，排在命中等级之后、异常修正之前（固定位置可复现）。
+            if (ctx->ws.hit_rate_mod[owner] != 1.0f) {
+                accuracy = static_cast<int>(accuracy * ctx->ws.hit_rate_mod[owner]);
             }
             // 异常状态对**攻击技能命中率**的修正（官方 effect_des 10/13）：
             //   混乱(10)「攻击技能的命中率**减少80%**」  → ×20%
@@ -637,7 +818,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
                 // miss 也照常 notify 中心：文档 §2.3「一旦本次技能命中失败（miss 类），
                 // 会消耗所有可响应的次数类效果」——狮盔会被响应并消耗，尽管技能是 miss 的。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
-                                         cred.ignore_attack_immunity);
+                                         cred.ignore_attack_immunity, ctx->roundCount);
                 return SkillUsageResult::MISS;
             }
         }
@@ -676,6 +857,21 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
         ctx->crit_happened[owner] = ctx->ws.must_crit[owner] || crit_second_roll
             || rate >= 100.0f
             || (rate > 0.0f && (std::rand() % 10000) < static_cast<int>(rate * 100.0f));
+        // 2380 「自身下{0}次致命一击视为命中并强制执行命中效果」（圣光莫妮卡·繁嚣此寂
+        // 29299；技能组 2026-09-25）：暴击落地即消费 1 层计数（plugin_storage 990238000+owner，
+        // 技能效果侧武装）→ cred.force_execute——"视为命中"与"强制执行"都由它承载
+        // （②.0 强制执行隐含必定命中；③层命中失效/盔/威照常消费但被绕过）。
+        if (ctx->crit_happened[owner]) {
+            const int charges_key = 990238000 + owner;
+            if (ctx->plugin_storage.count(charges_key)) {
+                const int left = std::any_cast<int>(ctx->plugin_storage[charges_key]);
+                if (left > 0) {
+                    ctx->plugin_storage[charges_key] = left - 1;
+                    // query_usage 里的 cred 是 const 引用 → 写底层 ws 槽（同一对象）。
+                    ctx->ws.attack_credential[owner].force_execute = true;
+                }
+            }
+        }
     }
 
     // ② 门判定（技能无效中心：盔 / 威 / 封属 / 封属·命中失效）。
@@ -687,7 +883,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
     //    它**天生只响应属性技能**（781 秩序之助原文："令对手使用的**属性技能**无效"），
     //    与 ③层"命中效果失效"（下面 ②.5）**不是同一件事**——后者攻击/属性技能都可能。
     const SkillInvalidNotifyResult nr = ctx->rule_center_.notify(
-        ctx, owner, is_attribute, this->power, cred.ignore_attack_immunity,
+        ctx, owner, is_attribute, this->power, cred.ignore_attack_immunity, ctx->roundCount,
         // 每条**被结算**的拦截条目（真正生效 或 被穿）都发一次事件，带上 grant_id + blocked。
         // 用途：带后续子句的盔（"触发成功则…"）按 **grant_id** 精确匹配自己那条，
         //   无论生效与否都自删监听器 → **被穿的盔不会留下野监听器**在下次误触发
@@ -743,6 +939,24 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             && (std::rand() % 100) < 50) {
             return SkillUsageResult::SEALED;
         }
+        // ②.1' **非同系攻击免疫门**（圣光莫妮卡 2492 神谕口径，2026-09-25 待落①落地）：
+        // 守方有律武装 → **攻击技能**（属性技能不进门）系别（skill_element_view，上方
+        // resolve_skill_execution 的 ON_SKILL_HIT 物化点已按"选择期授予 > 面板"刷新）
+        // ∉ 守方系别集（view_elementalAttributes，系别视图）→ 技能无效（SEALED，走补偿趟）。
+        // 官方语料口径（调研报告 115/163）：非同系技能免疫 = "攻击系别∈守方系别集才可伤"；
+        // 本质是**可穿盔**——攻方凭证 valid（穿透 697/699 ∪ 强制执行）照样穿（!cred.valid 门）。
+        // 排在 ②.1 同一收口位：拦截条目已消费、沉默/失神先判（同为"没有别的无效时的收口"）。
+        if (!is_attribute && !cred.valid && ctx->ws.nonnative_immune_armed[1 - owner]) {
+            const int defender = 1 - owner;
+            const int (&sv)[2] = ctx->ws.skill_element_view[owner];
+            const int (&dv)[2] = ctx->ws.view_elementalAttributes[defender];
+            const bool same_type =
+                (sv[0] != 0 && (sv[0] == dv[0] || sv[0] == dv[1]))
+                || (sv[1] != 0 && (sv[1] == dv[0] || sv[1] == dv[1]));
+            if (!same_type) {
+                return SkillUsageResult::SEALED;
+            }
+        }
     }
 
     // ②.5 ③层"命中效果失效"（防御方按次挂载）：**按技能类型分别消费**。
@@ -760,6 +974,22 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
         }
     }
 
+    // ②.6 「攻击技能无法造成伤害且命中效果失效」票（effect 1090 族，ATTACK_NULLIFY，
+    // 2026-09-21 用户口径）：**生效目标**一侧出招 → 命中失效（kFullNull 白板：效果不注册
+    // + 红伤归零）。红伤归零点在 finish_attack_damage（伤害管线**之前** → 护盾/护罩不
+    // 消耗）；该攻击的**粉伤**在 deal_pink_damage 入口同样被封锁（红粉双封，强制执行
+    // 的粉伤效果也不生效）；真伤不封（独立通道）。
+    // ⚠️ 与 ③层 同款：**强制执行绕过**——无相谛（威力 0）的强制断回合正是靠这条在
+    //    第一趟结算里先拆掉缔笙挂在自己身上的光环（SKILL_EFFECT 时点删票），随后
+    //    变威力重结算时票已不在 → 正常伤害（finish_attack_damage 查不到票）。
+    if (!cred.force_execute) {
+        if (ctx->rule_center_.is_attack_nullified(owner, ctx->roundCount)) {
+            ctx->ws.hit_invalid_detected[owner] = true;
+            ctx->ws.hit_invalid_mode[owner] = static_cast<int>(HitInvalidMode::kFullNull);
+            return SkillUsageResult::HIT_INVALID;
+        }
+    }
+
     // 失明的 50% 档：命中效果失效（无挂载条目可消费，纯异常效果）。
     if (blind_hit_invalid) {
         ctx->ws.hit_invalid_detected[owner] = true;
@@ -768,39 +998,6 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
     }
 
     return SkillUsageResult::OK;
-}
-
-void Skills::register_usability_effect(int effectId, SkillUsabilityEffectType type, bool active) {
-    for (auto& entry : usabilityEffects) {
-        if (entry.effectId == effectId) {
-            entry.type = type;
-            entry.active = active;
-            return;
-        }
-    }
-    usabilityEffects.push_back(SkillUsabilityEffectEntry{effectId, type, active});
-}
-
-void Skills::set_usability_effect_active(int effectId, bool active) {
-    for (auto& entry : usabilityEffects) {
-        if (entry.effectId == effectId) {
-            entry.active = active;
-            return;
-        }
-    }
-}
-
-void Skills::remove_usability_effect(int effectId) {
-    for (auto it = usabilityEffects.begin(); it != usabilityEffects.end(); ++it) {
-        if (it->effectId == effectId) {
-            usabilityEffects.erase(it);
-            return;
-        }
-    }
-}
-
-void Skills::clear_usability_effects() {
-    usabilityEffects.clear();
 }
 
 Effect Skills::clone_effect(int effectId, EffectArgs args) const {
@@ -918,6 +1115,8 @@ std::pair<SkillExecResult, SkillResolutionFlags> Skills::execute(BattleContext* 
         const SkillResolutionFlags flags = resolution_flags_for(SkillExecResult::SKILL_INVALID);
         ctx->event_center_.emit(BattleEvent{EventType::EVENT_SKILL_INVALID, owner, ctx->opponent(owner)});
         register_branch(ctx, owner, SkillExecResult::SKILL_INVALID, flags);
+        // 固有效果（INHERENT）：miss/被封属/盔挡的这趟**照常注册**（用户 2026-09-20 口径）
+        register_branch(ctx, owner, SkillExecResult::INHERENT, flags);
         return {SkillExecResult::SKILL_INVALID, flags};
     }
     // 成功使用攻击技能 → 统一消费次数型穿透授予（"下一次攻击"语义：即使对手无阻挡也消费）。
@@ -945,12 +1144,16 @@ std::pair<SkillExecResult, SkillResolutionFlags> Skills::execute(BattleContext* 
         }
         const SkillResolutionFlags flags = resolution_flags_for(SkillExecResult::HIT);
         register_branch(ctx, owner, SkillExecResult::HIT, flags, /*filter_hit_invalid=*/true);
+        // 固有效果照常注册，但沿用同一张 nullify 过滤——逐节点 hit_effect_invalidatable
+        // 就是"该效果可被封"的元数据开关（未被标记的固有效果在此趟不受影响）。
+        register_branch(ctx, owner, SkillExecResult::INHERENT, flags, /*filter_hit_invalid=*/true);
         ctx->event_center_.emit(BattleEvent{EventType::EVENT_HIT, owner, ctx->opponent(owner)});
         return {SkillExecResult::HIT, flags};
     }
 
     const SkillResolutionFlags flags = resolution_flags_for(SkillExecResult::HIT);
     register_branch(ctx, owner, SkillExecResult::HIT, flags);
+    register_branch(ctx, owner, SkillExecResult::INHERENT, flags);
 
     // 技能命中事件（"技能命中后/受到攻击后"监听；属性技能也算命中，但无伤害量）
     ctx->event_center_.emit(BattleEvent{EventType::EVENT_HIT, owner, ctx->opponent(owner)});

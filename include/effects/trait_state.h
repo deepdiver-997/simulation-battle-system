@@ -275,6 +275,12 @@ struct EffectiveTrait {
     int star_level = 0;       // 0-5
     int args[2] = {0, 0};     // 官方 args 前两个参数（语义按 kind，见上）
     bool proc_forced = false; // 触发条件被取消（天女式复制升级）：概率触发 → 必发
+    // 亮节降零（无极圣武 2436"不高于50%的附加异常效果全部降低为0%，**以实际概率为准**"）：
+    // 持有人自己的特性掷点在 0 < 实际概率 ≤ 500‰ 时不触发。**必发/覆写抬满后不降零**
+    // （trait_proc_roll 里排在 proc_forced 之后、读的是含 proc_override 的实际值——
+    // 极渊DS-001 乱流"战栗提升到100%就不受影响"的引擎化）。写入点 = 亮节持有者的
+    // ROUND_START 同步（圣武插件），随 own 槽换宠重同步自然清零。
+    bool proc_zeroed_le50 = false;
     bool copied = false;      // true = 复制来的（生命周期锚来源方，见 TraitOverlay）
     // ── 天女式复制升级的三个覆写（图鉴全文口径，2026-09-17）──
     // 「百天浮世络：…自身拥有对方的通用特性，**以此法获得的特性触发概率提升至 99%**
@@ -368,10 +374,19 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
 //    否则一次"必发"掷点会推动全局随机序列，使无关的伤害浮动/闪避判定整体错位
 //    （2026-09-16 已因此发生过 4 个场景的回归）。
 inline bool trait_proc_roll(const EffectiveTrait& t) {
-    if (t.proc_forced) {
+    // 虚无**不吃必发**（proc_forced 的首个真实消费者是极渊DS-001"算力乱流：特性概率
+    // 提升至100%"）：必修6 ③——虚无本质是命中率修正、不是概率触发，被 proc_forced
+    // 推成 100% 闪避是错的。豁免后落到下方按自身概率掷（rand 契约不变）。
+    // ⚠️ proc_override（妙时 990‰）对虚无是否同样该豁免存疑，未动（开工文档 §三.11）。
+    if (t.proc_forced && t.kind != TraitKind::VoidDodge) {
         return true;
     }
     const int permille = trait_proc_permille(t);
+    // 亮节降零（无极圣武）：实际概率（含 override 抬满）≤50% → 不触发；
+    // 必发（DS-001 乱流）在上方已先行返回 → 100% 不受降零（§2.6 联动口径）。
+    if (t.proc_zeroed_le50 && permille > 0 && permille <= 500) {
+        return false;
+    }
     if (permille <= 0) {
         return false;
     }

@@ -12,7 +12,7 @@
 | `effect_unit.h` | **组合效果单元**（主动作+条件+概率+分支） | `EffectUnit`、`UnitCondition`（SameElement/FirstMove/…）、`SkillResolutionFlags` | CLAUDE.md §3.3 组合语法 |
 | `effect_unit_parser.h` | **组合语法文本解析器**（脆弱层，模型离线编码不再扩运行时解析） | parser 识别“条件→动作”模板（179/700/1083/1257/456） | CLAUDE.md §3.3 ⚠️ 脆弱层 |
 | `event_center.h` | **事件中心**：发生了什么→通知 watcher | `EventCenter`、`BattleEvent`、`EventWatcher`（`EVENT_DEATH`/`EVENT_ENTER_STAGE`/`EVENT_BREAK`）、register_break_callback | CLAUDE.md §3.6 事件 |
-| `rule_center.h` | **统一规则容器**（免疫 + 盔/威/封属(含命中失效) + ③层命中失效 合并，header-only） | `RuleCenter`、`RuleTicket`(source 挂载→target 生效/覆盖键/source 锚生命周期)、`grant_immune`/`grant_seal`/`grant_hit_invalid`、`is_immune*`/`notify`(三态)/`consume_hit_invalid` | CLAUDE.md §3.6 + 权威口径 |
+| `rule_center.h` | **统一规则容器**（免疫 + 盔/威/封属(含命中失效) + ③层命中失效 合并，header-only） | `RuleCenter`、`RuleTicket`(source 挂载→target 生效/覆盖键/source 锚生命周期)、`grant_immune`/`grant_seal`/`grant_hit_invalid`、`is_immune*`/`notify`(三态)/`consume_hit_invalid` | CLAUDE.md §3.6 + 权威口径 + [容器选型评估](../01-架构与设计/rule_center容器选型评估.md) |
 | `damage_pipeline.h` | **伤害管线**：按 DamagePhase 顺序跑双方减伤/加伤效果 | `DamagePipeline`、`DamageEffect`、`DamageSnapshot` | CLAUDE.md §3.7 |
 
 **三类容器速记**：①**时点桶**=到点执行自己 ②**事件中心**=发生了什么→通知 ③**查询目录**=我要做什么→被查

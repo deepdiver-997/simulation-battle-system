@@ -7,6 +7,7 @@
 #include <plugin/core_api.h>
 
 #include <dirent.h>
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <vector>
@@ -278,17 +279,78 @@ void SoulMarkManager::registerUnitAdmission(UnitAdmissionFn fn) {
     add_unit_admission(fn);
 }
 
+void SoulMarkManager::registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
+                                                PreBattlePatchFn fn) {
+    // soul_plugin 的 flush 落在本注册表（与魂印程序/钩子同一条通道）。保注册序。
+    pre_battle_patches_.push_back(PreBattlePatchEntry{soulmark_id, phase, fn});
+}
+
+void SoulMarkManager::registerCarryEffect(int effect_id, CarryEffectFn fn) {
+    // 转发：loadSkills 装槽只查 EffectFactory（见 header 注释）。
+    EffectFactory::getInstance().registerCarryEffect(effect_id, fn);
+}
+
+void SoulMarkManager::run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase) {
+    if (!ctx || pre_battle_patches_.empty()) {
+        return;
+    }
+    // 先跑完全场快照段、再跑全场修改段（执行侧保证，见 EffectFactory::run_pre_battle_patches
+    // 同名函数的注释——两份实现语义必须一致）。
+    for (int side = 0; side < 2; ++side) {
+        for (int slot = 0; slot < 6; ++slot) {
+            const ElfPet& pet = ctx->seerRobot[side].elfPets[slot];
+            if (pet.soulMark.id <= 0) {
+                continue;
+            }
+            for (const PreBattlePatchEntry& entry : pre_battle_patches_) {
+                if (entry.soulmark_id == pet.soulMark.id && entry.phase == phase) {
+                    entry.fn(ctx, side, slot);
+                }
+            }
+        }
+    }
+}
+
 size_t SoulMarkManager::getLoadedLibraryCount() const {
     return loaded_libraries_.size();
+}
+
+std::vector<int> SoulMarkManager::registered_soulmark_ids() const {
+    // 三条注册链的并集：单效果（effect_cache_）、程序（program_cache_）、钩子
+    // （hooks_cache_）。战前补丁与钩子同源，未单列。覆盖率对账用（同
+    // EffectFactory::registered_effect_ids）。
+    std::shared_lock<std::shared_mutex> read_lock(cache_mutex_);
+    std::vector<int> ids;
+    ids.reserve(effect_cache_.size() + program_cache_.size() + hooks_cache_.size());
+    for (const auto& entry : effect_cache_) {
+        ids.push_back(entry.first);
+    }
+    for (const auto& entry : program_cache_) {
+        ids.push_back(entry.first);
+    }
+    for (const auto& entry : hooks_cache_) {
+        ids.push_back(entry.first);
+    }
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
 }
 
 namespace {
 // 绑定参与者到魂印 args：args[0]=owner, args[1]=1-owner，其余透传
 // （魂印函数用 resolve_owner_from_args 读 args[0]）。
-EffectArgs bind_soulmark_args(const EffectArgs& args, int owner) {
+// 魂印效果 args 绑定约定（2026-09-20 定，击杀效果主体化所依赖）：
+//   args[0] = own side、args[1] = enemy side、args[2] = **主体槽 host_slot**、
+//   args[3..] = 魂印自带参数（DB args[2:] 原样跟在后面）。
+// "主体" = 当前效果归属 pet：原注册主体=宿主；阿尔忒弥斯式副本（击杀效果获取）
+// 注册时绑她的槽 → 同一份 EffectFn 以她为主体执行（"读当前效果归属 pet，
+// 不写死原本魂印归属"）。payload 对"自身"的定位一律读 args[2]，禁止
+// find_pet_with_soulmark（那找到的是魂印宿主）。
+EffectArgs bind_soulmark_args(const EffectArgs& args, int owner, int host_slot) {
     std::vector<int> merged;
     merged.push_back(owner);
     merged.push_back(1 - owner);
+    merged.push_back(host_slot);
     if (args.owned_int_args.size() >= 2) {
         for (std::size_t i = 2; i < args.owned_int_args.size(); ++i) {
             merged.push_back(args.owned_int_args[i]);
@@ -315,7 +377,8 @@ EffectResult soulmark_updater_refresh(BattleContext* ctx, const EffectArgs& args
         return EffectResult::kOk;  // 宿主阵亡 → 停止刷新
     }
     ElfPet& host = ctx->seerRobot[owner].elfPets[slot];
-    host.soulMark.register_soul_effect(ctx, owner, /*owner_on_stage=*/slot == ctx->on_stage[owner]);
+    host.soulMark.register_soul_effect(ctx, owner, /*owner_on_stage=*/slot == ctx->on_stage[owner],
+                                       /*host_slot=*/slot);
     return EffectResult::kOk;
 }
 } // namespace
@@ -343,7 +406,8 @@ void SoulMark::register_updater(BattleContext* context, int owner) {
 // ② 立即执行 early 信号节点（如 2260 的 ignore_pp/force_execute_on_pp0 须在选择前置位）。
 // 每回合的 once 刷新由**更新器桶**在回合首时点重调 register_soul_effect 完成（不经过本方法，
 // 故不会重复触发 early/on_enter）。
-void SoulMark::activate_soul_mark(BattleContext* context, int owner, bool owner_on_stage) {
+void SoulMark::activate_soul_mark(BattleContext* context, int owner, bool owner_on_stage,
+                                  int host_slot) {
     if (!context || owner < 0 || owner > 1) {
         return;
     }
@@ -351,15 +415,19 @@ void SoulMark::activate_soul_mark(BattleContext* context, int owner, bool owner_
     //   程序链路 → 各节点按 trigger_state/scope 注册；
     //   单效果链路（旧）→ 注册到 BATTLE_ROUND_START 每回合执行（原先这一步靠 FSM 的
     //     ROUND_START 循环补，该循环已删除——注册必须在这里完成，否则旧链路魂印不会进桶）。
-    register_soul_effect(context, owner, owner_on_stage);
+    register_soul_effect(context, owner, owner_on_stage, host_slot);
 
     if (has_program_) {
         for (const auto& node : program_) {
+            // boss 挑战对局：boss_invalid 节点不注册不执行（"boss有效"线 2026-09-26）。
+            if (node.boss_invalid && context->is_boss_challenge) {
+                continue;
+            }
             // early 信号节点同样受 scope 约束：STAGE 节点只在宿主上场时置位，
             // 否则场下的魂印会把自己的信号（如 2260 的 ignore_pp）错误地施加给场上精灵。
             const bool scope_live = (node.scope == SoulScope::ROSTER) || owner_on_stage;
             if (node.early && node.effect_fn && scope_live) {
-                node.effect_fn(context, bind_soulmark_args(args, owner));
+                node.effect_fn(context, bind_soulmark_args(args, owner, host_slot));
             }
         }
         if (hooks_.on_enter) {
@@ -371,7 +439,34 @@ void SoulMark::activate_soul_mark(BattleContext* context, int owner, bool owner_
         return;
     }
     // 单效果链路：除了注册到桶，还立即执行一次（保持原 activate 语义——战斗开始即生效）。
-    effect(context, bind_soulmark_args(args, owner));
+    effect(context, bind_soulmark_args(args, owner, host_slot));
+}
+
+// SoulMark::retrigger_entrance — 重触发登场行为（只执行、不重注册）。
+// 与 activate_soul_mark 的分工：这里**不**调 register_soul_effect（桶内节点还在，
+// STAGE 节点的 epoch 未失效就说明宿主仍在场）——只重放"登场时做了什么"：
+// early 信号节点 + on_enter 钩子，全部以 (owner, host_slot) 为主体绑定。
+// 调用方（莫塔里安式"击败对手时重新触发自身登场时效果"）经 CoreApi::retrigger_entrance 进来。
+void SoulMark::retrigger_entrance(BattleContext* context, int owner, int host_slot) {
+    if (!context || owner < 0 || owner > 1 || host_slot < 0 || host_slot > 5) {
+        return;
+    }
+    if (!has_program_) {
+        return;  // 单效果链路没有"登场行为"概念（其效果是每回合注册执行的）
+    }
+    const bool owner_on_stage = context->on_stage[owner] == host_slot;
+    for (const auto& node : program_) {
+        if (node.boss_invalid && context->is_boss_challenge) {
+            continue;
+        }
+        const bool scope_live = (node.scope == SoulScope::ROSTER) || owner_on_stage;
+        if (node.early && node.effect_fn && scope_live) {
+            node.effect_fn(context, bind_soulmark_args(args, owner, host_slot));
+        }
+    }
+    if (hooks_.on_enter) {
+        hooks_.on_enter(context, owner);
+    }
 }
 
 // SoulMark::deactivate_soul_mark — 离场/阵亡。
@@ -392,7 +487,8 @@ void SoulMark::deactivate_soul_mark(BattleContext* context, int owner) {
 //     STAGE  → 仅 owner_on_stage 时注册；ContinuousEffect::scope_ = ON_STAGE（离场 epoch 作废）
 //     ROSTER → 无条件注册；ContinuousEffect::scope_ = TEAM（跨切换保留，断回合也不作废）
 // 单效果链路（旧）：effect 包成 ContinuousEffect 注册到 BATTLE_ROUND_START（恒收）。
-void SoulMark::register_soul_effect(BattleContext* context, int owner, bool owner_on_stage) {
+void SoulMark::register_soul_effect(BattleContext* context, int owner, bool owner_on_stage,
+                                    int host_slot) {
     if (!context || owner < 0 || owner > 1) {
         return;
     }
@@ -400,6 +496,11 @@ void SoulMark::register_soul_effect(BattleContext* context, int owner, bool owne
         for (std::size_t node_idx = 0; node_idx < program_.size(); ++node_idx) {
             const SoulMarkNodeRef& node = program_[node_idx];
             if (!node.effect_fn) {
+                continue;
+            }
+            // boss 挑战对局：boss_invalid 节点不进时点桶（守卫放在集中注册口——
+            // 更新器每回合重注册同样经过这里，一次覆盖全部路径）。
+            if (node.boss_invalid && context->is_boss_challenge) {
                 continue;
             }
             const bool is_roster = (node.scope == SoulScope::ROSTER);
@@ -413,7 +514,7 @@ void SoulMark::register_soul_effect(BattleContext* context, int owner, bool owne
             //    仍命中同一 key（幂等刷新，不追加）。mark id 在日志里仍可读（如 103800/103801）。
             const int node_effect_id = id * 100 + static_cast<int>(node_idx);
             Effect wrapper(node_effect_id, 0, owner, /*left_round=*/-1,
-                           bind_soulmark_args(args, owner), node.effect_fn);
+                           bind_soulmark_args(args, owner, host_slot), node.effect_fn);
             auto ce = std::make_unique<ContinuousEffect>(
                 wrapper, node.trigger_state, owner, /*duration=*/-1, context->roundCount
             );
@@ -428,7 +529,7 @@ void SoulMark::register_soul_effect(BattleContext* context, int owner, bool owne
     if (!effect) {
         return;
     }
-    Effect wrapper(id, 0, owner, /*left_round=*/-1, bind_soulmark_args(args, owner), effect);
+    Effect wrapper(id, 0, owner, /*left_round=*/-1, bind_soulmark_args(args, owner, host_slot), effect);
     auto ce = std::make_unique<ContinuousEffect>(
         wrapper, State::BATTLE_ROUND_START, owner, /*duration=*/-1, context->roundCount
     );

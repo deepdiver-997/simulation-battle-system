@@ -74,6 +74,10 @@ public:
 
     void set_step_mode(bool on);
     void toggle_breakpoint(int state_id);
+    // 调试手术（二期）：payload 是 JSON {"ops":[...]}（白名单操作集）。
+    // 仅在 FSM 泊车（等输入）时执行；执行时持 context run_mutex 与推进任务互斥。
+    // 回帧 DEBUG_MUTATE：{"ok":bool,"notes":[...]}/{"ok":false,"error":...}。
+    void debug_mutate(const std::string& payload);
     std::string state_json();
     std::string full_state_json();
     // 合法性动作集 JSON。player < 0 → 用"当前等着输入的那个玩家"。

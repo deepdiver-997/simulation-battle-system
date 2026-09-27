@@ -21,6 +21,14 @@ void install_common_trait_effects(BattleContext* ctx);
  * `apply_resolved_damage` **之后**调用——红伤结算完之后，经 `force_hp_to_zero` 原语
  * 强制对手体力归零（不是粉伤；犀牛式回血挂 EVENT_TAKE_DAMAGE、drain 在状态桶之后
  * → 回血晚于归零，高伤+瞬杀同时触发时犀牛最后仍满血）。进攻类技能命中才掷点（必修6）。
+ *
+ * 秒杀概率有**两个来源**（2026-09-26 咤克斯 4762 线），但**合并成同一次掷点**
+ * （用户拍板：一次攻击判两次秒杀太怪）：
+ *   ① 特性瞬杀（effective_common_trait，份额走 trait_proc_permille；
+ *     亮节降零只零特性份额；proc_forced 必发仍由特性触发）；
+ *   ② 技能效果附带概率（`ws.instant_kill_permille_bonus`，effect 584 族写入）。
+ * 合计 ≥1000‰ 必发不消耗 rand、合计 0 不消耗 rand；命中走一次 force_hp_to_zero，
+ * 转化短路/咒怨计层在原语与事件层统一生效。
  */
 void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id);
 

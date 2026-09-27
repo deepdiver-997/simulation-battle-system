@@ -4,6 +4,7 @@
 #include <effects/effect.h>
 #include <effects/rule_center.h>  // SealKind / SkillInvalidNotifyResult / EffectScope
 #include <effects/spirit_lifecycle.h>  // 存活/死亡/消逝 三态 + DeadScope + DefeatCause
+#include <abnormal-system/abnormal-types.h>  // 池 helper 用 is_control_abnormal_status/kOfficialAbnormalStatusMaxId（头内联）
 
 class BattleContext;
 
@@ -33,6 +34,10 @@ enum class ApplyAnomalyResult {
     RESISTED_BY_RESISTANCE,// 异常抗性抵抗成功：直写附加"免疫异常"异常(21, 2回合)，击穿魂免
     REFLECTED,             // 弹控：目标免疫并将异常反弹给施放方（最多反弹 1 次）
     CONVERTED,             // 转化异常：进入异常时转为另一指定异常
+    ROLL_FAILED,           // **概率没过门**：本次附加根本没有发生（闸门改写后仍没掷中）。
+                           // ⚠️ 与"被免疫/被抗性"是**不同的档**：官方"未触发补偿"
+                           // （"未触发则…"）认的就是这一档——调用方据此走兜底分支。
+                           // 只有调用方**申报了概率**（chance_pct >= 0）才可能出现本值。
 };
 
 // 异常施加通道（2026-09-16 双通道口径，用户拍板 + 语料《浅谈主动毒与魂印免控判定》）。
@@ -72,11 +77,28 @@ inline int random_anomaly_duration() {
  *
  * @param actor 施放方（0/1），效果程序调用时传效果所属方；未知传 -1
  */
+// ── 概率申报（2026-09-22）────────────────────────────────────────────
+// 三个施加原语的尾部两个参数是**同一个约定**，写在第一次出现的地方：
+//   @param chance_pct **本效果声明的概率**（百分点）。
+//     · `< 0`（默认）= **未申报**：调用方自己已经掷过骰、或本来就是"必定"。
+//       闸门一概不介入 → **未迁移的调用点行为完全不变**（这是结构性保证，不是靠纪律）。
+//     · `>= 0` = 申报：原语在**掷骰之前**先问闸门（亮节族）改写，再按改写后的值掷一次。
+//       `0` → 必定不触发；`>= 100` → 必定触发（**不消耗 rand**，同 roll_percent 契约）；
+//       其余 → 一次 `rand()%100`。没过门返回 `ApplyAnomalyResult::ROLL_FAILED`。
+//       ⚠️ 掷点必须在**闸门之后**：官方"以实际概率为准"（战栗被提升到 100% 就不受影响）
+//          判的是本次实际值，不是数据表字面值。
+//   @param source 概率的来源分类（ChanceSource），闸门按它过滤管辖面（亮节四类全管、
+//     永沐不含特性主动毒/被动毒）。
+// ⚠️ 迁移中的旧调用点（自己 roll 再调原语）**必须**先过
+//    `BattleContext::rewrite_anomaly_chance` 再掷，否则闸门对它不可见；这一点由
+//    本头文件"未申报 = 不介入"的默认值兜住安全性（不会误伤），但**会漏管**。
 ApplyAnomalyResult apply_anomaly(BattleContext* ctx,
                                  int target,
                                  int anomaly_id,
                                  int duration_rounds = -1,
-                                 int actor = -1);
+                                 int actor = -1,
+                                 int chance_pct = -1,
+                                 ChanceSource source = ChanceSource::Skill);
 
 /**
  * apply_anomaly_ancient - **古早异常施加原语**（AnomalyChannel::Ancient，主动毒）。
@@ -96,7 +118,9 @@ ApplyAnomalyResult apply_anomaly_ancient(BattleContext* ctx,
                                          int target,
                                          int anomaly_id,
                                          int duration_rounds = -1,
-                                         int actor = -1);
+                                         int actor = -1,
+                                         int chance_pct = -1,
+                                         ChanceSource source = ChanceSource::Skill);
 
 /**
  * apply_anomaly_raw - **遗留裸施加原语**（AnomalyChannel::Raw，特性被动毒专用）。
@@ -113,7 +137,9 @@ ApplyAnomalyResult apply_anomaly_raw(BattleContext* ctx,
                                      int target,
                                      int anomaly_id,
                                      int duration_rounds = -1,
-                                     int actor = -1);
+                                     int actor = -1,
+                                     int chance_pct = -1,
+                                     ChanceSource source = ChanceSource::Skill);
 
 /** 便捷函数：尝试施加异常，成功返回 true。 */
 inline bool try_apply_anomaly(BattleContext* ctx,
@@ -126,6 +152,76 @@ inline bool try_apply_anomaly(BattleContext* ctx,
         || r == ApplyAnomalyResult::REPLACED_EXISTING
         || r == ApplyAnomalyResult::DURATION_EXTENDED
         || r == ApplyAnomalyResult::CONVERTED;
+}
+
+// ----------------------------------------------------------------
+// 随机异常附加（"随机附加{0}种异常状态"/"随机进入1种控制类异常状态"模板族，2026-09-19）
+// ----------------------------------------------------------------
+
+/**
+ * RandomAnomalyResult - attach_random_anomalies 的三段账。
+ * 面向"未触发则…"补偿子句（effect 1367/1078/1267…）与"没出控制类就补偿"类活动改写：
+ * 消费方按自己的口径读这三段决定补偿，原语不代做补偿。
+ */
+struct RandomAnomalyResult {
+    int requested = 0;  // 池解析后实际尝试挑选的个数（= min(count, 有效池大小)）
+    int rolled = 0;     // 概率判定通过的次数（0/1：概率门是一次性的，管整个子句）
+    int landed = 0;     // 实际改变目标状态的次数（SUCCESS/REPLACED/EXTENDED/CONVERTED）
+};
+
+/**
+ * attach_random_anomalies - **随机异常附加原语**（现代通道）。
+ *
+ * 三步，全部收口：
+ *   ① **解析池**：base_pool ⊕ 池改写票（RuleCenter ANOMALY_POOL_MOD，授予序折叠）——
+ *      "异常施加范围改变"改在掷骰之前（改的是池本身），与 anomaly_conversion（掷出后
+ *      转化）分属两层；
+ *   ② **概率门**：整个子句掷一次（官方"{0}%令对手随机进入…"是子句级判定；需要逐只
+ *      判定的消费方自己拆成多次调用）；
+ *   ③ **挑选 + 施加**：从有效池**不重复**挑 requested 个，逐个走 `apply_anomaly`
+ *      （现代通道单入口：免疫/抗性/弹控/转化/凝滞免控/次免消耗全继承，**绝不直写**）。
+ *
+ * @param base_pool   基础池（异常 id = AbnormalStatusId 整数值）。控制类池/全池用
+ *                    `anomaly_pool_control()` / `anomaly_pool_all()`，别手写
+ * @param count       要附加的种类数（"随机附加{0}种异常状态"）
+ * @param probability_pct  概率门（整个子句一次）。⚠️ 它也要**过闸门**（亮节族）——
+ *                    判定点在本函数内、且在掷骰之前（与三个施加原语的 chance_pct 同一道门）
+ * @param actor       施放方（0/1），归因用（砥砺的 anomaly_applied_by_opponent 等检测）
+ * @param source      概率来源分类（ChanceSource），闸门按它过滤管辖面
+ */
+RandomAnomalyResult attach_random_anomalies(BattleContext* ctx,
+                                            int target,
+                                            const std::vector<int>& base_pool,
+                                            int count,
+                                            int probability_pct,
+                                            int actor = -1,
+                                            ChanceSource source = ChanceSource::Skill);
+
+/**
+ * anomaly_pool_control / anomaly_pool_all - 官方异常分类池（**头内联**：插件不链接
+ * sim_core，这两个不占 CoreApi 槽）。
+ * 控制类 = `is_control_abnormal_status` 判别（2026-09-18 扩表口径：官方 effect_des
+ * 逐条自述"控制类异常状态"，**诅咒 23 官方自述即控制类**——活动版魔尊 1263
+ * "若控制范围包含诅咒才转化施加范围"对控制池恒真，改写是定向替换而非条件不成立）。
+ * 全池 = 全部有效异常 id（0..kOfficialAbnormalStatusMaxId）。
+ * ⚠️ 边界待拍板：全池是否该剔除"免疫 17/18、异常免疫 21"这类保护型条目——现按字面全收，
+ *    首个真实消费方（魂印 1263）接上后按游戏实测收敛。
+ */
+inline std::vector<int> anomaly_pool_control() {
+    std::vector<int> pool;
+    for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
+        if (is_control_abnormal_status(static_cast<AbnormalStatusId>(id))) {
+            pool.push_back(id);
+        }
+    }
+    return pool;
+}
+inline std::vector<int> anomaly_pool_all() {
+    std::vector<int> pool;
+    for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
+        pool.push_back(id);
+    }
+    return pool;
 }
 
 // ----------------------------------------------------------------
@@ -158,6 +254,52 @@ inline bool try_apply_anomaly(BattleContext* ctx,
  * @return 本次实际衍化出的异常条数（0 = 无衍化）
  */
 int tick_abnormal_statuses(BattleContext* ctx, int target);
+
+/**
+ * reduce_active_anomaly_rounds - **加速异常消耗**（官方 effect 2207「使自身所处的异常状态
+ * 剩余回合数-{0}」，宙始星刻 37513 在用）：把 target 身上所有**仍生效**异常的 end_round
+ * 一起减 delta。
+ *
+ * ⚠️ 与"解除"是两条路：本原语只把剩余回合数往下压，压到 `end <= roundCount` 的那批由
+ *   下一轮 `tick_abnormal_statuses` **自然到期**收尾（伤害/衍化/EVENT_ANOMALY_EXPIRED
+ *   全都照常走）——"加速消耗"与"直接解除"的机制差异就在这里（星盘族只认前者）。
+ * ⚠️ 未来列奥尼达神谕（"异常回合数不会减少"）落地时，冻结必须同时罩住本原语与 tick 的
+ *   自然扣减——事件只在自然到期发，冻结住即星盘转不动，无需改本原语的调用方。
+ *
+ * @return 实际被压缩的异常条数（0 = 身上没有生效中的异常）
+ */
+int reduce_active_anomaly_rounds(BattleContext* ctx, int target, int delta);
+
+/**
+ * set_anomaly_rounds - **直接设定某条已存在异常的剩余回合数**（2399 宿世归泯
+ * "衰弱回合数归 1(+旧日之晷层数，至多6)"族）。与 apply_anomaly 的"同种只延长"
+ * 不同：刷新允许向下。异常不存在时不动（"归 1"不无中生有）。
+ * ⚠️ 冻结（anomaly_rounds_frozen）不拦本原语——冻结禁"减少"，设定是显式写入。
+ *
+ * @return 1 = 已刷新；0 = 目标身上没有该异常 / 参数非法
+ */
+int set_anomaly_rounds(BattleContext* ctx, int target, int status_id, int rounds);
+
+/**
+ * dispel_active_anomalies - **解除全部生效中异常**（效果解除路径）。
+ * 与 tick 的自然到期是两条路：直接清槽、无到期伤害、无衍化、**不发**
+ * EVENT_ANOMALY_EXPIRED（星盘族口径：解除后异常已不在身上，谈不上"结束"）。
+ * 典型调用方：星启（天启星魂 4677 登场解除自身）、律理虚浮（2145 解除并转移）。
+ *
+ * @return 解除的异常条数
+ */
+int dispel_active_anomalies(BattleContext* ctx, int target);
+
+/**
+ * cure_anomalies - **按名单解除生效中异常**（选择性版 dispel_active_anomalies）。
+ * 同一条"效果解除路径"：直接清槽、无到期伤害/衍化/事件——只是只清 anomaly_ids
+ * 名单内的那几种。名单外的异常原样保留（圣甲·盖亚 逆转机甲 544
+ * 「解除自身的烧伤、冻伤、中毒状态」首用——麻痹/睡眠等不在名单内必须留下）。
+ *
+ * @param anomaly_ids 异常 id 名单（AbnormalStatusId 的 static_cast<int>）
+ * @return 实际解除的条数
+ */
+int cure_anomalies(BattleContext* ctx, int target, const int* anomaly_ids, int count);
 
 // ----------------------------------------------------------------
 // 断回合
@@ -215,6 +357,28 @@ enum class DamageKind {
  */
 void deal_damage(BattleContext* ctx, int target, int amount,
                  DamageKind kind = DamageKind::NORMAL, int actor = -1);
+
+/**
+ * consume_shield - **主动消耗**目标方护盾值（精灵王线 K2，2026-09-24）。
+ * 与挨打吸收（deal_damage 内部）相对：这是"消耗自身的护盾值"类效果的**资源支出**
+ * （沧岚 2263 / 混地 2318），从最高优先级的盾开始拿。被拿空的每条盾 emit 一次
+ * `EVENT_SHIELD_BROKEN`——官方口径"以此法消耗的护盾**视为被击破**"，魂印的破盾
+ * 子句照常触发。
+ *
+ * @param target       护盾持有方（0/1）
+ * @param amount       想消耗的点数（INT32 大数 = "全部"）
+ * @param broken_count 出参：被拿空的盾条数（可空）
+ * @return 实际消耗的点数（可能 < amount：盾不够）
+ */
+int consume_shield(BattleContext* ctx, int target, int amount, int* broken_count = nullptr);
+
+/**
+ * pp_restore_slot - PP 恢复到 maxPP（精灵王线 K7，2026-09-24）：(side, 宠槽, 技能槽)
+ * 三址寻址——换宠后 getPet(side) 已是新宠，出场 PP 转移链要恢复的是**场下上只**。
+ * 无限 PP 槽（pp==-1/maxPP<=0）不动，已满返回 0。
+ */
+int pp_restore_slot(BattleContext* ctx, int side, int pet_slot, int skill_slot);
+int pp_restore_points(BattleContext* ctx, int target, int slot, int points);
 
 
 // ----------------------------------------------------------------
@@ -322,19 +486,25 @@ StatChangeResult stat_change(BattleContext* ctx, int target, int stat, int delta
  *
  * 与 stat_change 的分工：
  *   - stat_change = 原始等级变更（自身增益 / 弱化之外的场景），**不查免弱**；
- *   - stat_drop   = "对手施加的弱化"，**第一件事就是查 `ImmunityType::STAT_DROP`（免弱）**。
+ *   - stat_drop   = "对手施加的弱化"，查 `ImmunityType::STAT_DROP`（免弱）与
+ *                   `RuleCategory::ATTACH_BAN`（附加禁令）。
  *
  * 规则（用户 2026-09-13 定）：
  *   1. **先查免弱、无条件**：目标有免弱 → 直接 IMMUNE 失败、等级一点不动。
- *      "即使对手身上还有强化也不能降低"——不许把"目标有 +N 提升"当作可以抵消弱化的理由。
+ *      "即使对手身上还有强化也不能降低"——不许拿"目标有 +N 提升"当理由降。
  *   2. **弱化可以突破"强化保护"**：`STAT_CLEAR`（能力提升无法被消除或吸取）**不查**——
  *      原理不同：那个护的是"已有的提升被拿走"，这个是把等级往下压。
  *   3. **不突破 -6**：到 -6 即停（钳制），不越界（区别于 stat_change 的 AT_CAP 拒绝）。
  *
  * @param stat   能力下标（0..5，5=命中等级，见 stat_change 的说明）
  * @param amount 下降量（正数；<=0 → INVALID_PARAM）
+ * @param actor  施加方 (0/1)；**附加禁令（ATTACH_BAN）按它判定**——actor 被禁且当下处于
+ *               其行动窗口 → IMMUNE、等级不动（2026-09-20 神觉·米斯蒂克 4676 引入，
+ *               用户拍板"施加原语查询式保护"，2026-09-20 补充：禁令按施加方判定）。
+ *               -1 = 未声明 → 跳过禁令查询（免弱照查）。**调用方必须如实声明**：
+ *               效果属主施加就传属主，特性传递就传特性持有方。
  */
-StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount);
+StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount, int actor = -1);
 
 /**
  * stat_drop_piercing - **穿透版弱化**：不查免弱、直接压等级。
@@ -383,6 +553,22 @@ HealResult heal(BattleContext* ctx, int target, int fraction_denom);
 HealResult heal_amount(BattleContext* ctx, int target, int amount);
 
 /**
+ * reset_hp - **体力重置**：令目标体力**等于**最大体力的 pct%（clamp 到 0..max）。
+ *
+ * 官方"令自身体力等于最大体力的{0}%"族（圣光莫妮卡·王·鸾歌余音 38318 的 effect 1909
+ * 首用；effect 561 同族）——**重置 ≠ 恢复**（用户 2026-09-25 口径"无视任何减疗"）：
+ *   · **不查**封回血（HEAL_BLOCK）——封的是"回复"，重置是状态赋值不是回复；
+ *   · **不吃**恢复效果修正%（heal_mod_pct / 星赎）——同上，减疗管不着；
+ *   · **不写** ws.last_heal_amount、**不发** EVENT_HEAL_RESTORED——蛊类"对手每次回血后
+ *     插入真伤"等回血触发**不认**体力重置（与 heal_impl 统一出口的语义面正好互补）；
+ *   · pct < 100 时体力可以**下降**——下降也不是伤害（不进伤害管线、无受击事件）。
+ * 与 force_hp_to_zero / revive_pet 同属"非治疗的 HP 写入口"三件套。
+ *
+ * @return 实际变化量（新 - 旧，可负）；参数非法返回 0。
+ */
+int reset_hp(BattleContext* ctx, int target, int pct);
+
+/**
  * clear_stat_boosts - 消除目标方正等级上的能力提升（"消除双方能力提升状态"）。
  * 只清提升（等级 > 0 → 0），不动弱化/负等级。
  * 返回清掉的提升个数（0 = 目标本无提升 = "消强未成功"，调用方可据此决定后续分支，如"消强成功→必先"）。
@@ -390,6 +576,13 @@ HealResult heal_amount(BattleContext* ctx, int target, int amount);
  * 查 `ImmunityType::STAT_CLEAR`（免消除强化）——命中则整次消除失败、返回 0。
  */
 int clear_stat_boosts(BattleContext* ctx, int target);
+
+/**
+ * clear_stat_boosts_as - clear_stat_boosts 的**带归因**变体（精灵王线 K4，2026-09-24）。
+ * 行为完全同上，额外在清除数 > 0 时 emit `EVENT_STAT_REMOVED`（target/actor/amount=项数）。
+ * 消除/吸取类技能效果知道自己的 owner → 用本变体；无归因的老调用点保持原样不动。
+ */
+int clear_stat_boosts_as(BattleContext* ctx, int target, int actor);
 
 /**
  * clear_stat_drops - 消除目标方负等级上的能力下降（"消除双方能力下降状态"）。
@@ -430,6 +623,13 @@ bool crit_defense_break(BattleContext* ctx, int defender, int skill_type);
  * 本体/视图一并同步（ws.view_levels 是伤害公式的读取源）。
  */
 int transfer_stat_boosts(BattleContext* ctx, int from, int to);
+
+/**
+ * transfer_stat_boosts_as - transfer_stat_boosts 的**带归因**变体（精灵王线 K4，2026-09-24）。
+ * 行为完全同上，额外在搬走项数 > 0 时 emit `EVENT_STAT_REMOVED`
+ * （target=from 被吸取方、actor=吸取方、amount=项数）。"吸取对手能力提升时…"类用。
+ */
+int transfer_stat_boosts_as(BattleContext* ctx, int from, int to, int actor);
 
 /**
  * stat_reversal - 反转目标自身的**能力下降**（负等级 → 正等级），不动已存在的提升。
@@ -561,8 +761,27 @@ enum class PpReduceResult {
 /**
  * pp_reduce - 降低目标方所有技能的 PP。
  * 无相谛 700"先出手时降低对手所有PP"。target 方每个技能 pp -= amount（clamp ≥0）。
+ * 每个实际变化的槽 emit EVENT_PP_REDUCED（逐槽；见 event_center.h）。
  */
 PpReduceResult pp_reduce(BattleContext* ctx, int target, int amount);
+
+/**
+ * pp_zero_slot - 清零目标方**指定一个槽位**的 PP（"随机{0}项技能 PP 归零"族专用原语，
+ * 2026-09-23 技能批 8 修正线：PP 清除必须走原语而不是直写——效果会监听 PP 清除事件）。
+ * `pp == -1` 的无限 PP 槽不参与（返回 INVALID_PARAM 且不发事件）。
+ * 实际归零（原值 > 0）时 emit EVENT_PP_REDUCED（slot = 本槽、amount = 减少量）。
+ */
+PpReduceResult pp_zero_slot(BattleContext* ctx, int target, int slot, int actor = -1);
+
+/**
+ * pp_restore - 恢复目标方所有技能的 PP（"20%令自身所有技能PP值+1"（极渊DS-001 2414）与
+ * "给对手 pp 为 0 的技能恢复 5 点"（亮节，无极圣武 2436）共用）。
+ * 只补不削（clamp ≤ maxPP）；`pp == -1` 的无限 PP 槽不参与；only_empty=true 只恢复
+ * pp==0 的槽（亮节口径）。返回实际变化的槽位数。
+ * ⚠️ 不 emit 事件：EVENT_PP_REDUCED 是"被削"语义，恢复暂无监听方——
+ * 将来出现"被恢复 PP 时响应"类效果再补 EVENT_PP_RESTORED（届时补发不破坏既有序列）。
+ */
+int pp_restore(BattleContext* ctx, int target, int amount, bool only_empty);
 
 enum class RemoveRoundEffectsResult {
     SUCCESS,     // 清除了目标回合类效果
@@ -744,6 +963,42 @@ void remove_death_interceptors(BattleContext* ctx, int source_effect_id);
  * 幂等，可在多个时点重复调用。
  */
 void sync_pending_deaths(BattleContext* ctx);
+
+// ----------------------------------------------------------------
+// 对场下精灵的真实伤害（2026-09-20，天启帝君 1306 首用）
+// ----------------------------------------------------------------
+
+/**
+ * OffFieldTrueDamageResult - 对场下真实伤害原语的结果。
+ */
+enum class OffFieldTrueDamageResult {
+    DEALT,     // 结算完成，目标仍存活
+    RESIDUE,   // 触发残留（residue_floor 钳底，"致死时令其残留X点"族）——目标未死
+    DEFEATED,  // 伤害致死（已走 defeat_pet 死亡漏斗，场下免死/真2命复活照常响应）
+    PROTECTED, // 武心婵场下保护命中 → 未扣血
+    INVALID,   // 参数非法 / 已消逝 / 目标非存活 / 槽位在场（在场走 deal_true_damage）
+};
+
+/**
+ * deal_off_field_true_damage - **对场下精灵造成真实伤害**。
+ *
+ * 伤害类型 = **真实伤害**（穿抗性/免疫，不因抗性减免）——与"对场下造成粉伤"的
+ * 效果族必须区分开（用户 2026-09-20 口径；首个用户 = 纵横三千界 1306 低伤炸背包）。
+ *
+ * 契约：
+ *   · **不走伤害管线、不发 EVENT_TAKE_DAMAGE**（场下宠没有在途结算，事件监听方
+ *     只按方过滤会把场下扣血误认成场上受击——咤克斯连锁直写同款取舍）；
+ *   · **查武心婵场下保护门**（"场下精灵体力不会减少"是保护规则不是抗性，真伤照旧被挡）；
+ *   · 击杀（floor=0 且血量扣穿）走 **defeat_pet 死亡漏斗**（EVENT_DEATH + 拦截器，
+ *     圣光灵神式场下复活照常）；
+ *   · @param residue_floor  残留钳底（"致死时令其残留1点体力"族传 1——致死变残留，
+ *     目标永远死不成；默认 0 = 可致死）。
+ *
+ * @return 实际扣掉的体力数；INVALID/PROTECTED 返回 0
+ */
+OffFieldTrueDamageResult deal_off_field_true_damage(BattleContext* ctx, int side, int slot,
+                                                    int amount, int actor,
+                                                    int residue_floor = 0);
 
 // （kill 原语已删除，2026-09-17）：旧的"直接 hp=0"秒杀绕过秒杀体系（不查秒杀免疫票/
 // hp_zero_converted/瞬杀抑制、不 emit EVENT_HP_TO_ZERO），唯一调用方（EffectUnit 的

@@ -147,6 +147,13 @@ public:
     // 仅 loop 线程调用。
     void set_accept_handler(AcceptHandler h) { accept_handler_ = std::move(h); }
 
+    // 连接归属路由（多 worker 形态）：accept 线程为新连接选择属主 reactor 时调用，
+    // 返回nullptr = 留在本 reactor。典型用法：所有 worker 共享一个 atomic 计数器轮询，
+    // 把连接均匀摊到每个 worker 上（内核对监听 fd 的唤醒分配不保证均衡，轮询在应用层补齐）。
+    // 仅启动阶段（listen/run 之前）设置。
+    using ConnectionRouter = std::function<Reactor*()>;
+    void set_connection_router(ConnectionRouter router) { connection_router_ = std::move(router); }
+
     // 阻塞运行直到 stop()。
     void run();
     // 只跑一轮（测试用）。
@@ -158,12 +165,26 @@ public:
     void post(std::function<void()> fn);
 
     // 定时器。必须在 loop 线程调用（服务器在启动阶段注册，天然满足）。
+    // ⚠️ 生命周期：回调若按引用捕获栈对象，这些对象必须活到定时器触发完毕；
+    //    **周期定时器不用了必须 cancel_timer**——它会一直带着引用触发，
+    //    捕获对象死后继续触发就是悬垂写（踩坏相邻栈内存，症状随机且离事发地很远）。
     TimerId run_after(int delay_ms, std::function<void()> fn);
     TimerId run_every(int interval_ms, std::function<void()> fn);
     void cancel_timer(TimerId id);
 
     bool in_loop_thread() const;
     std::size_t connection_count() const;
+
+    // 收养一条连接（线程安全）：把 fd 注册进**本** reactor 的 poller、登记连接表，
+    // 然后在**本** reactor 线程上触发 accept 回调。别的 reactor accept 到的连接经此移交。
+    //
+    // ⚠️ 不存在"移交 kevent 注册"这回事：kqueue/epoll 的注册是 per-poller 的，
+    //    刚 accept 出来的 fd 不在任何 poller 里。旧实现在 acceptor 的 poller 注册，
+    //    新实现只在属主的 poller 注册（从属主线程、经 post）—— fd 任何时刻只属于一个 poller。
+    //    水平触发语义下，注册前到达的数据躺在内核接收缓冲里不会丢，所以移交不需要任何
+    //    同步原语；且注册与 accept 回调在同一次投递里同步执行，poller 变更表要到下一次
+    //    wait() 才提交 —— handler 一定先于任何读写事件就位。
+    void adopt_connection(const ConnectionPtr& conn);
 
     const Options& options() const { return options_; }
     const char* backend() const { return Poller::backend_name(); }
@@ -194,6 +215,7 @@ private:
     int listen_fd_ = -1;
     std::uint16_t local_port_ = 0;
     AcceptHandler accept_handler_;
+    ConnectionRouter connection_router_;
 
     std::unordered_map<int, ConnectionPtr> connections_;
     std::vector<int> closing_;

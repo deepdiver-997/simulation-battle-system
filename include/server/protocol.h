@@ -39,6 +39,8 @@ enum class Command : std::uint16_t {
     DEBUG_CONTINUE = 21,    // 关单步：连续跑到需要输入/结束
     DEBUG_BREAKPOINT = 22,  // toggle 断点：payload int32 state_id
     DEBUG_FULLSTATE = 23,   // 完整状态转储（含效果表）
+    DEBUG_MUTATE = 24,      // 调试手术（二期，2026-09-26）：payload JSON 白名单操作集，
+                            // 仅在 FSM 泊车（等输入）时执行；回帧带逐条操作回执
 
     // ── 服务端 → 客户端（本轮新增）──
     // 事件带：本次推进（一次 run）内每个时点一条采样，按 seq 有序。
@@ -69,6 +71,7 @@ inline const char* command_name(Command cmd) {
         case Command::DEBUG_CONTINUE: return "DEBUG_CONTINUE";
         case Command::DEBUG_BREAKPOINT: return "DEBUG_BREAKPOINT";
         case Command::DEBUG_FULLSTATE: return "DEBUG_FULLSTATE";
+        case Command::DEBUG_MUTATE: return "DEBUG_MUTATE";
         case Command::TAPE: return "TAPE";
         case Command::INPUT_REQUIRED: return "INPUT_REQUIRED";
         case Command::LEGAL_ACTIONS: return "LEGAL_ACTIONS";
@@ -182,6 +185,7 @@ enum class ActionType : int {
     CHOOSE_PET = 0,
     SELECT_SKILL = 1,
     USE_MEDICINE = 2,
+    NONE = 3,   // 空操作（超时/什么都不做）：回合类与异常后续照常
 };
 
 inline const char* action_type_name(int t) {

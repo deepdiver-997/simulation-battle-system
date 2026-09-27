@@ -65,6 +65,67 @@ enum class EventType {
     //    先跑的一方看到的是旧等级，压制迟到一拍、**连带影响出手先后**。
     //    事件是唯一的"写后即知"通道 → 挂在本事件上的压制天然与时点定序无关。
     EVENT_STAT_CHANGED,
+    // **异常自然到期**（tick_abnormal_statuses 回合扣减点）：target = 到期方、
+    // amount = 到期的异常状态 id。⚠️ **只在"剩余回合数归零"的自然到期路径发**——
+    //   衍化（转化，不管转出是不是同一异常）/ 效果解除（写 end=0）/ 转移都**不发**。
+    //   判据是"机制"不是"结果"：天启星魂星盘族「自身异常状态结束的当回合结束后转动
+    //   星盘1刻」按官方实测只认自然耗尽（转化/转移/列奥尼达神谕冻结回合数都转不动星盘，
+    //   只有解除能无视神谕——解除后没有异常可"结束"，自然也不会发本事件）。
+    EVENT_ANOMALY_EXPIRED,
+    // **异常抗性触发**（apply_anomaly 的抗性 roll 命中分支，2026-09-19 套装线圣芒佑界 476）：
+    // target = 抵抗方、actor = 施加方、amount = 被抵抗的异常状态 id。
+    // ⚠️ 与 EVENT_ANOMALY_APPLIED 的分工：抗性成功路径写的是"免疫异常"(21) 标记并走
+    //    emit_anomaly_events（21 也会发 APPLIED）——监听"抗性触发"这件事**不要**靠
+    //    盯 21 的 APPLIED（21 还有其他来源，会把别的路径误当抗性）；本事件在抗性
+    //    判定分支内直发，语义唯一。典型用途：「自身异常抗性触发时，恢复自身最大体力
+    //    的30%」（圣芒佑界套装）。
+    EVENT_ANOMALY_RESISTED,
+    // **异常免疫成功**（apply_anomaly 的次免/回合类免疫 [3] 与魂免 [5] 命中分支，
+    // 2026-09-20 烧伤三精灵线）：target = 免疫成功方、actor = 施加方、
+    // amount = 被挡下的异常状态 id。⚠️ 只在**免疫票命中**时发：凝滞(32) 自带的
+    // 控制类免疫是状态自保、不消费票，**不发**；抗性成功走 EVENT_ANOMALY_RESISTED，
+    // 与本事件互斥（抗性在前，命中即 return，轮不到免疫票）。弹控反弹（免疫成功
+    // 且把异常弹回去）同样算免疫成功 → 照发。典型用途：「自身免疫下{0}次受到的
+    // 异常状态，每次免疫成功吸取对手{1}点体力」（秘纹护体 effect 2059）。
+    EVENT_ANOMALY_IMMUNED,
+    // **PP 被效果降低/清零**（pp_reduce / pp_zero_slot 专用原语，2026-09-23 技能批 8 修正线）：
+    // target = PP 变化方、actor = 来源方（原语不带归因则 -1）、slot = 槽位（0..4）、
+    // amount = 本次该槽的减少量。**逐槽各发一次**（pp_reduce 扫全槽时变化的槽才发）。
+    // ⚠️ 只有效果侧的 PP 变化走这里；**用技消耗 PP**（consume_selected_skill_pp）与
+    //    嗑药回 PP 不发——监听方语义是"被效果动了 PP"。
+    //    直写 `skills[i].pp` 绕过原语 = 绕过事件（存量直写点待逐步收编）。
+    // 用途：监听 PP 降低/清除的效果（「对手 PP 被降低时…」一族）。
+    EVENT_PP_REDUCED,
+    // **先手方技能命中前**（全局锚点，2026-09-23 王之哈莫/重生之翼线）：
+    // actor = 即将出手的一方、target = 对方。本回合**第一次**进入命中前时点时发
+    // （先手方/后手方两个 BEFORE_SKILL_HIT 去重，见 battleFsm 的 emit 点与
+    // ws.before_hit_anchor_fired），emit 后**立即 drain**——监听方（锚点窗口式魂免：
+    // 撤旧窗/授新窗/"下回合先手方命中前清零"）必须在先手方该时点桶执行**之前**完成
+    // 授票，才能挡住桶内的命中前控。
+    // ⚠️ 为什么需要它：动作流程时点桶只跑**行动方** owner，后手方宠物在"先手方命中前"
+    //    这个**全局**锚点没有任何自己的桶会跑（TimedBucket::execute_at 按 owner 过滤）——
+    //    跨侧锚点历来走事件面（"受击类效果注册在 event 中心"同理由）。
+    // ⚠️ emit 点在失效判定（miss/盔）**之前**：语料锚点是"下1次技能**命中前**"——
+    //    按字面取"命中结算前"，miss 的技能也推进锚点（待实测翻案则改在命中确认后 emit）。
+    EVENT_BEFORE_SKILL_HIT,
+    // **体力恢复落地**（heal/heal_amount → heal_impl 统一出口，2026-09-24 精灵王线 K3）：
+    // target = 恢复方、amount = **实际**恢复量（0 不发——封回血/减疗吞掉的不算"恢复了"）。
+    // ⚠️ 事件是"入队 + 晚 drain"：蛊类"对手每次回血后**插入**真伤"监听方在 drain 里
+    //    deal_true_damage——真伤落在该次回血**之后**，与官方"先回血，然后中途插入真伤
+    //    扣血"的插入序一致（混沌地王 3516 留魂之蛊首用；"机盖回血→被蛊插死 vs 出手过→
+    //    弹死索伦森"两种结局都要能表达）。
+    // ⚠️ 吸取（drain_hp）的回血半边也走 heal_impl → 会发本事件（actor=-1）：
+    //    吸取 = "恢复了自己的体力"，蛊按 target 过滤天然不会误触。
+    EVENT_HEAL_RESTORED,
+    // **能力提升被消除/吸取（带归因）**（clear_stat_boosts_as / transfer_stat_boosts_as
+    // 专用，2026-09-24 精灵王线 K4）：target = 被消除方、actor = 动手方（消除/吸取技能
+    // 的施放方）、amount = 实际消除/搬走的项数（0 不发——"消强未成功"不触发后续）。
+    // ⚠️ 为什么不并入 EVENT_STAT_CHANGED：那条**无 actor**（stat_change/stat_drop 原语
+    //    不带归因，见其注释），且**逐 stat** 发——"消强成功→插入结算"类（混地"自身强化
+    //    被消除或吸取时获得400护盾+1层封邪之嶂"）要的是**一次动作一条事件 + 归因**，
+    //    两轴都对不上。老槽保持不动（既有监听方语义不漂移）。
+    EVENT_STAT_REMOVED,
+
 };
 
 /**
@@ -279,6 +340,11 @@ public:
         pending_.clear();
     }
 
+    //--- 「被击败效果失效」压制位（百罗鬼帝 2085 诅咒包，2026-09-22）---
+    // 语义与生命周期见 BattleContext::set_defeat_effects_suppressed（本类只是
+    // 存放位：deliver 的死亡监听门与 execute_registered_actions 的时点桶门都读它）。
+    bool defeat_effects_suppressed[2]{};
+
     int watch_count(EventType type) const {
         auto it = by_type_.find(type);
         return it == by_type_.end() ? 0 : static_cast<int>(it->second.size());
@@ -313,6 +379,18 @@ private:
             if (watcher.scope_ == WatcherScope::ON_STAGE
                 && watcher_valid_id != nullptr
                 && watcher.valid_id_ != watcher_valid_id[watcher.owner]) {
+                continue;
+            }
+            // 「被击败效果失效」门（defeat_effects_suppressed，百罗鬼帝 2085 诅咒包，
+            // 2026-09-22）：倒下方自己的死亡监听不再投递 = 其"被击败时"亡语无法触发。
+            // 只压"监听者 == 倒下方"的 watcher（击杀方挂的死亡监听——如帝君之殒、
+            // 阿尔忒弥斯击败获取——照常投递）。⚠️ 压制位放在 EventCenter 自己身上
+            // （而不是 BattleContext 字段）：本头被 suit_lib 等只有前置声明的 TU 包含，
+            // deliver 不能解引用不完整类型。
+            if (event.type == EventType::EVENT_DEATH
+                && event.target >= 0 && event.target <= 1
+                && defeat_effects_suppressed[event.target]
+                && watcher.owner == event.target) {
                 continue;
             }
             // ⚠️ once 提前拷贝：fn 内部可能自删（remove_watcher 自身 id）——删除后

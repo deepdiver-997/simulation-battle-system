@@ -63,6 +63,10 @@ private:
 
     bool runInternal(BattleContext* battleContext);
 
+    // 命中前全局锚点（EVENT_BEFORE_SKILL_HIT）：一回合只在第一次进入命中前时点发一次，
+    // emit 后立即 drain（见 battleFsm.cpp 实现处注释）。
+    void emit_before_hit_anchor(BattleContext* ctx, int mover_id);
+
     // 时点采样：在每个状态执行完、事件 drain 之后录一条（tape 关闭时零开销）。
     void record_tape_sample(BattleContext* ctx, State state);
 

@@ -231,7 +231,7 @@ void trait_passive_stat_drop_hook(BattleContext* ctx, int attacker_id) {
     if (stat < 0 || !trait_proc_roll(def_own)) {
         return;   // ⚠️ rand 只在特性确在时消耗
     }
-    (void)stat_drop(ctx, attacker_id, stat, 1);   // 使**对方**降 1 级
+    (void)stat_drop(ctx, attacker_id, stat, 1, defender_id);   // 使**对方**降 1 级（施加方=特性持有方）
 }
 
 //---- 被动属性提升 5 个（反击/抵抗/反攻/坚韧/借风，Eid 35）----
@@ -321,26 +321,53 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
     if (!instant_kill_gate(ctx, attacker_id)) {
         return;
     }
-    // ⚠️ include_suppressed=true：瞬杀被抑制 ≠ 不触发——照常掷点、照常调原语，
-    //    抑制表现为原语短路（不归零、事件 blocked=true，咤克斯咒怨照样 +1）。
+    // 归零收口：目标已倒地就不重复归零；犀牛式回血挂 EVENT_TAKE_DAMAGE、事件 drain 在
+    // 状态桶之后 → 回血晚于归零，高伤+瞬杀同时触发时犀牛最后仍满血（2026-09-15/16 口径）。
+    const auto try_force_zero = [&]() {
+        const int defender_id = 1 - attacker_id;
+        ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
+        if (defender.hp <= 0) {
+            return;
+        }
+        // 红伤已结算完（本钩位在 apply_resolved_damage 之后）→ 强制体力归零。
+        (void)force_hp_to_zero(ctx, defender_id, attacker_id);
+    };
+    // 一次攻击**一次秒杀判定**（用户 2026-09-26 拍板：两段独立掷点"一次攻击判两次秒杀"
+    // 太怪）——特性概率与技能效果附带概率（ws.instant_kill_permille_bonus，584 族写入）
+    // **加法合并成同一个掷点**，命中即走一次 force_hp_to_zero：
+    //   · 特性份额走 trait_proc_permille（含 proc_override 抬满）；
+    //   · **亮节降零只零特性份额**（0<特性概率≤500‰ 被降零 → 特性份额记 0；
+    //     技能份额不是特性掷点，不受降零）——与 trait_proc_roll 的必发>降零序一致；
+    //   · proc_forced（天女式必发）仍只由特性份额触发；
+    //   · 合计 ≥1000‰ 必发且不消耗 rand；合计 ≤0（双源皆无）直接返回不消耗 rand——
+    //     既有场景（无 584）的随机序列零移位。
+    // ⚠️ include_suppressed=true：瞬杀被抑制 ≠ 不触发——照常掷点、照常调原语，抑制表现
+    //   为原语短路（不归零、事件 blocked=true，咤克斯咒怨照样 +1）。已知边缘：抑制的是
+    //   "瞬杀特性"，合并掷点无法区分份额来源 → 持有被抑制特性+584 的攻击者，584 份额
+    //   也会被原语一并短路（现实里需要抑制生产者才可达，见交接文档迁移提案）。
+    int permille = ctx->ws.instant_kill_permille_bonus[attacker_id];
+    bool forced = false;
     const std::optional<EffectiveTrait> trait =
         ctx->effective_common_trait(attacker_id, TraitKind::InstantKill,
                                     /*include_suppressed=*/true);
-    if (!trait) {
-        return;
+    if (trait) {
+        const int base = trait_proc_permille(*trait);
+        const bool zeroed =
+            trait->proc_zeroed_le50 && base > 0 && base <= 500;
+        permille += zeroed ? 0 : base;
+        forced = trait->proc_forced;   // 天女式必发（瞬杀不是虚无，无豁免）
     }
-    if (!trait_proc_roll(*trait)) {
-        return;
+    // ⚠️ forced（必发）优先于概率判定——老 trait_proc_roll 里 proc_forced 在 permille
+    // 判定**之前**返回 true，0% 概率的必发特性照发（场景 055 K10 的守护点）。
+    if (!forced) {
+        if (permille <= 0) {
+            return;
+        }
+        if (permille < 1000 && (std::rand() % 1000) >= permille) {
+            return;
+        }
     }
-    const int defender_id = 1 - attacker_id;
-    ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
-    if (defender.hp <= 0) {
-        return;
-    }
-    // 红伤已结算完（本钩位在 apply_resolved_damage 之后）→ 强制体力归零。
-    // 犀牛式回血挂 EVENT_TAKE_DAMAGE、事件 drain 在状态桶之后 → 回血晚于归零，
-    // 高伤+瞬杀同时触发时犀牛最后仍满血（用户 2026-09-15/16 实测口径）。
-    (void)force_hp_to_zero(ctx, defender_id, attacker_id);
+    try_force_zero();
 }
 
 //---- 接触毒特性（静电/颤栗/火热/极寒 主动毒 + 带电/高热/冰冷/阴森 被动毒）----
@@ -443,7 +470,22 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         } else {
             continue;   // 被动毒（受物攻弹给攻方）由守方槽处理，不在这里
         }
-        if (!is_valid_abnormal_status_id(t.args[1]) || !trait_proc_roll(t)) {
+        if (!is_valid_abnormal_status_id(t.args[1])) {
+            continue;
+        }
+        // 概率闸门（亮节族，2026-09-22）：按**实际概率**先过闸门改写，再走原有掷点。
+        // ⚠️ 掷点**刻意留在原处**（不搬进原语的 chance_pct）：本文件与 trait_state.h 都记录了
+        //    "无条件掷点会移位全局 rand 序列、连带伤害浮动/闪避判定整体错位"的历史事故
+        //    （2026-09-16 四个场景因此回归）。搬进原语会让 [duration rand] 与 [概率 rand]
+        //    互换次序，那是**整场随机序列**的改动，与"给闸门加覆盖"这件事无关。
+        //    两条路径共用同一道 rewrite_anomaly_chance，语义不分叉。
+        // 实际概率取 trait_proc_permille（已含天女式 proc_override 覆写）；proc_forced
+        // （"取消触发条件"）视同 100%——与 trait_proc_roll 的短路口径一致（都不消耗 rand）。
+        const int declared_pct = t.proc_forced ? 100 : trait_proc_permille(t) / 10;
+        const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
+                                                          ChanceSource::Trait);
+        if (gated_pct <= 0
+            || (gated_pct < 100 && static_cast<int>(std::rand() % 100) >= gated_pct)) {
             continue;
         }
         if (ctx->getPet(defender_id).hp <= 0) {
@@ -461,12 +503,19 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
     const TraitKind active_want = is_physical ? TraitKind::ActivePoisonPhysical
                                               : TraitKind::ActivePoisonSpecial;
     if (atk_own.kind == active_want && !ctx->is_trait_suppressed(attacker_id, atk_own.kind)
-        && is_valid_abnormal_status_id(atk_own.args[1]) && trait_proc_roll(atk_own)) {
-        const ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
-        if (defender.hp > 0) {
-            const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
-            (void)apply_anomaly_ancient(ctx, defender_id, atk_own.args[1], duration,
-                                        attacker_id);
+        && is_valid_abnormal_status_id(atk_own.args[1])) {
+        // 概率闸门（亮节族）：同上——裁定后再掷点，掷点位置不动（rand 序列不变）。
+        const int declared_pct = atk_own.proc_forced ? 100 : trait_proc_permille(atk_own) / 10;
+        const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
+                                                          ChanceSource::Trait);
+        if (gated_pct > 0
+            && (gated_pct >= 100 || static_cast<int>(std::rand() % 100) < gated_pct)) {
+            const ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
+            if (defender.hp > 0) {
+                const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
+                (void)apply_anomaly_ancient(ctx, defender_id, atk_own.args[1], duration,
+                                            attacker_id);
+            }
         }
     }
 
@@ -476,12 +525,22 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         const EffectiveTrait& def_own = ctx->trait_state_[defender_id].own;
         if (def_own.kind == TraitKind::PassivePoison
             && !ctx->is_trait_suppressed(defender_id, def_own.kind)
-            && is_valid_abnormal_status_id(def_own.args[1]) && trait_proc_roll(def_own)) {
-            const ElfPet& attacker = ctx->seerRobot[attacker_id].elfPets[ctx->on_stage[attacker_id]];
-            if (attacker.hp > 0) {
-                const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
-                (void)apply_anomaly_raw(ctx, attacker_id, def_own.args[1], duration,
-                                        defender_id);
+            && is_valid_abnormal_status_id(def_own.args[1])) {
+            // 概率闸门（亮节族）：同上——裁定后再掷点，掷点位置不动（rand 序列不变）。
+            // ⚠️ 官方"亮节"原文点名覆盖**被动毒**（"直接针对控场宝石、主动毒、被动毒"），
+            //    所以这一档虽然走 Raw 通道（什么都不检测），闸门照样要问。
+            const int declared_pct = def_own.proc_forced ? 100
+                                                         : trait_proc_permille(def_own) / 10;
+            const int gated_pct = ctx->rewrite_anomaly_chance(attacker_id, defender_id,
+                                                              declared_pct, ChanceSource::Trait);
+            if (gated_pct > 0
+                && (gated_pct >= 100 || static_cast<int>(std::rand() % 100) < gated_pct)) {
+                const ElfPet& attacker = ctx->seerRobot[attacker_id].elfPets[ctx->on_stage[attacker_id]];
+                if (attacker.hp > 0) {
+                    const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
+                    (void)apply_anomaly_raw(ctx, attacker_id, def_own.args[1], duration,
+                                            defender_id);
+                }
             }
         }
     }

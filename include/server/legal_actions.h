@@ -41,16 +41,22 @@ struct LegalPet {
 };
 
 struct LegalMedicine {
-    int index = -1;
-    int type = -1;  // MedicineType 整数值
+    int index = -1;     // 嗑药库存(按 item_id 升序)中的位次 —— USE_MEDICINE 的 index 载荷
+    int item_id = -1;   // battle_items 表物品 id（提交时按它结算）
+    std::string name;   // 物品名（表无此 id 时为空）
     int count = 0;
     bool usable = false;
 };
 
 struct LegalActions {
-    // can_act=false 时下表为空，reason 说明为什么轮不到他（not_waiting / not_your_turn）。
+    // can_act=false 时 reason 说明为什么轮不到他（not_waiting / not_your_turn / prospective）。
     bool can_act = false;
     std::string reason;
+
+    // 预提交视角：没轮到他 / FSM 没在等输入时也给出技能/换宠/药剂清单（当下快照），
+    // 供前端开放双方操作台 —— 服务端的 pending 队列会把提前交的动作排到轮到时。
+    // 此时 can_act=false、must_choose_pet=false，usable 只反映 PP/锁定等本身门槛。
+    bool prospective = false;
 
     // 当前是否处于"必须换宠"（CHOOSE_AFTER_DEATH）而不是"选技能"。
     // 前端据此切界面 —— 这两种状态下合法动作集完全不同。

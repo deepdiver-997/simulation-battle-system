@@ -1,6 +1,8 @@
 #ifndef OFFICIAL_DATA_REPOSITORY_H
 #define OFFICIAL_DATA_REPOSITORY_H
 
+#include <algorithm>
+#include <array>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -64,6 +66,22 @@ struct LearnableMoveRecord {
     int learning_level = 0;
 };
 
+// 神谕新技（sp_hide_moves 表，2026-09-24 精灵王线 K1）。
+// 神谕波次精灵的专属新技不进学习表，按官方口径分两组：
+//   fifth   = 第五技能候选（威力 ≥155 的 王· 系新技 / kind='sp' 行）
+//   normal  = 1~4 号槽候选（其余：属性强化位 / 先制位 / 150 位）
+// 空表 = 该精灵没有神谕形态（开关无意义）。
+struct OracleMoves {
+    std::vector<int> normal_moves;
+    std::vector<int> fifth_moves;
+
+    bool empty() const { return normal_moves.empty() && fifth_moves.empty(); }
+    bool contains(int move_id) const {
+        return std::find(normal_moves.begin(), normal_moves.end(), move_id) != normal_moves.end()
+            || std::find(fifth_moves.begin(), fifth_moves.end(), move_id) != fifth_moves.end();
+    }
+};
+
 struct MonsterRecord {
     int id = -1;
     std::string name;
@@ -78,6 +96,13 @@ struct MonsterRecord {
     int sp_def = 0;
     int spd = 0;
     std::vector<LearnableMoveRecord> learnable_moves;
+    // 第五技能（hide_moves 表）。官方第五技能不走学习表，编队校验与 Skills
+    // 构造的"属于这只精灵"判定都要算上它（槽位规则由 PetFactory 把守：仅第 5 槽）。
+    // ⚠️ 神谕波次精灵（sp_hide_moves 有行）的新第五也混在本表里——神谕 OFF 时
+    // 由 PetFactory 用 oracle_moves 过滤掉，本表保持 DB 原样。
+    std::vector<int> hidden_moves;
+    // 神谕新技（sp_hide_moves 表）。空 = 无神谕形态。
+    OracleMoves oracle_moves;
 };
 
 struct SoulMarkRecord {
@@ -137,6 +162,90 @@ struct EffectTemplateRecord {
     std::string param;  // 参数类型规格（类型 id 数组，unity 库无图例表，原样保留）
 };
 
+// 装备部件（equip 表，equip.bytes 导入）。suit_id=0 = 无套装归属的散件。
+// desc 逐件携带完整成套效果文本（官方每件重复同一段），人读校验用。
+struct EquipRecord {
+    int item_id = 0;
+    std::string name;
+    int quality = 0;
+    int suit_id = 0;
+    std::string desc;
+};
+
+// 套装（suit 表，suit.bytes 导入）。cloths = 部件 item_id 清单；
+// 成套激活判定 = 穿戴件数 ≥ cloths 长度（官方无独立"需求件数"字段）。
+struct SuitRecord {
+    int id = 0;
+    std::string name;
+    std::vector<int> cloths;
+    std::string suitdes;
+};
+
+// 单件装备数值加成行（custom_equip_stats，离线编码——Unity equip.bytes 无结构化数值）。
+// stat_index：0=攻击 1=特攻 2=防御 3=特防 4=速度 5=体力；add_way：0=点数 1=百分比。
+// scope：per_piece（每穿一件算一次）/ per_suit（成套后算一次，每件上重复编码）。
+// target_monster：0 = 背包内所有精灵；>0 = 只有该精灵 id 受益（六界战甲定向条款）。
+struct EquipStatRecord {
+    int item_id = 0;
+    int stat_index = 0;
+    int amount = 0;
+    int add_way = 0;
+    std::string scope;
+    int target_monster = 0;
+};
+
+// 性格（nature 表，nature.bytes 导入，培养线 2026-09-26）。官方 25 种（id 0-24），
+// 五维 ±10% 乘数、无体力项（性格不影响体力）；id 20-24 中性（害羞/实干/坦率/浮躁/认真）。
+// mult 下标 = NumericalPropertyIndex 序：0=攻 1=特攻 2=防 3=特防 4=速（无 HP 槽）。
+struct NatureRecord {
+    int id = 0;
+    std::string name;
+    double mult[5] = {1.0, 1.0, 1.0, 1.0, 1.0};
+};
+
+// 刻印（mintmark 表，mintmark.bytes 导入，培养线 2026-09-26）。
+// ⚠️ 官方六维序 = [攻,防,特攻,特防,速,体]（圣·虚无 effect_des 实测钉死），与引擎
+// NumericalPropertyIndex 序 [攻,特攻,防,特防,速,体] 不同——load_mintmark 已重排，
+// 本结构体的三个六维数组统一是**引擎序**（0=攻 1=特攻 2=防 3=特防 4=速 5=体）。
+// type：0=属性刻印（stat_arg 固定加成）/ 1=技能刻印（绑定 move_ids，绝版）/
+//       3=系列成长刻印（stat_base → stat_max）/ 4=碎片素材。
+// 面板合成取 stat_max（强化满口径——竞技环境默认满强化，与天赋恒 31 同理）。
+struct MintmarkRecord {
+    int id = 0;
+    std::string name;
+    std::string effect_des;
+    int type = 0;
+    int grade = 0;
+    int quality = 0;
+    int class_id = 0;
+    std::array<int, 6> stat_arg{};
+    std::array<int, 6> stat_base{};
+    std::array<int, 6> stat_max{};
+    std::vector<int> monster_ids;   // 非空 = 专属绑定（仅列出的精灵可装）
+    bool hide = false;              // 官方未放出（合成按无此件处理）
+};
+
+// 战斗内物品（battle_items 表，2026-09-22 药剂线）。效果即官方 Battleitem 字段，
+// 人读说明在 raw 抓取的 itemsTip（不入库）。
+//   hp / pp                 = 回复体力量 / 回复技能使用次数（nullopt = 无此效果）
+//   remove_mon_stat         = 解除指定异常状态（状态码口径 = AbnormalStatusId）
+//   remove_all_mon_stat / remove_bt_lv_down = 1 解全部异常 / 解能力下降
+//   bonus                   = 捕捉加成（胶囊族，战斗模拟不用，原样保留）
+// ⚠️ 官方 ItemType 有错标（巅峰/极限活力药剂标 1 但效果是 PP）——**以效果字段为准**，
+//    item_type 只透出不参与判定。精灵王 4 药剂效果字段全空（场景限定）→ 引擎不做。
+struct BattleItemRecord {
+    int item_id = 0;
+    std::string name;
+    int item_type = 0;
+    std::optional<int> hp;
+    std::optional<int> pp;
+    std::optional<int> remove_mon_stat;
+    int remove_all_mon_stat = 0;
+    int remove_bt_lv_down = 0;
+    double bonus = 0.0;
+    int max_count = 0;
+};
+
 class OfficialDataRepository {
 public:
     OfficialDataRepository() = default;
@@ -167,12 +276,43 @@ public:
     std::optional<MonsterRecord> load_monster(int monster_id) const;
     std::optional<MonsterRecord> load_monster_by_exact_name(const std::string& monster_name) const;
     std::vector<LearnableMoveRecord> load_monster_learnable_moves(int monster_id) const;
+    // 第五技能（hide_moves 表）：官方第五技能不走普通学习表（实测 2240/2240 都不在
+    // monster_learnable_moves），编队校验需单独放行。行序即库序（= 官方解锁序）。
+    std::vector<int> load_monster_hidden_moves(int monster_id) const;
+    // 神谕新技（sp_hide_moves，精灵王线 K1，2026-09-24）：按威力分第五/1~4 两组，
+    // kind 忽略（'show'/'sp' 都能是第五——4186 的 王·荒合归心 是 'sp'，其余王是 'show'）。
+    OracleMoves load_monster_oracle_moves(int monster_id) const;
+    // 精灵王谓词（K5）：该精灵技能全集（学习表 ∪ hide_moves ∪ sp_hide_moves）里
+    // 是否存在带 effect_id 的技能（官方判据 effect 760）。side_effect 是 JSON 数组
+    // 文本，精确解析成员判定（LIKE 会误中 1760 之类）。
+    bool pet_has_move_effect(int monster_id, int effect_id) const;
     std::optional<SoulMarkRecord> load_soul_mark(int soul_mark_id) const;
     std::optional<CommonTraitRecord> load_common_trait(int idx) const;
+
+    // ── 装备/套装（equip / suit / custom_equip_stats 表）────────────────
+    std::optional<EquipRecord> load_equip(int item_id) const;
+    std::optional<SuitRecord> load_suit(int suit_id) const;
+    // 某部件的数值加成行（custom_equip_stats 空表时返回空向量）。
+    std::vector<EquipStatRecord> load_equip_stats(int item_id) const;
+
+    // ── 培养（nature / mintmark 表，培养线 feat/peiyang）───────────────
+    // 表未建（旧库）或 id 不存在 → nullopt。load_mintmark 对 hide=1 的行仍返回
+    // （数据完整透出），"未放出不可装"由组装层判定。
+    std::optional<NatureRecord> load_nature(int nature_id) const;
+    std::optional<MintmarkRecord> load_mintmark(int item_id) const;
+
+    // ── 战斗内物品（battle_items 表，药剂线）──────────────────────────
+    // 嗑药结算（SeerRobot::use_medicine）按 item_id 查效果；不在表中的 id（下架/
+    // 非战斗物品）返回 nullopt，嗑药拒绝。
+    std::optional<BattleItemRecord> load_battle_item(int item_id) const;
 
     // 现代精灵魂印：按精灵 id 从 effect_icon 精确匹配（pet_id JSON 数组），
     // 多行取 icon_id 最大。无记录返回 nullopt。
     std::optional<SoulMarkDisplayRecord> load_soul_mark_display_by_monster(int monster_id) const;
+    // 该精灵的**全部**魂印版本行（effect_icon，按 icon_id 升序 = 官方版本序）。
+    // 神谕波次精灵恰有两行：低 icon = 神谕前、高 icon = 神谕后（官方文本均完整），
+    // 神谕开关据此选行（K1，2026-09-24）。
+    std::vector<SoulMarkDisplayRecord> load_soul_mark_displays_by_monster(int monster_id) const;
 
     // effect_des 词典：名字精确匹配（失败退 LIKE），kind 过滤查询（2=异常状态词表等）。
     std::optional<TermRecord> load_term(const std::string& term_name) const;

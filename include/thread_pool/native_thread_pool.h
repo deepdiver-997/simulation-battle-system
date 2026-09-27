@@ -1,5 +1,5 @@
-#ifndef MAIL_SYSTEM_NATIVE_THREAD_POOL_H
-#define MAIL_SYSTEM_NATIVE_THREAD_POOL_H
+#ifndef NATIVE_THREAD_POOL_H
+#define NATIVE_THREAD_POOL_H
 
 // 纯标准库线程池，替换原先基于 boost::asio::thread_pool 的实现。
 //
@@ -154,4 +154,4 @@ private:
     bool m_stopping = false;
 };
 
-#endif  // MAIL_SYSTEM_NATIVE_THREAD_POOL_H
+#endif  // NATIVE_THREAD_POOL_H

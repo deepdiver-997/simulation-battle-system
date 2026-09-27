@@ -1,13 +1,11 @@
-#ifndef MAIL_SYSTEM_THREAD_POOL_BASE_H
-#define MAIL_SYSTEM_THREAD_POOL_BASE_H
+#ifndef THREAD_POOL_BASE_H
+#define THREAD_POOL_BASE_H
 
 #include <functional>
 #include <memory>
 #include <future>
 #include <atomic>
 #include <type_traits>
-
-// namespace mail_system {
 
 /**
  * @brief 线程池基类
@@ -91,6 +89,4 @@ protected:
     virtual void post_impl(std::function<void()> f) = 0;
 };
 
-// } // namespace mail_system
-
-#endif // MAIL_SYSTEM_THREAD_POOL_BASE_H
+#endif // THREAD_POOL_BASE_H

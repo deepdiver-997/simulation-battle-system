@@ -31,6 +31,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <optional>
 #include <vector>
@@ -79,7 +80,44 @@ enum class ImmunityType {
     //   （RuleTicket::source_valid_id 恒 0，只随上下场清；封回血 HEAL_BLOCK 同此口径）。
     //   即：断回合**不能**提前解掉本封锁，与官方可能有偏差——记入待拍板，别默默当已实现。
     STAT_BOOST,
+    // **能力下降锁定**（"对手的能力下降状态无法被解除或反转"，effect 1684 = 心朽魂凋 28808，
+    // 2026-09-20 神觉·米斯蒂克 4676 引入）：目标身上的**负等级**无法被消除或翻正。
+    // 查询点（两个去负入口都要查，否则同一层保护会被绕道——同 STAT_CLEAR 的三入口教训）：
+    //   clear_stat_drops（解除，命中返回 0）/ stat_reversal（下降翻正，命中返回 BLOCKED）。
+    // ⚠️ 不挡 stat_boost_reversal（那是"提升→下降"，方向相反）与 stat_drop_piercing
+    //    （衍化弱化是**施加**不是解除）。等级本体 on-stage 作用域（换宠已清）。
+    STAT_DROP_LOCK,
 };
+
+// ── 概率干预的**类别标签**（"给哪一类概率动刀子"）────────────────────────────
+// 动机（2026-09-22）：官方出现了一批"**改概率**"的印记，它们各自只管**一类**概率，
+// 不是"所有概率事件"一刀切：
+//   · 亮节（无极圣武 2436 / 帝皇侠复用同名印记）：只管**异常状态附加**的概率；
+//   · 概率挡伤、概率强化、概率弱化 等**不在此列**（亮节原文只说"附加异常效果"）。
+// 所以标签是**逐类**的：新出现一类"概率被干预"的机制时在这里加一个值，并在它自己的
+// 查询点显式传——**不给所有概率统一加标签**（那会把语义不同的东西混成一套）。
+enum class ChanceTag {
+    AnomalyAttach = 0,   // 异常状态附加的概率（apply_anomaly 家族 + 随机异常附加的整子句门）
+};
+
+// ── 概率效果的**来源分类**（闸门按来源过滤的依据）──────────────────────────
+// 官方"亮节"原文枚举的就是这四类：「套装、特性、魂印、技能中不高于 50% 的附加异常效果
+// 全部降低为 0%（**直接针对控场宝石、主动毒、被动毒**）」——四类**全管**；
+// 而梅赫维特"永沐"明说「**不包含**双方的特性主动毒和被动毒」——只管理其余三类。
+// ⇒ 两张闸门的**管辖面不同**，"来源"必须是可查询的数据，不能由闸门各自硬编码。
+enum class ChanceSource {
+    Skill = 0,     // 技能效果（含 effect_unit 解析器模板）
+    SoulMark = 1,  // 魂印
+    Trait = 2,     // 通用特性（主动毒/被动毒；控场宝石同族）
+    Suit = 3,      // 套装
+};
+
+// 来源 → 位（票上的 source_mask 用；0 = 一位都不管）。
+inline uint32_t chance_source_bit(ChanceSource s) {
+    return 1u << static_cast<int>(s);
+}
+// 四类全管（亮节）。
+constexpr uint32_t kChanceSourceAll = 0xFu;
 
 // 规则大类。细分在 subtype(见 RuleTicket)：
 enum class RuleCategory {
@@ -105,7 +143,124 @@ enum class RuleCategory {
     // 换宠清(scope=ON_STAGE)、每回合 tick —— 都不必再手写一遍。
     PENETRATE_ATTACK,     // 作用于**攻击技能**的伤害结算
     PENETRATE_ATTRIBUTE,  // 作用于**属性伤害**（`deal_attribute_damage` 那条路）
+    // 场地规则：场下精灵的体力/PP 不会减少（武心婵 4500「位于出战背包时，双方场下的精灵
+    // 体力、PP值均不会减少」）。**纯查询不消费**（同 IMMUNE），target=-1=双方场下。
+    // 生命周期 = 战斗开始授一次（TEAM 永久）+ 宿主 EVENT_VANISH 推送 `revoke(source_id)`
+    // ——死亡**不**清（官方"位于背包＝消逝除外"，阵亡仍在背包；武心婵实测"自身死亡也还在，
+    // 被消逝就没有了"）。查询入口统一走 BattleContext::off_field_stats_protected(side, slot)。
+    OFF_FIELD_PROTECT,
+    // 随机异常附加的**池改写票**（"异常施加范围改变"族，2026-09-19）。改写发生在
+    // **掷骰之前**——改的是"这个效果会随机出什么"（池本身），不是掷出后再转化
+    // （那是 anomaly_conversion / 转化异常的层，两者别合并：2395"改子句"、1263 活动版
+    // "改池子"分属两层）。载荷是**条件回调**：fn(ctx, 当前池) → 改写后的池——
+    // 「若控制范围包含诅咒才转化施加范围」这类条件改写就是回调自己的事（活动版魔尊
+    // 1263：控制池按官方 effect_des 自述恒含诅咒 23，回调里查一下再决定换不换）。
+    // 多票按授予顺序**折叠**（前一张的输出是后一张的输入）；解析入口
+    // `resolve_anomaly_pool`。生命周期同 OFF_FIELD_PROTECT（授一次 TEAM 永久，唯一撤销
+    // = 授予方 revoke；"携带类"技能强化将来由技能替换时点重授/撤销）。
+    ANOMALY_POOL_MOD,
+    // **技能封禁票**（2026-09-20，神觉·米斯蒂克 4676 引入）：target 一侧的属性技能**无效**
+    // （封属）。与 SEAL_ATTRIBUTE 的差别（用户拍板）：官方口径"封属**不是回合类效果**、
+    // **不可被断回合**"——SEAL 回合型票会被 clear_round_type 清掉，表达不了这个语义；
+    // 本类别**纯查询、不消费、免 tick/免断回合/免 epoch 作废**（同 IMMUNE 的豁免口径），
+    // 窗口期用 register_round + remaining_rounds 表达（is_skill_ban 里比较，cleanup 清理）。
+    // 查询点：RuleCenter::notify（门判定 ②）——命中即与 SEAL 同路返回 INVALID，
+    // SKILL_INVALID 无效补偿全链路照常（可被 default_branch_for_effect 特例消费）。
+    // ⚠️ 不可被穿盔凭证穿透（"无视攻击免疫"作用面是 SEAL 盔，不含封属）。
+    SKILL_BAN,
+    // **附加禁令票**（2026-09-20，神觉·米斯蒂克 4676 引入）：actor 一侧的攻击技能
+    // **无法附加异常状态 / 能力下降状态**。官方保护窗口极窄——"对手行动开始时到行动结束时"
+    // （机制解析 idx：不能免疫回合开始前（含回合开始）/回合结束后的异常与弱化，克雷二段麻痹
+    // 也挡不住；枫眠弹控**弹回来**的异常同样不拦——弹回是施加方自己的动作）。
+    // ⚠️ **查询式保护**（用户 2026-09-20 拍板）：不是给被保护方全队上一段免疫（那会把
+    //   回合开始/结束的异常也挡掉），而是**施加原语来问**——apply_anomaly（仅 Modern 通道、
+    //   reflect_depth==0）与 stat_drop 在入口查 `has_attach_ban(actor, ...)`；古早通道
+    //   （主动毒）**不拦**（用户拍板"不拦"）。
+    // 窗口表达：coverage = 时点 bitset（只覆盖双方行动段 ACTION_START..AFTER_ACTION_END，
+    // 与 IMMUNE 的 coverage 同一套 bit 语义）+ register_round/remaining_rounds（0=不随回合过期，
+    // 由授予方 revoke）。**纯查询不消费**，免 tick/免断回合/免 epoch 作废（同 IMMUNE）。
+    // subtype：0 = 异常（ANOMALY）、1 = 弱化（STAT_DROP）。
+    ATTACH_BAN,
+    // **锁切票**（2026-09-20，莫塔里安 4541 第五技能·禁命永囚劫引入；官方 effect 1478
+    // 「下{0}回合令对手无法主动切换精灵」）——**挂在对手（target）身上**的回合类窗口。
+    // 与凝滞/瘫痪（限制类异常）是两条独立来源，查询口同在一处（battleFsm 的主动切换校验）：
+    // 限制类异常查 has_active_abnormal_status，本条查 is_switch_locked。
+    // 生命周期（2026-09-21 口径修正）：挂在**对手**身上的回合类效果 → **对手切换/被断回合
+    // 都失效**（binding_side=target：clear_on_stage/clear_round_type/invalidate_stale 都按
+    // 绑定方匹配）。窗口保持**绝对回合模型**（register_round=NextRounds 起点 + remaining，
+    // 免 tick 递减——递减会把"下回合"提前一回合弄死），cleanup 按绝对过期清理。
+    // ⚠️ 只拦**主动**切换：死后补位（is_forced）照旧绕过，否则对局卡死。
+    SWITCH_LOCK,
+    // **攻击无效化票**（2026-09-21，effect 1090「击败对手则{0}回合内令对手攻击技能无法
+    // 造成伤害且命中效果失效」族；缭乱/缔笙·形影合弦等宿主未落地，先立机制）。
+    // 字段语义（用户 2026-09-21 游戏实测口径，**绑定 ≠ 生效**是本票的核心）：
+    //   · **source_owner = 绑定对象（bearer）**——票挂谁身上：icon、ON_STAGE 生命周期、
+    //     断回合 epoch 全跟 bearer（缭乱=挂对手身上压其攻击；缔笙=挂自己身上的
+    //     **防御光环**、压对面打来的攻击——两种都只换 bearer/target 取值）。
+    //   · **target = 生效目标**——压制**哪一边**打出的攻击：查询发生在该侧的伤害结算
+    //     （target 方在造成伤害时查询命中）。
+    //   · **生命周期**：回合类窗口（register_round + remaining_rounds）+ **epoch 版本号**
+    //     （source_valid_id=bearer 的 round_effect_valid_id 快照：断回合 bump 版本后
+    //     is_attack_nullified 查询即不命中——aura 是"挂在 bearer 身上的回合类效果"，
+    //     无相谛的强制断回合先拆它、变威力重结算才打得动）。**不进纯查询豁免表**。
+    // 压制语义（finish_attack_damage / deal_pink_damage 两个查询点）：
+    //   红伤在伤害管线**之前**归零 → **护盾/护罩不消耗**；该攻击的效果粉伤同样封锁
+    //   （deal_pink_damage 入口查 actor）；命中效果失效走 ③层（ws.hit_invalid_detected
+    //   + kFullNull，force 标记外的效果不执行）——真伤**不**封（独立通道）。
+    ATTACK_NULLIFY,
+    // **药剂反噬票**（2026-09-22，药剂线预留）：target 一侧**嗑药带回 HP 回复时**，
+    // "回复 x 点体力"反转为"扣 x 点体力"。只有 SeerRobot::use_medicine 一个查询点——
+    // 嗑药不走恢复原语（不受封回血 HEAL_BLOCK 影响），反噬是它唯一的干预通道。
+    // ⚠️ **预留位：当前无任何注册者**（未来"嗑药反噬"类效果落地时授予）。
+    //   生命周期仿 SWITCH_LOCK：纯查询不消费、绝对窗口（免 tick，cleanup 按绝对回合过期）、
+    //   不进免断表（作为回合类窗口效果，断回合 epoch（source_valid_id>0）可作废）。
+    POTION_BACKLASH,
+    // **盔遮蔽标记票**（2026-09-25，圣光·格劳瑞 荣光之裁 精确化）：target 一侧的**可穿盔**
+    // 逐盔遮蔽——攻击结算（notify 盔遍历）中，可穿盔命中 target 活跃的标记票
+    // （condition 现场求值，如"裁印记>0"）时，该盔**本击不触发、不耗自身次数**，并按
+    // "被穿"语义发 ARMOR_RESOLVED（blocked=false + **标记票自己的 grant_id**）——消费
+    // （扣裁层）由标记授予方监听 grant_id 自行落账（事件即消耗通道，无双账本）。
+    // 纯标记：不消费、免 tick/免断回合（同 IMMUNE 豁免口径）；condition 恒实时
+    // （钉在持有方当前裁层上）无陈旧。多来源各挂各票，命中取首张（一次遮蔽只耗
+    // 一个来源——多来源互斥语义待实测）。授予：BattleContext::grant_armor_suppress。
+    ARMOR_SUPPRESS,
+    // **概率闸门票**（2026-09-22，亮节 = 无极圣武 2436 / 帝皇侠复用）。挂在**被保护方**
+    // （target = 闸门持有方）身上，把**施加方申报的概率**按参数改写成另一档。
+    // 官方文本（亮节）：「精灵持有时，套装、特性、魂印、技能中不高于 50% 的附加异常效果
+    // 全部降低为 0%」；配套口径「**以实际概率为准**」（战栗被提升到 100% 就不受影响）
+    // ⇒ 判据是**运行时实际概率**，不是数据表字面值，所以必须在**掷骰之前**查——这就是
+    // 本票只能做成查询式、而事件中心（事后 emit）承载不了它的原因。
+    //   闸门参数（都是纯数据，无回调）：threshold_pct / below_result / above_result /
+    //   source_mask（ChanceSource 位掩码）、subtype = ChanceTag。
+    //   `-1` 的 below/above 表示"该档不改写"（只压不抬，或只抬不压）。
+    // 生命周期照 SKILL_BAN/ATTACH_BAN：**纯查询不消费**，免 tick/免断回合/免 epoch 作废，
+    // 窗口用 register_round + remaining_rounds 表达（rewrite_anomaly_chance 里比较，
+    // cleanup 清理）。"下场不保留"用 scope=ON_STAGE 天然表达（引擎换宠即清）。
+    // 多票按**授予顺序折叠**（前一张的输出是后一张的输入）——与 ANOMALY_POOL_MOD 同款。
+    CHANCE_GATE,
 };
+
+// "纯查询"规则类别：**绝对窗口模型**（免 tick 递减、cleanup 按绝对回合过期）、
+// 不消费、不计入 has_round_type 的"有无可断物"计数。
+// ⚠️ "免**断回合**"是另一张表（is_undeletable_category）——绝对窗口 ≠ 不可被断：
+//    SWITCH_LOCK / ATTACK_NULLIFY 都是"挂在身上的回合类效果"（用户 2026-09-21 口径：
+//    切换/被断回合都失效），只是窗口用绝对回合表达（NextRounds 起点进递减 tick 会
+//    提前一回合死），故留在本表、移出免断表。
+inline bool is_pure_query_category(RuleCategory c) {
+    return c == RuleCategory::IMMUNE || c == RuleCategory::SKILL_BAN
+        || c == RuleCategory::ATTACH_BAN || c == RuleCategory::SWITCH_LOCK
+        || c == RuleCategory::POTION_BACKLASH || c == RuleCategory::ARMOR_SUPPRESS
+        || c == RuleCategory::CHANCE_GATE;
+}
+
+// "免断回合"类别：**不可被 clear_round_type / invalidate_stale(epoch) 作废**。
+//   IMMUNE 天然不可被断；SKILL_BAN（封属）官方口径"不是回合类效果"；ATTACH_BAN 同封属
+//   的保护窗口语义。SWITCH_LOCK / ATTACK_NULLIFY **不在本表**——它们就是挂在身上的
+//   回合类效果，断回合/切换（bearer epoch bump）都拆得掉（2026-09-21 用户口径）。
+inline bool is_undeletable_category(RuleCategory c) {
+    return c == RuleCategory::IMMUNE || c == RuleCategory::SKILL_BAN
+        || c == RuleCategory::ATTACH_BAN;
+}
 
 inline bool is_penetrate_category(RuleCategory c) {
     return c == RuleCategory::PENETRATE_ATTACK || c == RuleCategory::PENETRATE_ATTRIBUTE;
@@ -209,6 +364,26 @@ struct RuleTicket {
     bool pen_ignore_damage_limit = false;
     int  pen_level = 0;
 
+    // ── 池改写票(ANOMALY_POOL_MOD)参数 ──────────────────
+    // 条件回调：fn(ctx, 当前池) → 改写后的池。载荷归授予效果所有，内核不解释内容。
+    std::function<std::vector<int>(BattleContext*, const std::vector<int>&)> pool_mod;
+
+    // ── 概率闸门票(CHANCE_GATE)参数 ─────────────────────
+    // 见 RuleCategory::CHANCE_GATE 注。subtype = ChanceTag；target = 被保护方。
+    // 纯数据（无回调）：改写规则就是"≤阈值改成 below_result、>阈值改成 above_result"，
+    // 负数 = 该档不改写。载荷归授予效果所有，内核不解释"亮节/英雄之诫"这些名字。
+    int chance_threshold_pct = 50;
+    int chance_below_result = 0;    // ≤ 阈值 → 改写成它（<0 = 不管）
+    int chance_above_result = -1;   // > 阈值 → 改写成它（<0 = 不管）
+    uint32_t chance_source_mask = 0;  // ChanceSource 位掩码：管辖哪些来源（0 = 一位都不管）
+
+    // ── 条件免疫（IMMUNE · ANOMALY）回调 ────────────────
+    // 非空时在 anomaly_mask 判定**之外**再问一次：fn(ctx, status_id) = true 才算免疫。
+    // 为什么需要：星赐→免疫疲惫 / 星哲→免疫害怕 这类"免疫范围由持有者当前异常动态决定"
+    // 的条件，静态 anomaly_mask 表达不了（异常随时变，push 式改 mask 会有漏改窗口）。
+    // ctx 由查询方传入（is_immune/consume_immune 的尾参）；为 nullptr 时条件不成立。
+    std::function<bool(const BattleContext*, int status_id)> anomaly_condition;
+
     bool is_round_type() const { return remaining_rounds > 0; }
     bool responds_to(bool is_attribute_skill) const {
         switch (static_cast<SealKind>(subtype)) {
@@ -243,11 +418,17 @@ public:
     // ⚠️ 来源不区分时（全传 -1），同一精灵身上**同类型的免疫只能有一条**：
     //    "窗口类免控 + 次数型次免"这类并存会被后者覆盖掉前者的窗口。
     //    需要并存的调用方传各自的 effect_id（如技能 effect id / 魂印 id）即可各占一条。
+    // ⚠️ 本方法（句柄复用/覆盖刷新/新增三条路径）**都不调 recount()**——全 RuleCenter 唯一例外：
+    //    IMMUNE 属 is_undeletable_category，永不进 round_count_（has_round_type 只统计非免断的
+    //    回合类票），免疫票授予/刷新对回合类计数恒为零贡献，漏调无副作用。若将来新增
+    //    "回合类且可被断"的 IMMUNE 细分、或 recount 统计口径变化，这里必须补 recount()。
+    //    （实测背景见 docs/01-架构与设计/rule_center容器选型评估.md 附录。）
     int grant_immune(int owner, int type, uint64_t coverage, uint64_t anomaly_mask,
                      int duration_rounds, int register_round, int source_id,
                      bool soul, EffectScope scope, int source_slot,
                      int counts = 0, int source_effect_id = -1,
-                     int tier = static_cast<int>(ImmunityTier::Modern)) {
+                     int tier = static_cast<int>(ImmunityTier::Modern),
+                     std::function<bool(const BattleContext*, int)> condition = nullptr) {
         if (owner < 0 || owner > 1) {
             return -1;
         }
@@ -260,6 +441,7 @@ public:
                     t.remaining_counts = counts;   // 次数型免疫（>0：免下N次，is_immune 命中后 consume_immune 扣）
                     t.coverage = coverage;
                     t.anomaly_mask = anomaly_mask;
+                    t.anomaly_condition = std::move(condition);
                     t.soul = soul;
                     t.scope = scope;
                     t.source_slot = source_slot;
@@ -279,6 +461,7 @@ public:
                 t.remaining_counts = counts;
                 t.coverage = coverage;
                 t.anomaly_mask = anomaly_mask;
+                t.anomaly_condition = std::move(condition);
                 t.soul = soul;
                 t.scope = scope;
                 t.source_slot = source_slot;
@@ -299,6 +482,7 @@ public:
         t.subtype = type;
         t.coverage = coverage;
         t.anomaly_mask = anomaly_mask;
+        t.anomaly_condition = std::move(condition);
         t.remaining_rounds = duration_rounds;  // IMMUNE 视为完整窗口（is_immune/cleanup 过期判断，不 tick）
         t.remaining_counts = counts;           // 次数型免疫（>0）
         t.register_round = register_round;
@@ -310,40 +494,65 @@ public:
 
     // 查询并消费**次数型**免疫（免疫"下N次"某威胁，如免下1次伤害/异常）。
     // 与 is_immune（纯查询不消费）不同：命中 counts>0 的免疫 → counts-1（0 注销）并返回 true；
-    // 命中窗口/永久免疫（counts==0）→ 返回 false 不扣（那些不随施加消耗）。
+    // 命中窗口/永久免疫（counts==0）→ 不扣（那些不随施加消耗）。
     //
-    // ⚠️ 本方法**跳过 counts==0 的窗口条目**继续往后扫，而不是"命中 is_immune 的那一条"。
+    // ⚠️ 本方法**跳过 counts==0 的窗口条目**继续扫，而不是"命中 is_immune 的那一条"。
     //    这是官方规则（docs/02-效果系统/官方机制理解与引擎缺口对照.md §二，idx=418 第2条）：
     //    **存在回合类免控/弹控时，次免依旧正常消耗**——窗口类免疫挡下不等于次免没被消耗。
     //    调用方只需保证"威胁确实落到该精灵头上"（如 apply_anomaly 只在 reflect_depth==0 时调、
     //    伤害管线只在 BLOCK 未被抑制时调），不要按"谁挡下的"来决定是否扣次数。
+    //
+    // ⚠️ **all-once 语义**（用户 2026-09-20 拍板，秘纹护体 2059 线）：同一威胁落到目标头上时，
+    //    **所有**条件命中的次数型票**各扣一次**（不是"只扣第一条命中的"）——官方实现里每张
+    //    次免都是**独立**的响应条目，各自判定、各自递减。旧版 `return true` 在第一条命中处
+    //    就返回（多条次免并存时只扣一条），与本口径不符。
+    //    · `consume_all=true`：扣光全部命中票（**异常族 ANOMALY 用这一档**——两张次免
+    //      盾并存时一次异常两条都消耗）；
+    //    · `consume_all=false`（默认）：只扣第一条（**免伤/免粉/免杀族**保留"一层一威胁"
+    //      的分层语义——多个"抵挡下N次攻击"是各自独立的层，一次攻击只消耗最外那层）。
     bool consume_immune(int target, int type, uint64_t timing_bit, int current_round,
                         int status_id = 0, int soul_filter = -1,
-                        int tier_filter = -1) {
+                        int tier_filter = -1, const BattleContext* ctx = nullptr,
+                        bool consume_all = false) {
         if (target < 0 || target > 1) {
             return false;
         }
-        for (auto it = all_.begin(); it != all_.end(); ++it) {
-            RuleTicket& t = *it;
-            if (t.category != RuleCategory::IMMUNE || t.target != target) continue;
-            if (t.subtype != type || t.remaining_counts <= 0) continue;  // 仅次数型
-            if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) continue;
-            if (tier_filter >= 0 && t.tier != tier_filter) continue;
-            if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
-                continue;
+        bool consumed = false;
+        for (std::size_t i = 0; i < all_.size();) {
+            RuleTicket& t = all_[i];
+            bool matches = t.category == RuleCategory::IMMUNE && t.target == target
+                        && t.subtype == type && t.remaining_counts > 0;   // 仅次数型
+            if (matches && soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) matches = false;
+            if (matches && tier_filter >= 0 && t.tier != tier_filter) matches = false;
+            if (matches && window_expired(t, current_round)) {
+                matches = false;
             }
-            if (!(t.coverage & timing_bit)) continue;
-            if (type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
+            if (matches && !(t.coverage & timing_bit)) matches = false;
+            if (matches && type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
                 && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
+                matches = false;
+            }
+            // 条件免疫（与 is_immune 同一判定——consume 必须消费"查询命中"的同一条，
+            // 否则会把条件外的次数型票误扣掉）。
+            if (matches && t.anomaly_condition && !(ctx && t.anomaly_condition(ctx, status_id))) {
+                matches = false;
+            }
+            if (!matches) {
+                ++i;
                 continue;
             }
             --t.remaining_counts;
+            consumed = true;
             if (t.remaining_counts <= 0) {
-                all_.erase(it);
+                all_.erase(all_.begin() + static_cast<std::vector<RuleTicket>::difference_type>(i));
+                continue;   // erase 后同下标是新元素，不 ++i
             }
-            return true;  // 本次免疫被消耗
+            if (!consume_all) {
+                return true;   // 分层语义：只扣最外一层
+            }
+            ++i;
         }
-        return false;
+        return consumed;
     }
 
     // ── 「无视」凭证（PENETRATE_*）：授予 / 查询 / 消费 ─────────────────────────
@@ -416,7 +625,7 @@ public:
         }
         for (const RuleTicket& t : all_) {
             if (t.category != category || t.target != target) continue;
-            if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
+            if (window_expired(t, current_round)) {
                 continue;  // 窗口已过
             }
             q.valid = true;
@@ -448,7 +657,7 @@ public:
             RuleTicket& t = *it;
             if (t.category != category || t.target != target) continue;
             if (t.remaining_counts <= 0) continue;   // 仅次数型
-            if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
+            if (window_expired(t, current_round)) {
                 continue;
             }
             --t.remaining_counts;
@@ -513,6 +722,47 @@ public:
         return sid;
     }
 
+    // 盔遮蔽标记票授予（ARMOR_SUPPRESS，荣光之裁精确化 2026-09-25）：一张标记 = 一个
+    // 遮蔽来源。condition = notify 逐盔判定时的**现场查询**（圣光·格劳瑞："持有方裁印记
+    // >0"），恒实时。标记不消费、免 tick/免断回合（同 IMMUNE 豁免口径）；生命周期 =
+    // 授一次 + 授予方 revoke。返回句柄——消费走事件通道：notify 遮蔽命中时按
+    // ARMOR_RESOLVED(blocked=false, grant_id=本句柄) 发出，授予方监听匹配后自扣裁层。
+    // 同 (source_owner, source_effect_id) 重复授予 = 刷新（换新句柄，旧监听器按
+    // "被穿也要自删"纪律自行失效）。
+    int grant_armor_suppress(int source_owner, int target, int source_effect_id,
+                             std::function<bool(BattleContext*, int, int, bool)> condition) {
+        if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1) {
+            return 0;
+        }
+        const int sid = ++next_source_id_;
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::ARMOR_SUPPRESS
+                && t.source_owner == source_owner
+                && t.source_effect_id == source_effect_id) {
+                t.target = target;
+                t.condition = std::move(condition);
+                t.source_id = sid;
+                recount();
+                return sid;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.target = target;
+        t.category = RuleCategory::ARMOR_SUPPRESS;
+        t.scope = EffectScope::ON_STAGE;
+        t.penetrable = false;        // 标记票自身不是盔，不参与穿透语义
+        t.remaining_counts = 0;      // 纯标记：不消费
+        t.remaining_rounds = 0;      // 非回合类：免 tick，断回合清不掉
+        t.condition = std::move(condition);
+        t.source_valid_id = 0;       // 不随来源 epoch 作废（永久 debuff）
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+
     // 挂 ③层命中效果失效。**按技能类型分成两类**（攻击/属性）——要两种技能都失效就调两次
     // （或两次传不同 is_attribute_skill），不是给一条加 mask。
     // @param is_attribute_skill true=只对属性技能生效；false=只对攻击技能生效
@@ -554,7 +804,7 @@ public:
 
     bool is_immune(int target, int type, uint64_t timing_bit, int current_round,
                    int status_id = 0, int soul_filter = -1,
-                   int tier_filter = -1) const {
+                   int tier_filter = -1, const BattleContext* ctx = nullptr) const {
         if (target < 0 || target > 1) {
             return false;
         }
@@ -563,12 +813,16 @@ public:
             if (t.subtype != type) continue;
             if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) continue;
             if (tier_filter >= 0 && t.tier != tier_filter) continue;
-            if (t.remaining_rounds > 0 && current_round - t.register_round >= t.remaining_rounds) {
+            if (window_expired(t, current_round)) {
                 continue;  // 窗口已过
             }
             if (!(t.coverage & timing_bit)) continue;
             if (type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
                 && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
+                continue;
+            }
+            // 条件免疫（动态）：静态 mask 命中后还要过条件回调；ctx 未传 = 条件不成立。
+            if (t.anomaly_condition && !(ctx && t.anomaly_condition(ctx, status_id))) {
                 continue;
             }
             return true;
@@ -577,26 +831,70 @@ public:
     }
     bool is_immune_effect(int target, int type, uint64_t timing_bit,
                           int current_round, int status_id = 0,
-                          int tier_filter = -1) const {
+                          int tier_filter = -1, const BattleContext* ctx = nullptr) const {
         return is_immune(target, type, timing_bit, current_round, status_id, /*soul_filter=*/0,
-                         tier_filter);
+                         tier_filter, ctx);
     }
     bool is_immune_soul(int target, int type, uint64_t timing_bit,
                         int current_round, int status_id = 0,
-                        int tier_filter = -1) const {
+                        int tier_filter = -1, const BattleContext* ctx = nullptr) const {
         return is_immune(target, type, timing_bit, current_round, status_id, /*soul_filter=*/1,
-                         tier_filter);
+                         tier_filter, ctx);
+    }
+
+    // 窗口/永久型（counts==0）免疫查询：只有"不随施加消耗"的票在覆盖才返回 true。
+    // 用途：免断消费点（break_round_effects）——元神神之宣告的免断是
+    // 「1回合免断 ➕ 下1次免断」两层票（语料《机制解析—免断》+ 作者顶置的官方 n-1
+    // 特判）：窗口票覆盖期间断进来由窗口兜着、**不烧**次数票，"下1次"留给窗口结束后。
+    bool is_immune_window(int target, int type, uint64_t timing_bit, int current_round,
+                          int status_id = 0, int soul_filter = -1,
+                          int tier_filter = -1, const BattleContext* ctx = nullptr) const {
+        if (target < 0 || target > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::IMMUNE || t.target != target) continue;
+            if (t.subtype != type) continue;
+            if (t.remaining_counts != 0) continue;   // ★ 只认窗口/永久票
+            if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) continue;
+            if (tier_filter >= 0 && t.tier != tier_filter) continue;
+            if (window_expired(t, current_round)) {
+                continue;  // 窗口已过
+            }
+            if (!(t.coverage & timing_bit)) continue;
+            if (type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
+                && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
+                continue;
+            }
+            // 条件免疫（动态）：静态 mask 命中后还要过条件回调；ctx 未传 = 条件不成立。
+            if (t.anomaly_condition && !(ctx && t.anomaly_condition(ctx, status_id))) {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 
     // on_armor_resolved（可选）：每条**被结算**的拦截条目回调一次
     // （真正生效 或 被穿），参数 = (source_effect_id, source_owner, grant_id, blocked)。
     // 用途：带后续子句的盔——插件按 **grant_id** 精确匹配自己那条，无论生效与否都自删监听器
     // （否则被穿留下的监听器会在**下一次**同类盔生效时多触发一次），blocked=false 时不执行子句。
+    // current_round：本回合轮次（由调用方传——本头文件对 BattleContext 只有前置声明，
+    // 不能解引用 ctx 取 roundCount）。三个调用点都在 query_usage/门判定内，读的就是
+    // 同一个 ctx->roundCount。
     SkillInvalidNotifyResult notify(BattleContext* ctx, int user, bool is_attribute_skill,
                                     int power, bool ignore_attack_immunity,
+                                    int current_round = 0,
                                     const std::function<void(int, int, int, bool)>& on_armor_resolved = nullptr) {
         if (user < 0 || user > 1) {
             return SkillInvalidNotifyResult::NONE;
+        }
+        // SKILL_BAN（封禁票，纯查询）：属性技能被封 → 与 SEAL 同路返回 INVALID（触发
+        // SKILL_INVALID 无效补偿全链路），但**不消费、不可被穿盔凭证穿透**。
+        // ⚠️ 查询在任何 SEAL 结算之前：封禁命中时本次技能直接无效，次数盔不因此消耗
+        // （盔要拦的是"技能使用"，封禁已让技能无效——与封属票自身的 notify 语义一致）。
+        if (is_attribute_skill && is_skill_ban(user, current_round)) {
+            return SkillInvalidNotifyResult::INVALID;
         }
         bool any_invalid = false;
         bool any_hit_invalid = false;
@@ -613,6 +911,38 @@ public:
             if (t.condition && !t.condition(ctx, user, power, is_attribute_skill)) {
                 ++it;
                 continue;
+            }
+            // 裁遮蔽（ARMOR_SUPPRESS，2026-09-25 荣光之裁精确化）：**可穿盔**逐盔判定——
+            // 盔持有方（t.source_owner）有活跃遮蔽标记（condition 现场查"裁印记>0"）时，
+            // 本盔**本击不触发、不耗自身次数**（次数型盔保次数），按"被穿"语义发事件
+            // （blocked=false，**grant_id = 标记票**而非盔票）——授予方监听匹配后自扣裁层。
+            // 不可穿盔（条件盔/龙威）不受遮蔽：照常走下方触发分支（用户 2026-09-25 口径：
+            // "可穿盔被无视、不可穿盔仍成功阻挡"）。遍历一次 pass 结算所有响应条目 →
+            // 混合盔下"攻击被挡但裁已消耗"与票序无关。
+            if (t.penetrable) {
+                const RuleTicket* matched_marker = nullptr;
+                for (const RuleTicket& m : all_) {
+                    if (m.category != RuleCategory::ARMOR_SUPPRESS
+                        || m.target != t.source_owner
+                        || window_expired(m, current_round)) {
+                        continue;
+                    }
+                    if (m.condition && !m.condition(ctx, user, power, is_attribute_skill)) {
+                        continue;
+                    }
+                    matched_marker = &m;
+                    break;   // 一次遮蔽只耗一个来源（多来源互斥语义待实测）
+                }
+                if (matched_marker != nullptr) {
+                    if (on_armor_resolved) {
+                        on_armor_resolved(matched_marker->source_effect_id,
+                                          matched_marker->source_owner,
+                                          matched_marker->source_id,
+                                          /*blocked=*/false);
+                    }
+                    ++it;
+                    continue;   // 遮蔽成立：跳过本盔的穿透/触发分支，继续下一盔
+                }
             }
             if (t.penetrable && ignore_attack_immunity) {
                 // 被穿：按模板判据决定消不消耗（用户 2026-09-13 实测——可穿盔不是铁板一块）：
@@ -696,21 +1026,500 @@ public:
         return false;
     }
 
+    // ── 场地规则（OFF_FIELD_PROTECT）：授予 / 查询 ────────────────────
+    // 授予。覆盖键 = (source_owner, source_effect_id, category) 刷新不追加（重激活幂等）。
+    // target: -1 = 双方场下（现行唯一语义；将来"仅己方场下"类传具体 side）。
+    // 永久（rounds=0 不参与 tick/断回清）；TEAM scope（换宠清不掉）；唯一撤销 =
+    // 宿主 EVENT_VANISH watcher 调 revoke(source_id)（战斗结束 clear_all 兜底）。
+    int grant_off_field_protect(int source_owner, int source_effect_id, int target,
+                                EffectScope scope = EffectScope::TEAM,
+                                int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::OFF_FIELD_PROTECT
+                && t.source_owner == source_owner && t.source_effect_id == source_effect_id) {
+                t.target = target;
+                t.scope = scope;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = target;
+        t.category = RuleCategory::OFF_FIELD_PROTECT;
+        t.source_valid_id = source_valid_id;
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        return sid;
+    }
+    // side 一侧的**场下**宠是否受保护（票 target==-1 或 ==side）。多个提供方取或——
+    // 双方各一只武心婵、一只被消逝时另一只的票继续保护。
+    bool has_off_field_protect(int side) const {
+        if (side < 0 || side > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::OFF_FIELD_PROTECT) continue;
+            if (t.target == -1 || t.target == side) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ── 池改写票（ANOMALY_POOL_MOD）：授予 / 解析 ─────────────────────
+    // 授予。覆盖键 = (source_owner, source_effect_id, category) 刷新不追加（重授幂等）。
+    // 永久（rounds=0）、TEAM scope（换宠清不掉、断回不清）——"游戏开始就注册、不随
+    // 星皇二段/消逝/死亡丢失"的活动改写语义就是这个默认值；唯一撤销 = 授予方 revoke。
+    int grant_anomaly_pool_mod(
+        int source_owner, int source_effect_id,
+        std::function<std::vector<int>(BattleContext*, const std::vector<int>&)> fn,
+        EffectScope scope = EffectScope::TEAM, int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1 || !fn) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::ANOMALY_POOL_MOD
+                && t.source_owner == source_owner && t.source_effect_id == source_effect_id) {
+                t.pool_mod = std::move(fn);
+                t.scope = scope;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.category = RuleCategory::ANOMALY_POOL_MOD;
+        t.source_valid_id = source_valid_id;
+        t.pool_mod = std::move(fn);
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        return sid;
+    }
+
+    // 解析有效池：base ⊕ 各票（**授予顺序折叠**——前一张的输出是后一张的输入，顺序即
+    // 注册序；需要确定序的场合由授予方自己控制注册时机）。回调收到的第一个池参数是
+    // **当前**池（可能是前面票改写过的），返回值作为新的当前池。结果去重保序。
+    // ⚠️ 只做池的形状改写；掷骰/概率/去重挑选/施加全在 attach_random_anomalies 原语里。
+    std::vector<int> resolve_anomaly_pool(BattleContext* ctx,
+                                          const std::vector<int>& base_pool) const {
+        std::vector<int> pool = base_pool;
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::ANOMALY_POOL_MOD || !t.pool_mod) {
+                continue;
+            }
+            pool = t.pool_mod(ctx, pool);
+        }
+        std::vector<int> out;
+        for (int id : pool) {
+            if (std::find(out.begin(), out.end(), id) == out.end()) {
+                out.push_back(id);
+            }
+        }
+        return out;
+    }
+
+    // ── 技能封禁票（SKILL_BAN）：授予 / 查询 ─────────────────────────
+    // 封属的"不可被断回合"变体（见 RuleCategory::SKILL_BAN 注）。覆盖键
+    // (source_owner, source_effect_id, category) 刷新不追加 → "每次登场"重授自然刷新窗口。
+    // rounds>0 = 窗口期（register_round 起算，is_skill_ban 比较，cleanup 清理）；
+    // rounds==0 = 不过期（由授予方 revoke）。
+    // ⚠️ 封禁的是 target 一侧的**属性技能**（攻击技能封禁走 SEAL_ATTACK，不归本类别）。
+    int grant_skill_ban(int source_owner, int source_effect_id, int target,
+                        int rounds, int register_round,
+                        EffectScope scope = EffectScope::ON_STAGE, int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::SKILL_BAN
+                && t.source_owner == source_owner && t.source_effect_id == source_effect_id) {
+                t.target = target;
+                t.scope = scope;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = target;
+        t.category = RuleCategory::SKILL_BAN;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.source_valid_id = source_valid_id;   // 0 = 不参与断回合作废（封禁不可被断）
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // target 一侧本回合用属性技能是否被封禁（纯查询；窗口比较同 IMMUNE 的 cleanup 口径）。
+    bool is_skill_ban(int target, int current_round) const {
+        if (target < 0 || target > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::SKILL_BAN || t.target != target) {
+                continue;
+            }
+            if (window_expired(t, current_round)) {
+                continue;   // 窗口已过
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // ── 锁切票（SWITCH_LOCK）：授予 / 查询 ─────────────────────────
+    // 见 RuleCategory::SWITCH_LOCK 注。"下 N 回合对手无法主动切换精灵"族（全库 17 条
+    // effect）统一走这里——别再另开字段（battleFsm 的主动切换校验处已留口）。
+    // 覆盖键 (source_owner, source_effect_id, category) 刷新不追加 → 重复使用自然续窗。
+    int grant_switch_lock(int source_owner, int source_effect_id, int target,
+                          int rounds, int register_round,
+                          EffectScope scope = EffectScope::ON_STAGE, int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::SWITCH_LOCK
+                && t.source_owner == source_owner && t.source_effect_id == source_effect_id) {
+                t.target = target;
+                t.scope = scope;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = target;
+        t.category = RuleCategory::SWITCH_LOCK;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.source_valid_id = source_valid_id;   // 0 = 不参与断回合作废（纯查询族）
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // target 一侧本回合是否被锁切（纯查询；窗口比较同 is_skill_ban）。
+    bool is_switch_locked(int target, int current_round) const {
+        if (target < 0 || target > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::SWITCH_LOCK || t.target != target) {
+                continue;
+            }
+            if (window_expired(t, current_round)) {
+                continue;   // 窗口已过
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // ── 药剂反噬票（POTION_BACKLASH）：授予 / 查询 ─────────────────
+    // 见 RuleCategory::POTION_BACKLASH 注（预留位，当前无注册者）。覆盖键
+    // (source_owner, source_effect_id, category) 刷新不追加；rounds>0 = 窗口期，
+    // rounds==0 = 不过期（由授予方 revoke）。查询点：SeerRobot::use_medicine（带 HP 效果的药）。
+    int grant_potion_backlash(int source_owner, int source_effect_id, int target,
+                              int rounds, int register_round,
+                              EffectScope scope = EffectScope::ON_STAGE,
+                              int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::POTION_BACKLASH
+                && t.source_owner == source_owner && t.source_effect_id == source_effect_id) {
+                t.target = target;
+                t.scope = scope;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = target;
+        t.category = RuleCategory::POTION_BACKLASH;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.source_valid_id = source_valid_id;
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // target 一侧嗑药（带 HP 效果）是否被反噬（纯查询；窗口比较同 is_switch_locked）。
+    bool has_potion_backlash(int target, int current_round) const {
+        if (target < 0 || target > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::POTION_BACKLASH || t.target != target) {
+                continue;
+            }
+            if (window_expired(t, current_round)) {
+                continue;   // 窗口已过
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // ── 攻击无效化票（ATTACK_NULLIFY）：授予 / 查询 ─────────────────
+    // 见 RuleCategory::ATTACK_NULLIFY 注（1090 族；绑定对象=bearer，生效目标=target）。
+    // source_valid_id = 授予时 bearer 的 round_effect_valid_id 快照：>0 时随 bearer 的
+    // 断回合 epoch 作废（invalidate_stale），0 = 不参与断回合（默认）。
+    int grant_attack_nullify(int source_owner, int source_effect_id, int target,
+                             int rounds, int register_round,
+                             EffectScope scope = EffectScope::ON_STAGE,
+                             int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::ATTACK_NULLIFY
+                && t.source_owner == source_owner && t.source_effect_id == source_effect_id) {
+                t.target = target;
+                t.scope = scope;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = target;
+        t.category = RuleCategory::ATTACK_NULLIFY;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.source_valid_id = source_valid_id;
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // side 一侧本次打出的攻击是否被压制（查询点：finish_attack_damage 红伤归零 +
+    // deal_pink_damage 效果粉伤封锁；窗口比较同 is_skill_ban；epoch 版本号由
+    // invalidate_stale 直接删票表达——删了自然查不到）。
+    bool is_attack_nullified(int side, int current_round) const {
+        if (side < 0 || side > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::ATTACK_NULLIFY || t.target != side) {
+                continue;
+            }
+            if (window_expired(t, current_round)) {
+                continue;   // 窗口已过
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // ── 附加禁令票（ATTACH_BAN）：授予 / 查询 ────────────────────────
+    // "actor 一侧的攻击技能无法附加异常/弱化"，见 RuleCategory::ATTACH_BAN 注。
+    // subtype：0=异常、1=弱化。coverage 只覆盖双方行动段（禁令只在"对方行动中"响应）；
+    // rounds>0 = 窗口期（register_round 起算）；rounds==0 = 不过期（授予方 revoke）。
+    // 覆盖键 (source_owner, source_effect_id, category, subtype) 刷新不追加。
+    static constexpr int kAttachBanAnomaly = 0;
+    static constexpr int kAttachBanStatDrop = 1;
+    int grant_attach_ban(int source_owner, int source_effect_id, int target, int subtype,
+                         uint64_t coverage, int rounds, int register_round,
+                         EffectScope scope = EffectScope::ON_STAGE, int source_valid_id = 0) {
+        if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1
+            || (subtype != kAttachBanAnomaly && subtype != kAttachBanStatDrop)) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::ATTACH_BAN
+                && t.source_owner == source_owner && t.source_effect_id == source_effect_id
+                && t.subtype == subtype) {
+                t.target = target;
+                t.scope = scope;
+                t.coverage = coverage;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = target;
+        t.category = RuleCategory::ATTACH_BAN;
+        t.subtype = subtype;
+        t.coverage = coverage;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.source_valid_id = source_valid_id;   // 0 = 不参与断回合作废（同封禁，不可被断）
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // 施加原语入口查询：actor 一侧此刻是否被禁止附加（subtype 类）。三个条件全过才算命中：
+    //   ① target == actor（禁令锁的是"谁在施加"）；
+    //   ② 窗口有效（rounds>0 时按 register_round 比较）；
+    //   ③ coverage 命中**当下时点**（bit = state_coverage_bit(ctx->currentState)）——
+    //     只在行动段内响应 = 官方"从对方行动开始到行动结束"的窄窗口；回合开始前/结束后的
+    //     异常与弱化天然不受影响。
+    bool has_attach_ban(int actor, int subtype, uint64_t timing_bit, int current_round) const {
+        if (actor < 0 || actor > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::ATTACH_BAN || t.target != actor
+                || t.subtype != subtype) {
+                continue;
+            }
+            if (window_expired(t, current_round)) {
+                continue;   // 窗口已过
+            }
+            if (!(t.coverage & timing_bit)) {
+                continue;   // 不在行动窗口内
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // ── 概率闸门票（CHANCE_GATE）：授予 / 裁定 ───────────────────────
+    // 见 RuleCategory::CHANCE_GATE 注。**纯查询、不消费**（免 tick / 免断回合 / 免 epoch
+    // 作废），窗口用 rounds + register_round 表达；覆盖键 (source_owner, source_effect_id,
+    // category, tag) 刷新不追加（与 ATTACH_BAN 同款）。
+    int grant_chance_gate(int owner, int source_effect_id, ChanceTag tag, int threshold_pct,
+                          int below_result, int above_result, uint32_t source_mask, int rounds,
+                          int register_round, EffectScope scope = EffectScope::ON_STAGE) {
+        if (owner < 0 || owner > 1) {
+            return 0;
+        }
+        const int tag_value = static_cast<int>(tag);
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::CHANCE_GATE && t.source_owner == owner
+                && t.source_effect_id == source_effect_id && t.subtype == tag_value) {
+                t.target = owner;
+                t.scope = scope;
+                t.chance_threshold_pct = threshold_pct;
+                t.chance_below_result = below_result;
+                t.chance_above_result = above_result;
+                t.chance_source_mask = source_mask;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = owner;                 // 闸门护的是持有方自己
+        t.category = RuleCategory::CHANCE_GATE;
+        t.subtype = tag_value;
+        t.chance_threshold_pct = threshold_pct;
+        t.chance_below_result = below_result;
+        t.chance_above_result = above_result;
+        t.chance_source_mask = source_mask;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.source_valid_id = 0;            // 纯查询类别：不参与断回合作废（同禁令/封禁）
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+
+    // 概率裁定：**被保护方** protected_side 持有的闸门，把 actor 申报的概率改写成新值。
+    //   · tag / source 双重过滤：票只对自己声明管辖的标签与来源生效；
+    //   · 多票按**授予顺序折叠**（前一张的输出是后一张的输入）；
+    //   · 窗口：rounds>0 时按 register_round 比较（同 ATTACH_BAN，不 tick）；
+    //   · pct<0 = **未申报**（该调用点还没走本管道）→ 原样返回，闸门一概不介入。
+    //     ⇒ "未迁移的调用点不受闸门影响"是**结构性**的，不会静默误伤。
+    // pct 语义：<=0 必定不触发、>=100 必定触发、其余走一次 rand。
+    // actor 现在只用于溯源；将来"永沐"式"按施加方记账"（给对手挂曝）在这里读。
+    int rewrite_anomaly_chance(int protected_side, int actor, int pct, ChanceTag tag,
+                               ChanceSource source, int current_round) const {
+        (void)actor;
+        if (protected_side < 0 || protected_side > 1 || pct < 0) {
+            return pct;
+        }
+        const uint32_t bit = chance_source_bit(source);
+        const int tag_value = static_cast<int>(tag);
+        int out = pct;
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::CHANCE_GATE || t.target != protected_side
+                || t.subtype != tag_value) {
+                continue;
+            }
+            if ((t.chance_source_mask & bit) == 0) {
+                continue;   // 该闸门不管这一类来源
+            }
+            if (t.remaining_rounds > 0
+                && current_round - t.register_round >= t.remaining_rounds) {
+                continue;   // 窗口已过
+            }
+            if (out <= t.chance_threshold_pct) {
+                if (t.chance_below_result >= 0) {
+                    out = t.chance_below_result;
+                }
+            } else if (t.chance_above_result >= 0) {
+                out = t.chance_above_result;
+            }
+        }
+        return out;
+    }
+
     // ── 断回合作废（Q2）：作废"来源 ON_STAGE 效果已被断"的非免疫规则────
-    // source_valid_id 注册时记 round_effect_valid_id[source_owner]；断回回合(++ epoch)后，
-    // 来源效果被作废，其授予的非免疫规则一并作废。IMMUNE 恒 0 天然豁免（不断回合清）。
+    // source_valid_id 注册时记 round_effect_valid_id[source_owner]；断回合(++ epoch)后，
+    // 来源效果被作废，其授予的非免疫规则一并作废。纯查询类别（IMMUNE/SKILL_BAN/ATTACH_BAN，
+    // source_valid_id 恒 0）天然豁免。
     void invalidate_stale(int source_owner, int current_epoch) {
         if (source_owner < 0 || source_owner > 1) {
             return;
         }
         // 只作废旧**回合类**规则（与 clear_round_type"断回合操作回合类"一致，次数型封属不随断回清）。
-        // 由来源 ON_STAGE 回合类效果授予时随其 epoch 作废；免疫恒 0 天然豁免。
-        std::erase_if(all_, [source_owner, current_epoch](RuleTicket& t) {
-            if (t.source_owner != source_owner || t.scope != EffectScope::ON_STAGE) {
-                return false;  // TEAM / 非本方：豁免
+        // 匹配键 = **绑定方**（binding_side：SWITCH_LOCK 挂对手身上 → 断对手才拆它）；
+        // 免断表类别豁免；由 bump 点（invalidate_all_round_effects / 切换）当场删除——
+        // bump 点只有这两处，等价于"查询时发现版本过期于是删"的懒删（2026-09-21 口径）。
+        std::erase_if(all_, [this, source_owner, current_epoch](RuleTicket& t) {
+            if (binding_side(t) != source_owner || t.scope != EffectScope::ON_STAGE) {
+                return false;  // TEAM / 非绑定方：豁免
             }
-            if (t.category == RuleCategory::IMMUNE || !t.is_round_type()) {
-                return false;  // 免疫天然不可被断；非回合类规则不随断回清
+            if (is_undeletable_category(t.category) || !t.is_round_type()) {
+                return false;  // 免断类别不可被断；非回合类规则不随断回清
             }
             return t.source_valid_id > 0 && t.source_valid_id < current_epoch;
         });
@@ -746,9 +1555,12 @@ public:
             return;
         }
         // 免疫(source_slot=-1)整方清；封属/③层按挂载槽清并保留同队其它槽规则；TEAM 保留。
-        std::erase_if(all_, [source_owner, source_slot](const RuleTicket& t) {
-            if (t.source_owner != source_owner) return false;
+        // 匹配键 = **绑定方**：SWITCH_LOCK 这类"挂在对手身上"的票，对手（被锁方）下场即清，
+        // 施放方下场反而保留（绑定 ≠ 施放，2026-09-21 口径）；target 是"边"不是槽 → 整方清。
+        std::erase_if(all_, [this, source_owner, source_slot](const RuleTicket& t) {
+            if (binding_side(t) != source_owner) return false;
             if (t.scope != EffectScope::ON_STAGE) return false;
+            if (t.category == RuleCategory::SWITCH_LOCK) return true;   // 绑定到边 → 整方清
             return source_slot == -1 || t.source_slot == -1 || t.source_slot == source_slot;
         });
         recount();
@@ -758,16 +1570,16 @@ public:
         if (source < 0 || source > 1) {
             return;
         }
-        std::erase_if(all_, [source](const RuleTicket& t) {
-            return t.source_owner == source
-                && t.category != RuleCategory::IMMUNE && t.is_round_type();
+        std::erase_if(all_, [this, source](const RuleTicket& t) {
+            return binding_side(t) == source
+                && !is_undeletable_category(t.category) && t.is_round_type();
         });
         recount();
     }
 
     void tick_rounds() {
         std::erase_if(all_, [](RuleTicket& t) {
-            if (t.category == RuleCategory::IMMUNE || !t.is_round_type()) {
+            if (is_pure_query_category(t.category) || !t.is_round_type()) {
                 return false;
             }
             --t.remaining_rounds;
@@ -777,10 +1589,11 @@ public:
     }
 
     void cleanup(int current_round) {
-        std::erase_if(all_, [current_round](const RuleTicket& t) {
-            return t.category == RuleCategory::IMMUNE
-                && t.remaining_rounds > 0
-                && current_round - t.register_round >= t.remaining_rounds;
+        std::erase_if(all_, [this, current_round](const RuleTicket& t) {
+            if (!is_pure_query_category(t.category)) {
+                return false;
+            }
+            return window_expired(t, current_round);
         });
         recount();
     }
@@ -811,6 +1624,23 @@ public:
         return sum;
     }
     // O(1)：回合类非免疫规则计数（断回合"有无可断物"门 + 断回作废查询，学 timed_bucket active_round_count_）。
+    // 目标身上是否存在指定类别的**活跃**封属/盔票（2399 宿世归泯的
+    // "双方任意一方处于属性技能无效效果"判定用）。窗口过期的条目不算。
+    bool has_seal_kind(int target, SealKind kind, int current_round) const {
+        if (target < 0 || target > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::SEAL || t.target != target) continue;
+            if (static_cast<SealKind>(t.subtype) != kind) continue;
+            if (window_expired(t, current_round)) {
+                continue;  // 窗口已过
+            }
+            return true;
+        }
+        return false;
+    }
+
     bool has_round_type(int source) const {
         return source >= 0 && source <= 1 && round_count_[source] > 0;
     }
@@ -818,12 +1648,29 @@ public:
     const std::vector<RuleTicket>& entries() const { return all_; }
 
 private:
-    // 回合类（非 IMMUNE，is_round_type）规则计数，per-owner。见 has_round_type。
+    // 绝对窗口是否已过期（**唯一判定式**，2026-09-21 从 10 处复制粘贴中抽取）：
+    // register_round 起算 remaining_rounds 回合；remaining_rounds==0 = 永久有效
+    // （由授予方 revoke）。tick 递减模型的票不走这里——它们的过期由 tick_rounds
+    // 递减+删票表达，查询只看是否还存在。
+    bool window_expired(const RuleTicket& t, int current_round) const {
+        return t.remaining_rounds > 0
+            && current_round - t.register_round >= t.remaining_rounds;
+    }
+    // 票的**绑定方**（生命周期锚，2026-09-21 用户口径）：绝大多数票挂施放方
+    // （source_owner）身上；挂在对手身上的票（SWITCH_LOCK"锁切挂对手"）锚 target。
+    // 绑定方切换（clear_on_stage）/ 被断回合（clear_round_type / invalidate_stale）
+    // → 票失效。"不能只记绑了哪只精灵"的版本号 = source_valid_id（授予时传入的
+    // round_effect_valid_id 快照），bump 点只有 invalidate_on_stage_effects（切换）与
+    // invalidate_all_round_effects（断回合）两处，两处都当场删票（等价于懒删）。
+    int binding_side(const RuleTicket& t) const {
+        return t.category == RuleCategory::SWITCH_LOCK ? t.target : t.source_owner;
+    }
+    // 回合类（非免断，is_round_type）规则计数，per-owner。见 has_round_type。
     void recount() {
         round_count_[0] = round_count_[1] = 0;
         for (const RuleTicket& t : all_) {
-            if (t.category != RuleCategory::IMMUNE && t.is_round_type()) {
-                ++round_count_[t.source_owner];
+            if (!is_undeletable_category(t.category) && t.is_round_type()) {
+                ++round_count_[binding_side(t)];
             }
         }
     }

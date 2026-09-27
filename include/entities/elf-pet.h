@@ -87,6 +87,7 @@ public:
         , skills(other.skills)
         , marks(other.marks)
         , soulmark_storage(other.soulmark_storage)
+        , on_stage_storage(other.on_stage_storage)
         , resistance(other.resistance)
         , damage_resist(other.damage_resist)
         , id(other.id)
@@ -108,6 +109,7 @@ public:
         , skills(std::move(other.skills))
         , marks(std::move(other.marks))
         , soulmark_storage(std::move(other.soulmark_storage))
+        , on_stage_storage(std::move(other.on_stage_storage))
         , resistance(std::move(other.resistance))
         , damage_resist(std::move(other.damage_resist))
         , id(other.id)
@@ -131,6 +133,7 @@ public:
         skills = other.skills;
         marks = other.marks;
         soulmark_storage = other.soulmark_storage;
+        on_stage_storage = other.on_stage_storage;
         resistance = other.resistance;
         damage_resist = other.damage_resist;
         id = other.id;
@@ -156,6 +159,7 @@ public:
         skills = std::move(other.skills);
         marks = std::move(other.marks);
         soulmark_storage = std::move(other.soulmark_storage);
+        on_stage_storage = std::move(other.on_stage_storage);
         resistance = std::move(other.resistance);
         damage_resist = std::move(other.damage_resist);
         id = other.id;
@@ -182,6 +186,13 @@ public:
     int cover = 0;
     ShieldBank shield_bank_;  // 护盾槽（只响应红伤 NORMAL；多来源 + 优先级消耗 + 每回合刷新）
     ShieldBank hood_bank_;    // 护罩槽（只响应粉伤 FIXED/PERCENT；结构同护盾，独立实体）
+    // 精灵王谓词（精灵王线 K5，2026-09-24）：官方判据 = 该精灵拥有技能效果 id 760
+    // （"攻击时造成的伤害不会出现微弱"；语料 idx=19 圣光格劳瑞解析）。
+    // 装配期由 PetFactory 按该宠技能全集（学习表 + hide_moves + 神谕新技）预计算——
+    // 与神谕开关无关（760 在基础技能上）。圣逼"给所有精灵王发标记/恢复精灵王"用。
+    bool is_spirit_king = false;
+    // "消耗体力" kit 旗（圣逼自爆 1551 计数用，2026-09-24）：技能全集含效果 1551。
+    bool has_hp_consume_kit = false;
     int damage_suppress_mask = 0;  // 伤害效果抑制掩码（bit = DamageEffectCategory，被抑制类别在管线 walk 时跳过）
     bool is_locked = false;
     std::array<Skills, 5> skills;

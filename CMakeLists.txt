@@ -37,8 +37,11 @@ set(SIM_CORE_SOURCES
     src/entities/skills.cpp
     src/entities/seer-robot.cpp
     src/entities/soul_mark_manager.cpp
+    src/entities/suit_manager.cpp
+    src/entities/suit.cpp
     src/fsm/battleContext.cpp
     src/fsm/battleFsm.cpp
+    src/fsm/battle_mutate.cpp
     src/utils/dynamic_library.cpp
 )
 
@@ -122,7 +125,10 @@ if(BUILD_SMOKE_TEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/test.cpp)
     foreach(scenario_src IN LISTS SCENARIO_SOURCES)
         get_filename_component(scenario_name "${scenario_src}" NAME_WE)  # scenario_023_selfdestruct_legacy
         add_executable(sim_${scenario_name} "${scenario_src}")
-        target_include_directories(sim_${scenario_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        target_include_directories(sim_${scenario_name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${NLOHMANN_INCLUDE_DIR}   # 场景按需 include src/server/*.cpp（JSON 解码复用）时需要
+        )
         target_link_libraries(sim_${scenario_name} PRIVATE sim_core)
     endforeach()
 endif()
@@ -146,21 +152,16 @@ endif()
 #    也会正确跳过整段，因为单文件登记与家族拆分登记互不兼容，套用哪一套都不对。
 #    ⚠️ 不要只判 `resources/moves_lib/lib_1.cpp` 存在就进 —— 旧单体同名文件会让守卫误判。
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/moves_lib/stat_dispel.cpp
-   AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/soul_lib/legacy_guards.cpp)
+   AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/soul_lib/legacy_guards.cpp
+   AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/resources/suit_lib/lib_1.cpp)
 # moves_plugin 按语义家族分文件（2026-09-17 从 lib_1.cpp 单体拆分；common.h 为共享助手）。
 # 新增效果先选家族文件；跨家族的新助手进 common.h（inline）。
-add_library(moves_plugin SHARED
-    resources/moves_lib/lib_1.cpp
-    resources/moves_lib/anomaly_channel.cpp
-    resources/moves_lib/stat_dispel.cpp
-    resources/moves_lib/heal_drain.cpp
-    resources/moves_lib/damage_modifier.cpp
-    resources/moves_lib/round_window.cpp
-    resources/moves_lib/selection_seal.cpp
-    resources/moves_lib/signature_true_damage.cpp
-    resources/moves_lib/kongyuan_zhishi.cpp      # 空元之诗 2086~2090（额外行动时点的技能效果族）
-    resources/moves_lib/chaos_sorensen_skills.cpp  # 3414 混沌魔君索伦森 技能组（压制/条件增伤族）
-)
+# 2026-09-26 起源文件 GLOB 化（CONFIGURE_DEPENDS）：新增 *.cpp 不再需要登记本文件——
+# 各机制分支因此不再产生 CMakeLists 合并冲突（场景 GLOB 同款策略）。家族说明看各 cpp 头注释。
+file(GLOB MOVES_PLUGIN_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources/moves_lib/*.cpp)
+list(SORT MOVES_PLUGIN_SOURCES)
+add_library(moves_plugin SHARED ${MOVES_PLUGIN_SOURCES})
 target_include_directories(moves_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_target_properties(moves_plugin PROPERTIES
     OUTPUT_NAME "lib_1"
@@ -169,22 +170,12 @@ set_target_properties(moves_plugin PROPERTIES
 
 # soul_plugin 按机制家族分文件（2026-09-17 从 lib_1.cpp 单体拆分；common.h 为共享助手）。
 # 新增魂印先选家族文件；跨家族的新助手进 common.h（inline）。
-# 拆分不变式：SOUL_MARK + SOUL_PROGRAM 注册总数只增不改（2026-09-18：5+13=18），全量场景回归守护。
-add_library(soul_plugin SHARED
-    resources/soul_lib/lib_1.cpp              # 入口：CoreApi 注入 + 注册 flush
-    resources/soul_lib/legacy_guards.cpp      # 1001/1002/1217 古早挡伤反弹
-    resources/soul_lib/zha_liumeng_curse.cpp  # 2378 咤克斯 + 2386 琉梦（咒怨族）
-    resources/soul_lib/miaoshi_4872.cpp       # 4872 妙时天女（特性复制族）
-    resources/soul_lib/canglan_pink.cpp       # 2343 沧岚 + 2099 箫澈（粉伤时点族）
-    resources/soul_lib/canglan_tears.cpp      # 1004/1005 沧岚泪 + 1006 朝曦
-    resources/soul_lib/wuxiang_2260.cpp       # 2260 无为觉者（多时点程序族）
-    resources/soul_lib/qiling_1581.cpp        # 1581 启灵元神（神印族）
-    resources/soul_lib/roster_field.cpp       # 2513 薇尔诗 + 903 星皇（场域常驻族）
-    resources/soul_lib/vanish_kongyuan.cpp    # 2175 空元行者（消逝族）
-    resources/soul_lib/undying_1067.cpp       # 1067 不灭·艾恩斯（免死族）
-    resources/soul_lib/puni_1038.cpp          # 1038 圣灵谱尼（七刻印族）
-    resources/soul_lib/chaos_sorensen.cpp     # 1011 混沌魔君索伦森（压制窗口族）
-)
+# 拆分不变式：SOUL_MARK + SOUL_PROGRAM 注册总数只增不改，全量场景回归守护。
+# 2026-09-26 起源文件 GLOB 化（同 moves_plugin）——新增 *.cpp 免登记、合并零冲突。
+file(GLOB SOUL_PLUGIN_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources/soul_lib/*.cpp)
+list(SORT SOUL_PLUGIN_SOURCES)
+add_library(soul_plugin SHARED ${SOUL_PLUGIN_SOURCES})
 target_include_directories(soul_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_target_properties(soul_plugin PROPERTIES
     OUTPUT_NAME "lib_1"
@@ -213,5 +204,26 @@ add_custom_target(soul_plugin_deploy ALL
     COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:soul_plugin>" "${CMAKE_CURRENT_SOURCE_DIR}/resources/soul_lib/"
     DEPENDS soul_plugin
     COMMENT "部署 soul_plugin → resources/soul_lib/liblib_1.dylib"
+)
+
+# suit_plugin（套装线，2026-09-19）：套装效果动态库，入口符号 suit_plugin_register
+# （独立于 moves/soul 的 plugin_register，见 include/plugin/suit_reg.h）。
+# 加载方 SuitManager::getInstance("resources/suit_lib")（pet_factory.cpp 初始化）。
+# 2026-09-26 GLOB 化（同 moves/soul）。
+file(GLOB SUIT_PLUGIN_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources/suit_lib/*.cpp)
+list(SORT SUIT_PLUGIN_SOURCES)
+add_library(suit_plugin SHARED ${SUIT_PLUGIN_SOURCES})
+target_include_directories(suit_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(suit_plugin PROPERTIES
+    OUTPUT_NAME "lib_1"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/suit_lib"
+)
+
+add_custom_target(suit_plugin_deploy ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources/suit_lib"
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:suit_plugin>" "${CMAKE_CURRENT_SOURCE_DIR}/resources/suit_lib/"
+    DEPENDS suit_plugin
+    COMMENT "部署 suit_plugin → resources/suit_lib/liblib_1.dylib"
 )
 endif()

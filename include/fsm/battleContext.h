@@ -36,6 +36,7 @@ class IControlBlock;
 enum class EffectContainer {
     Skill,
     SoulMark,
+    Set,
 };
 
 
@@ -58,6 +59,12 @@ public:
     // currentRound < endRound 视为仍然生效。
     // 这里不放 workspace，因为 workspace 每回合都会 reset。
     std::array<std::array<int, kOfficialAbnormalStatusSlotCount>, 2> abnormal_status_end_round{};
+
+    //--- 异常持续时间上限（per-side；0 = 无上限）---
+    // 套装线 2026-09-19 圣芒佑界 476："自身进入的异常状态最高为2回合"。
+    // apply_anomaly_impl 在时长落定后统一钳制（抗性标记/覆盖/落地全生效）。
+    // 由效果激活时装一次（shengmang_476.cpp）；**clearAllEffects 复位为 0**（新对局无残留）。
+    int anomaly_duration_cap[2]{0, 0};
 
     //--- 回合类效果计数（O(1) 查询”是否有回合类效果”）---
     // 计数已下沉到各 TimedBucket 内部（与桶内容一处维护，不会不同步）。
@@ -190,7 +197,39 @@ public:
     //--- 魂印条件凭证信号（SET 端：魂印激活时设置，切换/清场清零）---
     bool force_execute_on_pp0[2]{};  // 魂印激活：使用 PP=0 技能时必定命中+强制执行（无为觉者 2260）
     bool ignore_pp[2]{};             // 魂印激活：PP=0 技能仍可选（不受PP限制）
-    bool pp_reverse[2]{};            // 魂印激活：使用技能后 PP 反转（当前PP与已损失互换，无为觉者 2260）这个我在想要不要从context移除因为无为觉者完全可以注册一个监控在双方技能使用完之后检测自己刚刚是否成功出手，是的话就直接去pet槽改pp值
+    bool pp_reverse[2]{};            // 魂印激活：使用技能后 PP 反转（当前PP与已损失互换，无为觉者 2260）
+    // **PP 保留**（琼华之庇，2026-09-25 语料 idx=94 口径"挂着1层印记可以跳掉帝天战佛"）：
+    // [side][slot] = 该槽精灵持有琼华之庇——对手来源的清除/归零对该技能无效
+    // （pp_zero_slot 消费），被清时按 blocked=true 发事件供莫妮卡魂印挂先制限制反应。
+    // 标记在出战链授予成功时按队友槽位置位；庇"不会掉层"→ 不随切换/回合清理
+    // （clearAllEffects 随对局重置）。莫妮卡自己不打标（庇只给队友）。
+    bool pp_retain_pet[2][6]{};
+
+    //--- 当回合无法行动（effect 39 族："若对手所选择的技能PP值为0则当回合对手无法行动"）---
+    // 与控制异常的区别：被控**不跳过**额外行动时点（额外行动声明照常消费），
+    // 无法行动**跳过**主流程且压制额外行动声明（用户 2026-09-22 口径，孑身诫实测）。
+    // 生命周期：效果执行时置位，回合完成（ROUND_COMPLETION）清零。
+    bool cannot_act_round[2]{};
+
+    //--- 消耗全部体力印记（死亡印记，"赛学必修15"口径 2026-09-22）---
+    // "消耗全部体力"≠秒杀：绑定目标的印记，不受免疫秒杀影响；每回合在**挂印者**
+    // 行动结束（AFTER_ACTION_END，被动桶节点）自动结算一次——目标体力清 0 后走
+    // defeat_pet(HP_CONSUME)：免死类拦截器不可见（官方 idx=339），复活类可见
+    // （真二命每回合掉一命）。目标被复活拉起 → 印记保留下回合再算（白龙"斩杀延后"）。
+    // 解除：目标切走（perform_switch 清）或目标真死（defeat DEFEATED 后清）。
+    // 生命周期口径（用户 2026-09-23）：**场上**作用域、**非回合类**效果、**次数无限**
+    // ——官方口径"一直执行直到精灵死亡或者切下场"：被标者切走/真死解除（上行），
+    // **挂印者**下场同样失效（结算节点 ON_STAGE 随 epoch 作废 + 表条目同步清，
+    // 见 perform_switch / attach_hp_consume_mark）；断回合不杀（非回合类，
+    // invalidate_all_round_effects 对被动桶常驻条目刷 epoch 保命，同常驻魂印待遇）。
+    struct HpConsumeMark {
+        int marker_side = -1;        // 挂印者
+        int marker_slot = -1;
+        int target_side = -1;        // 被标者（印记所在）
+        int target_slot = -1;
+        int last_settled_round = -1; // 每回合只结一次（先/后手两个结算节点取先到）
+    };
+    std::vector<HpConsumeMark> hp_consume_marks;
 
     //--- 技能替换 pending（kFull 载体：米修莉式"下次技能转化为X"，见 SkillReplaceSource 注释）---
     // 住 context 不住 ws：kFull 须跨越"选择期(on_selected) → ROUND_START(reset) → 执行期"，
@@ -358,6 +397,29 @@ public:
     // 本体死亡或被消逝不影响这里的条目（idx=149 #6）。clearAllEffects 清空。
     std::vector<ExtraSpirit> extra_spirits[2];
 
+    // ── 双背包模型（精灵王线，2026-09-25 用户口径校准）───────────────────
+    // 每边**两张静态背包**：出战背包（6 格，进战斗）+ 待命背包（6 格，不进战斗），
+    // 合计最多 12 只精灵。两张背包都是**静态**的——战斗创建时定死，战斗中不变。
+    // ⚠️ 战斗 6 格 array（seerRobot[side].elfPets）= **BP（禁选/选序）结果按选序**
+    //    排布，由大厅/客户端决定，与玩家编队的初始精灵排序**无关**——引擎只按
+    //    到手的顺序消费，不做任何"按 id/阵容重排"。
+    // 待命背包快照：BP 模式由 Room 在构造 context 后、init_battle 前写入（只读）；
+    // 直开对局不传 → standby_initialized=false = 待命背包 6 格全空（老客户端语义，
+    // 格劳瑞类读者据此降级并记偏差）。旗标数组由 Room 按 id 走 PetFactory 装配期
+    // 判定落账（与出战侧 has_hp_consume_kit / is_spirit_king 同一判据）。
+    // boss 挑战对局（2026-09-26 "boss 有效"线）：true 时魂印程序里 boss_invalid 标注的
+    // 节点不注册不执行（子句级 boss 无效）；技能效果侧经 disabledEffects 预填（见
+    // effect_param.h）。对局创建时由 Room 从 BattleCreateRequest 写入，战斗中只读。
+    bool is_boss_challenge = false;
+    bool standby_initialized = false;
+    std::array<int, 6> standby_pet_ids[2]{};
+    std::array<bool, 6> standby_is_spirit_king[2]{};   // 待命位：技能全集含效果 760
+    std::array<bool, 6> standby_hp_consume_kit[2]{};   // 待命位：技能全集含效果 1551
+    // "上只在场精灵"记录（圣莫最优系别用，2026-09-24）：perform_switch 换宠时把
+    // 旧在场槽位/系别快照进来；开局 -1 = 无。只在此一处写，查询时拉取。
+    int prev_on_stage_slot[2] = {-1, -1};
+    std::array<int, 2> prev_on_stage_elem[2]{};   // [side] → {elem0, elem1}
+
     //--- 最近一次造成伤害的来源方（按槽）---
     // **死亡归因**用：EVENT_DEATH 的 actor = 击杀方，由此区分
     // 「自身击败对手后」（actor == 自己）与「己方其他精灵被击败后」（actor != 自己）
@@ -365,6 +427,22 @@ public:
     // 只在**体力确实下降**（或秒杀归零）时写入；护盾完全挡下、目标已死不写（不覆盖上一次）。
     // clearAllEffects 清零。
     int last_damage_actor[2][6]{};
+
+    //--- 「最后一次**真正落到体力**的伤害」记录（弹伤族数据源）---
+    // 圣甲·盖亚式"死亡判定里弹伤"用：deal_damage / run_pink_damage 的落血点写入——
+    // 0 血目标不再吃伤（deal_damage 入口拒绝）→ 到死亡漏斗时这份记录**就是致死那一刀**
+    // （施加方 / 实际落体力值 / 伤害档位）。档位判定在读方：弹伤族只认 NORMAL（攻击红伤）
+    // 与 ATTRIBUTE（属性直伤）——粉伤斩杀不弹（语料：回合结束粉斩杀机盖不弹）、真伤不弹；
+    // 秒杀/消耗体力/效果归零走 DefeatCause 分流（DAMAGE 之外拦截器不响应）。
+    // kind 存 static_cast<int>(DamageKind)（本头不反向依赖 primitives 头）。
+    // clearAllEffects 清零。
+    struct LastLandedHit {
+        int actor = -1;
+        int amount = 0;
+        int kind = -1;
+        bool valid = false;
+    };
+    LastLandedHit last_landed_hit[2][6]{};
 
     //--- 技能效果执行表 ---
     // TimedBucket 封装：注册/同源去重/时点执行/过期清理/epoch 作废/回合计数（见 effects/timed_bucket.h）。
@@ -374,6 +452,42 @@ public:
     //--- 魂印效果执行表 ---
     // 与技能桶同类容器；执行顺序上魂印先于技能（execute_registered_actions）。
     TimedBucket soul_mark_effects;
+
+    //--- 套装效果执行表（2026-09-19 套装线）---
+    // 第三类效果来源（魂印/技能之外）。执行顺序**魂印 → 套装 → 技能**（官方口径：
+    // docs_local/docs/02-效果系统/时点判定流程表.md "回合开始时先结算魂印，后结算套装"；
+    // "造成伤害前"链里套装伤害前节点也在魂印之后）。
+    // 生命周期：条目一律 TEAM（套装穿在赛尔身上、全队生效、整场不变——用户口径
+    // "生效范围全队，无法被任何效果抹除或者屏蔽"），不经 epoch 作废体系，
+    // 换宠/断回合/伤害抑制都碰不到它；clearAllEffects 清桶（下一局重新激活）。
+    // 注册入口：activate_suits()（内核合并前由场景测试在 start 前手动调，模拟
+    // 以后 init_battle 的自动调用点）。
+    TimedBucket suit_effects;
+
+    // 第四类容器：**被动桶** —— 无须出手也执行的时点效果（2026-09-22）。
+    // 动作流程时点（状态 6..13/16..23）对"本回合没出手"（嗑药/空操作/无法行动）的
+    // owner 整条跳过魂印/套装/技能桶；本桶**不受该守门**，永随时点执行——
+    // 消耗全部体力印记（死亡印记）的回合结算等"就算嗑药也会触发"的效果落这里。
+    // 生命周期同魂印桶（TEAM/STAGE 由条目自定，走 epoch/cleanup 体系）。
+    // 执行序：魂印 → 套装 → 技能 → 被动（最后：印记类结算在一切常规效果之后）。
+    TimedBucket passive_effects;
+
+    //--- 装备/套装静态数据（战斗级，开战组装时定，之后只读）---
+    // 装备穿在**赛尔（玩家）**身上，效果全队（官方 desc 口径"背包内精灵…"）——
+    // 所以是 per-side 而不是 per-pet。
+    // worn：每方穿戴的部件 item_id（SeerRobot::equip_item_ids 原样拷入）。
+    // active：每方激活的套装 id。激活判定 = 某套的穿戴件数 ≥ 该套 cloths 全长
+    //   （suit 表部件清单；官方无独立"需求件数"字段）。resolve_active_suits 实现
+    //   在 entities/suit.h，构造时算好，战斗中零判定。
+    // equip_stat_*：单件/成套数值加成累计（点数/百分比两本账，六维 = 引擎
+    //   NumericalPropertyIndex 序）。来源 custom_equip_stats（离线编码——Unity
+    //   equip.bytes 已无结构化数值字段）。**数值层不是效果**：并入基线视图由
+    //   消费方自行读取，不进任何效果桶。
+    std::array<std::vector<int>, 2> worn_equipment{};
+    std::array<std::vector<int>, 2> active_suits{};
+    std::array<std::array<int, 6>, 2> equip_stat_flat{};
+    std::array<std::array<int, 6>, 2> equip_stat_pct{};
+
 
     //--- 更新器桶（回合首时点执行）---
     // 每个"活动中的魂印"在此登记一个更新器对象；FSM 在 ROUND_COMPLETION 末尾（advanceRound
@@ -449,9 +563,44 @@ public:
     void clear_on_stage_abnormal_statuses(int robotId);
     void clear_all_on_stage_abnormal_statuses();
     void set_abnormal_status_end_round(int robotId, int statusId, int endRound);
+
+    //--- 异常回合数冻结（宙变之殢族，2026-09-20 神谕古王线）---
+    // frozen[side]=true 时：side 身上所有**生效中**异常的剩余回合数不再减少——
+    //   ① tick 回合扣减点对活跃异常 end_round +1（补偿 roundCount 推进，剩余数恒定；
+    //      永不到期 → 不发 EVENT_ANOMALY_EXPIRED → 星盘族转不动）；
+    //   ② reduce_active_anomaly_rounds（2207 加速消耗）整条短路；
+    //   ③ 已到期的异常不复活（冻结只保"还在身上的"）。
+    // 由插件按"宙变之殢层数>0"维护（oracle_sync_freeze 助手，见 oracle_runtime.h）。
+    bool anomaly_rounds_frozen[2]{};
+
+    void set_anomaly_rounds_frozen(int side, bool frozen) {
+        if (side < 0 || side > 1) {
+            return;
+        }
+        anomaly_rounds_frozen[side] = frozen;
+    }
+
+    bool is_anomaly_rounds_frozen(int side) const {
+        return side >= 0 && side <= 1 && anomaly_rounds_frozen[side];
+    }
     void apply_abnormal_status_for_rounds(int robotId, int statusId, int durationRounds);
     int get_abnormal_status_end_round(int robotId, int statusId) const;
     bool has_active_abnormal_status(int robotId, int statusId) const;
+
+    // 该方在场精灵是否**处于任意**异常状态（套装线 2026-09-19 晨曦之星 447 用：
+    // "回合开始时若己方在场精灵不处于异常状态则…"）。遍历全部官方异常槽，
+    // 任一 end_round 未到期即为真（与 has_active_abnormal_status 同判定式）。
+    bool has_any_active_abnormal_status(int robotId) const {
+        if (robotId < 0 || robotId > 1) {
+            return false;
+        }
+        for (int statusId = 0; statusId < kOfficialAbnormalStatusSlotCount; ++statusId) {
+            if (roundCount < abnormal_status_end_round[robotId][statusId]) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     //--- 效果注册 ---
     void registerEffect(State trigger, int owner, std::unique_ptr<ContinuousEffect> effect,
@@ -502,10 +651,24 @@ public:
                                             round_effect_valid_id[owner]);
     }
 
+    // 盔遮蔽标记票（RuleCategory::ARMOR_SUPPRESS，荣光之裁精确化 2026-09-25）：
+    // 给 target 一侧挂"可穿盔逐盔遮蔽"标记——condition 是**现场查询**（圣光·格劳瑞：
+    // "裁印记>0"，notify 逐盔判定时求值，恒实时）。遮蔽命中时内核按 ARMOR_RESOLVED
+    // （blocked=false + 本票 grant_id）发事件，授予方监听匹配后自行扣裁层（事件即
+    // 消耗通道）。标记免 tick/免断回合（纯查询票）。返回句柄（授予方 revoke 用）。
+    // 内联实现：插件动态库不链接 sim_core，需头文件可见（仿 grant_penetration 先例）。
+    int grant_armor_suppress(int source, int target, int source_effect_id,
+                             std::function<bool(BattleContext*, int, int, bool)> condition) {
+        if (source < 0 || source > 1) {
+            return -1;
+        }
+        return rule_center_.grant_armor_suppress(source, target, source_effect_id,
+                                                 std::move(condition));
+    }
+
     // 成功使用攻击技能后统一消费（**攻击门**）：即使对手无阻挡也消费（"下一次攻击"语义），
     // miss/sealed 不消费（调用方保证）。只扣**次数型**；窗口型不扣（RuleCenter 语义）。
-    void consume_penetration_grants_after_attack(int owner) {
-        if (owner < 0 || owner > 1) {
+    void consume_penetration_grants_after_attack(int owner) {        if (owner < 0 || owner > 1) {
             return;
         }
         rule_center_.consume_penetrate(owner, RuleCategory::PENETRATE_ATTACK, roundCount);
@@ -551,6 +714,28 @@ public:
         rule_center_.grant_seal(source, source_slot, effect_id, target, kind, counts,
                                 rounds, penetrable, scope, /*condition=*/nullptr,
                                 round_effect_valid_id[source]);
+    }
+
+    //--- 药剂反噬（嗑药线，2026-09-22；RuleCenter 承载，**预留位无注册者**）---
+    // 查询点只有 SeerRobot::use_medicine：带 HP 回复的药反转为"扣等量体力"。
+    // 嗑药不走恢复原语，不受封回血(HEAL_BLOCK)影响——反噬是它唯一的干预通道。
+    // @return source_id（revoke_potion_backlash 用；参数非法返回 0）
+    int grant_potion_backlash(int source, int source_effect_id, int target,
+                              int rounds, EffectScope scope = EffectScope::ON_STAGE) {
+        if (source < 0 || source > 1 || target < 0 || target > 1) {
+            return 0;
+        }
+        return rule_center_.grant_potion_backlash(source, source_effect_id, target, rounds,
+                                                  roundCount, scope,
+                                                  round_effect_valid_id[source]);
+    }
+    void revoke_potion_backlash(int source_id) {
+        if (source_id > 0) {
+            rule_center_.revoke(source_id);
+        }
+    }
+    bool has_potion_backlash(int target) const {
+        return rule_center_.has_potion_backlash(target, roundCount);
     }
 
     //--- 伤害抗性有效视图 ---
@@ -663,6 +848,29 @@ public:
         return true;
     }
 
+    // 无法行动（effect 39 族）：置"当回合无法行动"并**撤掉**该方未消费的额外行动
+    // 声明（否则声明残留到下回合会在错误的回合引爆）。插件经 CoreApi 或直接调用。
+    void suppress_extra_action(int owner) {
+        if (owner < 0 || owner > 1) {
+            return;
+        }
+        cannot_act_round[owner] = true;
+        ws.extra_action_pending[owner] = false;
+    }
+
+    //--- 消耗全部体力印记（死亡印记）---
+    // 挂载（幂等：同挂印者-同目标已有印记则不重复）。插件经 CoreApi 调用。
+    void attach_hp_consume_mark(int marker_side, int marker_slot,
+                                int target_side, int target_slot);
+    // 目标切走/真死时清印记（perform_switch / defeat_pet 调）。
+    void clear_hp_consume_marks(int side, int slot);
+    // 挂印者下场时清其挂出的全部印记（perform_switch 调——"挂印者切走即失效"，
+    // 用户 2026-09-23 口径；表条目不残留，防其再上场重挂时被幂等分支挡住不结算）。
+    void clear_hp_consume_marks_attached_by(int side, int slot);
+    // 回合结算：挂印者行动结束（AFTER_ACTION_END，被动桶节点）调——
+    // 目标体力清 0 → defeat_pet(HP_CONSUME)；每条印记每回合只结一次。
+    void settle_hp_consume_marks(int marker_side);
+
     void register_skill_effect(State trigger, int owner, std::unique_ptr<ContinuousEffect> effect) {
         if (owner < 0 || owner > 1) {
             return;
@@ -676,6 +884,25 @@ public:
         }
         soul_mark_effects.register_effect(trigger, owner, std::move(effect), round_effect_valid_id[owner]);
     }
+
+    void register_suit_effect(State trigger, int owner, std::unique_ptr<ContinuousEffect> effect) {
+        if (owner < 0 || owner > 1) {
+            return;
+        }
+        suit_effects.register_effect(trigger, owner, std::move(effect), round_effect_valid_id[owner]);
+    }
+
+    //--- 套装激活（套装线，2026-09-19）---
+    // 把双方 active_suits 的套装程序注册进套装桶（TEAM 常驻）。
+    // ⚠️ 内核合并前由场景测试在 start() 前手动调用（模拟内核自动执行）；等内核侧
+    //    "游戏开始前加载并跑一遍"落地后改为 init_battle 内自动调用（见台账）。
+    // 实现（Suit 类 + 程序展开）在 entities/suit.h / src/entities/suit.cpp——
+    // 需要 SuitManager 完整类型，battleContext.h 不能反向包含它。
+    void activate_suits();
+
+    // 穿戴清单 → 激活套装 + 数值加成累计（构造时调用；side=0/1）。
+    // 实现同上在 src/entities/suit.cpp（要查 equip/suit/custom_equip_stats 表）。
+    void resolve_equipment(int side);
 
     //--- 切换/清场 ---
     // 使某方所有 ON_STAGE 效果惰性失效（切换精灵/清场用）。
@@ -719,6 +946,8 @@ public:
     void clearAllEffects() {
         skills_effects.clear();
         soul_mark_effects.clear();
+        suit_effects.clear();   // 套装条目随对局清；下一局由 activate_suits 重新激活
+        passive_effects.clear();   // 被动桶（第四容器）随对局清——死亡印记结算节点不跨局残留
         updater_effects.clear();
         rule_center_.clear_all();  // 免疫 + 盔/威/封属 + ③层命中失效 一次清
         // 穿透授予改由 RuleCenter 承载（rule_center_.clear_all() 上面已清）。
@@ -743,9 +972,11 @@ public:
         death_interceptors.clear();          // 死亡拦截器（免死/真2命）随对局清
         extra_spirits[0].clear();            // 额外精灵容器随对局清（黑白龙/咽咎尸骸…）
         extra_spirits[1].clear();
+        hp_consume_marks.clear();            // 消耗全部体力印记（死亡印记）随对局清（连续对局复用 context 防泄漏）
         for (int side = 0; side < 2; ++side) {
             for (int slot = 0; slot < 6; ++slot) {
                 last_damage_actor[side][slot] = -1;   // 死亡归因不跨对局残留
+                last_landed_hit[side][slot] = {};     // 落血记录不跨对局残留
             }
         }
         pending_skill_replacement[0] = SkillReplaceSource{};
@@ -778,6 +1009,7 @@ public:
         clear_ability_levels(1);
         hp_zero_converted[0] = hp_zero_converted[1] = false;
         skill_use_seq[0] = skill_use_seq[1] = 0;
+        anomaly_duration_cap[0] = anomaly_duration_cap[1] = 0;   // 异常持续上限随对局清（476 套装线）
         plugin_storage.clear();
         invalid_skill_damage_hooks.clear();
         sync_on_stage_trait(0);
@@ -810,7 +1042,19 @@ public:
         if (robotId < 0 || robotId > 1) {
             return;
         }
+        // 断回合 = 消"回合类效果"。epoch 递增保留：回合类条目照常作废，规则中心
+        // 票（攻击无效等，场景 109 C2 口径）照常清。但常驻魂印（duration=-1，STAGE
+        // 作用域）不属于回合类 —— 旧实现一刀切会把圣灵谱尼七刻印等常驻 STAGE 魂印
+        // 误杀（神圣复苏消双方回合类效果后，生命/能量/轮回刻当场哑火，2026-09-22
+        // 用户实测）。这里 bump 后把常驻条目的 epoch 刷新，使它们在作废浪潮中幸存；
+        // 切换/清场（invalidate_on_stage_effects）不刷新，常驻魂印照常随下场作废。
         ++round_effect_valid_id[robotId];
+        skills_effects.refresh_permanent_epoch(robotId, round_effect_valid_id[robotId]);
+        soul_mark_effects.refresh_permanent_epoch(robotId, round_effect_valid_id[robotId]);
+        suit_effects.refresh_permanent_epoch(robotId, round_effect_valid_id[robotId]);
+        // 被动桶同样纳入保命：死亡印记结算节点等常驻被动条目是非回合类，断回合
+        // 不杀（切换路径 invalidate_on_stage_effects 不刷新 → 挂印者下场照常作废）。
+        passive_effects.refresh_permanent_epoch(robotId, round_effect_valid_id[robotId]);
         skills_effects.reset_round_count(robotId);
         soul_mark_effects.reset_round_count(robotId);
         // Q2：来源 ON_STAGE 效果被断作废 → 其授予的非免疫规则一并作废（免疫豁免）。
@@ -852,21 +1096,58 @@ public:
                        bool soul_immunity = false,
                        EffectScope scope = EffectScope::ON_STAGE,
                        int counts = 0, int source_effect_id = -1,
-                       ImmunityTier tier = ImmunityTier::Modern) {
+                       ImmunityTier tier = ImmunityTier::Modern,
+                       std::function<bool(const BattleContext*, int)> condition = nullptr) {
         // 免疫单对象：source==target==被护方 owner。转发 RuleCenter（覆盖键含 subtype=type，
         // 免异常+免弱不同 type 各占一条）。
         // counts>0 = 次数型（"免疫下N次某威胁"）：查询命中后由 consume_immune 扣一次，扣到 0 注销。
         // source_effect_id：覆盖键的来源维度。默认 -1（匿名）→ 同类型免疫互相覆盖；
         //   需要"窗口类免控 + 次数型次免"并存时，各传自己的 effect_id 才各占一条。
+        // condition（2026-09-25 精灵王线待落②追加，直通 RuleCenter 同名参数）：
+        //   逐次施加时的掷骰条件——返回 false 则本票对这一次不响应（概率免控：圣莫 2492
+        //   "每层 25% 免疫异常施加"，lambda 现场读律层数掷 25%×n；查询点每次施加掷一次，
+        //   回合窗口票不因掷骰消耗）。**只挡走本票响应路径的施加**——古早施加
+        //   （apply_anomaly_ancient 只查 Ancient 层）天然不受影响（"挡不住主动毒"口径）。
         return rule_center_.grant_immune(owner, static_cast<int>(type), coverage, anomaly_mask,
                                          duration_rounds, roundCount, source_id, soul_immunity,
                                          scope, /*source_slot=*/-1, counts, source_effect_id,
-                                         static_cast<int>(tier));
+                                         static_cast<int>(tier), std::move(condition));
     }
 
     void revoke_immunity(int owner, int source_id) {
         (void)owner;  // 句柄唯一，按 source_id 撤销
         rule_center_.revoke(source_id);
+    }
+
+    // ── 概率闸门（亮节族；2026-09-22）────────────────────────────────────
+    /**
+     * 授予概率闸门：把**施加方申报的概率**按 threshold/below/above 改写成另一档。
+     * 见 RuleCenter::RuleCategory::CHANCE_GATE 注（纯查询、不消费、窗口用 rounds 表达）。
+     * @param owner        闸门**持有方**（被保护方；护的是自己）
+     * @param source_effect_id 覆盖键的来源维度（同一效果重复授予是刷新，不是追加）
+     * @param below_result / above_result  改写成什么；**负数 = 该档不改写**
+     * @param source_mask  ChanceSource 位掩码，管辖哪些来源（亮节 = kChanceSourceAll）
+     * @param rounds       窗口回合数（0 = 不过期，由授予方 revoke）
+     * @return source_id（revoke 用）
+     */
+    int grant_chance_gate(int owner, int source_effect_id, ChanceTag tag, int threshold_pct,
+                          int below_result, int above_result, uint32_t source_mask, int rounds,
+                          EffectScope scope = EffectScope::ON_STAGE) {
+        return rule_center_.grant_chance_gate(owner, source_effect_id, tag, threshold_pct,
+                                              below_result, above_result, source_mask, rounds,
+                                              roundCount, scope);
+    }
+
+    /**
+     * 概率裁定（**掷骰之前**调用）：把申报概率交给闸门改写后返回。
+     * pct<0 = 未申报 → 原样返回；<=0 必定不触发；>=100 必定触发；其余由调用方掷一次 rand。
+     * 掷点留在调用方还是原语里都可以——**两边共用这一道闸门**，语义不分叉
+     * （原语入口 `chance_pct` 参数见 apply_anomaly 家族）。
+     */
+    int rewrite_anomaly_chance(int protected_side, int actor, int pct, ChanceSource source,
+                               ChanceTag tag = ChanceTag::AnomalyAttach) const {
+        return rule_center_.rewrite_anomaly_chance(protected_side, actor, pct, tag, source,
+                                                  roundCount);
     }
 
     /**
@@ -875,7 +1156,8 @@ public:
      */
     bool is_immune(int owner, ImmunityType type, State timing, int status_id = 0) const {
         return rule_center_.is_immune(owner, static_cast<int>(type), state_coverage_bit(timing),
-                                      roundCount, status_id);
+                                      roundCount, status_id, /*soul_filter=*/-1, /*tier_filter=*/-1,
+                                      this);
     }
 
     // 细分查询：次免/回合类免疫（soul=false）先于抗性判定；魂免（soul=true）在抗性失败后才查。
@@ -884,12 +1166,14 @@ public:
     bool is_immune_effect(int owner, ImmunityType type, State timing, int status_id = 0,
                           int tier_filter = -1) const {
         return rule_center_.is_immune(owner, static_cast<int>(type), state_coverage_bit(timing),
-                                      roundCount, status_id, /*soul_filter=*/0, tier_filter);
+                                      roundCount, status_id, /*soul_filter=*/0, tier_filter,
+                                      this);
     }
     bool is_immune_soul(int owner, ImmunityType type, State timing, int status_id = 0,
                         int tier_filter = -1) const {
         return rule_center_.is_immune(owner, static_cast<int>(type), state_coverage_bit(timing),
-                                      roundCount, status_id, /*soul_filter=*/1, tier_filter);
+                                      roundCount, status_id, /*soul_filter=*/1, tier_filter,
+                                      this);
     }
 
     /**
@@ -898,12 +1182,19 @@ public:
      * 命中窗口/永久免疫（counts==0）返回 false 不扣——那些不随施加消耗。
      * @param status_id    ANOMALY 专用（0 = 不按 mask 过滤）
      * @param soul_filter  -1=不限 / 0=仅次免(抗性前) / 1=仅魂免(抗性后)
+     *
+     * ⚠️ **异常族走 all-once**（用户 2026-09-20 拍板）：同一异常落到目标头上时，**所有**
+     *    条件命中的次数型异常免疫票**各扣一次**（两张次免盾并存 → 一次异常两条都消耗）。
+     *    免伤/免粉/免杀族保持"一层一威胁"（`consume_all=false`）——多个"抵挡下N次攻击"
+     *    是各自独立的层，一次攻击只消耗最外那层。详见 RuleCenter::consume_immune 注释。
      */
     bool consume_immune(int owner, ImmunityType type, State timing, int status_id = 0,
                         int soul_filter = -1, int tier_filter = -1) {
+        const bool consume_all = (type == ImmunityType::ANOMALY);
         return rule_center_.consume_immune(owner, static_cast<int>(type),
                                            state_coverage_bit(timing), roundCount,
-                                           status_id, soul_filter, tier_filter);
+                                           status_id, soul_filter, tier_filter, this,
+                                           consume_all);
     }
 
     //--- 伤害管线便利方法 ---
@@ -1087,8 +1378,8 @@ public:
      *
      * 官方减伤区固定顺序（L402）：「**点数减伤——百分比减伤——伤害锁定——伤害免疫**」→
      * ① `REDUCE_FLAT` 读 `damage_reduce_flat`（点数，求和后从 final 扣，不为负）；
-     * ② `REDUCE_PCT` 读 `damage_reduce_add/mul`（加算求和钳 ±100 + 乘算连乘，
-     *    官方"通用减伤叠加超 100% 即失效"）。
+     * ② `REDUCE_PCT` 读 `damage_reduce_add/mul`（加算求和钳 100 + 乘算连乘；
+     *    2026-09-20 口径：叠加超 100% 修正为 100%——红伤归零，不是整段减伤失效）。
      * 两者分开是因为顺序可观测：(base-30)×0.5 ≠ base×0.5-30。
      *
      * MITIGATE 类别 → 可被 damage_suppress_mask 抑制（如沧岚"挡伤失效"）。
@@ -1336,6 +1627,87 @@ public:
             }
         }
         return -1;
+    }
+
+    // 源空间定位（两轴模型的**空间轴**用，2026-09-19）：只剔**消逝**，阵亡照算。
+    // 官方空间定义（语料 idx=149）"背包/场下＝消逝除外"里阵亡仍占位——死亡的场下星皇
+    // 照样算"场下提供"。与 find_pet_with_soulmark（hp>0，更新器停刷新用）的差别就在
+    // "hp<=0 但未消逝"这一格；已消逝 → 两个查找都返回 -1。
+    int find_mark_in_roster(int owner, int soulmark_id) const {
+        if (owner < 0 || owner > 1 || soulmark_id <= 0) {
+            return -1;
+        }
+        for (int slot = 0; slot < 6; ++slot) {
+            const ElfPet& pet = seerRobot[owner].elfPets[slot];
+            if (!is_vanished(owner, slot) && pet.soulMark.id == soulmark_id) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    // 场下体力/PP 写入门（武心婵 4500，2026-09-19）：true = 该宠当前受
+    // 「位于出战背包时，双方场下的精灵体力、PP值均不会减少」保护，写入应被跳过。
+    // 只护**场下**（slot == on_stage 的那只不归这条规则）；RuleCenter 查询见
+    // RuleCategory::OFF_FIELD_PROTECT。生命周期：战斗开始授一次（TEAM 永久）+
+    // 宿主 EVENT_VANISH 推送撤销——死亡**不**清（官方"位于背包＝消逝除外"，阵亡仍在背包）。
+    // ⚠️ 场下写入路径新增时必须先查这里（见 zha_liumeng_curse.cpp 连锁归零先例）。
+    bool off_field_stats_protected(int side, int slot) const {
+        if (side < 0 || side > 1 || slot < 0 || slot >= 6) {
+            return false;
+        }
+        if (slot == on_stage[side]) {
+            return false;
+        }
+        if (rule_center_.has_off_field_protect(side)) {
+            return true;
+        }
+        // [神谕]（启灵元神 1581 子句③，2026-09-21 桥接）：自身在出战背包时，己方所有
+        // 不在场精灵若体力低于最大体力的 1/2 则无法受到削弱体力的影响（语料 idx=439
+        // 实测：半血以下免疫炸背包）。holder 在背包 = roster 在位（find_mark_in_roster：
+        // 阵亡照算、消逝即失效——与神印同一套消逝敏感口径）。1581 硬编码在此为
+        // **查询桥**：防炸背包必须在任何场下写入处可见，实现/状态在
+        // soul_lib/qiling_1581.cpp。
+        const ElfPet& pet = seerRobot[side].elfPets[slot];
+        if (find_mark_in_roster(side, 1581) >= 0) {
+            const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
+            if (max_hp > 0 && pet.hp * 2 < max_hp) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    //--- 登场先后角色位（2026-09-22 官方判定，贴吧《神罗测试》/涂蝶-百鬼视频）---
+    // 房主（被挑战方）侧：共享时点（PROTECTION_1/ENTER_EXIT_STAGE 部署桶等）按
+    // 房主先、挑战方后结算；**首回合双方中切强制房主先登场，不看提交顺序**
+    // （涂蝶砥砺先挂→百鬼登场转化才吃得到）；第二回合起双中切按提交顺序
+    // （先切先登场——百鬼必须后切才能转化先登场者挂的砥砺）。
+    int host_side = 0;
+    int challenger_side() const { return 1 - host_side; }
+    // 首回合双中切的挑战方切换缓冲（房主未提交时先到 → 暂存，两输入齐后按房主→
+    // 挑战方应用）；每回合 ROUND_COMPLETION 重置。-1 = 无缓冲。
+    int deferred_switch_slot[2]{-1, -1};
+
+    //--- 「被击败效果失效」压制位（百罗鬼帝 2085 诅咒包，2026-09-22）---
+    // 语义：side 的**当前在场宠**的被击败效果无法触发——其被击败时，
+    //   ① 该方的"被击败时/被击败后"时点桶（BATTLE_DEFEAT_STATUS / BATTLE_AFTER_DEFEATED）
+    //     整体跳过（execute_registered_actions 门）；
+    //   ② 该方自己的 EVENT_DEATH 监听不再投递（event_center deliver 门）。
+    // 存放位在 event_center_.defeat_effects_suppressed（头包含层次所限，见那边注释）；
+    // 这里给插件/场景一套带语义的读写口。生命周期归魂印管：挂诅咒包的 granting 方
+    // 在场期间置位、离场清零。
+    // 范围口径：按**方**压（引擎的死亡时点桶/事件没有"哪只宠"的绑定信息），挂载方
+    // 只在"被诅咒宠是该方在场宠"时才置位——场下宠的被击败效果不受影响。
+    // 免死拦截器（DeathInterceptor）**不在**压制面：官方对"被击败效果失效是否连免死
+    // 一起废"无实证，拦截器层若要并入需单独拍板。
+    void set_defeat_effects_suppressed(int side, bool on) {
+        if (side >= 0 && side <= 1) {
+            event_center_.defeat_effects_suppressed[side] = on;
+        }
+    }
+    bool is_defeat_effects_suppressed(int side) const {
+        return side >= 0 && side <= 1 && event_center_.defeat_effects_suppressed[side];
     }
 
     //--- 设置当前玩家 ---

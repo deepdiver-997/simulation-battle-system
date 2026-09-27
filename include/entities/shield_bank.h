@@ -1,6 +1,7 @@
 #ifndef SHIELD_BANK_H
 #define SHIELD_BANK_H
 
+#include <algorithm>
 #include <array>
 
 /**
@@ -44,26 +45,42 @@ public:
 
     /** 吸收 damage，从最高优先级开始扣；返回穿透（护盾没挡完的部分）。 */
     int absorb(int damage, int* broken_count = nullptr) {
+        return absorb_impl(damage, 0, broken_count);
+    }
+
+    /** 吸收 damage（带**承伤乘区**：每点护盾等效抵挡 (100+pct)/100 点伤害，
+     *  封邪之嶂「每有1层印记提升护盾承伤值提升10%」用，2026-09-24 精灵王线 K2）。
+     *  护盾的 quantity 记账仍是**真实点数**：等效抵挡的量换算回真实扣减。 */
+    int absorb_with_bonus(int damage, int bonus_pct, int* broken_count = nullptr) {
+        return absorb_impl(damage, bonus_pct, broken_count);
+    }
+
+    /** **主动消耗**（资源化，2026-09-24 精灵王线 K2）：
+     *  沧岚「消耗自身的护盾值」/ 混地「消耗自身的全部护盾并附加等量百分比伤害」用。
+     *  从最高优先级开始拿，拿满 requested 或拿空为止；被拿空的每条记一次破盾
+     *  （调用方负责 emit EVENT_SHIELD_BROKEN——"以此法消耗的护盾视为被击破"）。
+     *  返回实际消耗的点数。 */
+    int consume(int requested, int* broken_count = nullptr) {
+        int consumed = 0;
         int broken = 0;
-        while (damage > 0 && count_ > 0) {
+        while (consumed < requested && count_ > 0) {
             const int best = find_highest_priority_index();
             if (best < 0) {
                 break;
             }
             Shield& s = slots_[best];
-            if (s.quantity > damage) {
-                s.quantity -= damage;
-                damage = 0;
-            } else {
-                damage -= s.quantity;
-                ++broken;
+            const int take = std::min(requested - consumed, s.quantity);
+            s.quantity -= take;
+            consumed += take;
+            if (s.quantity <= 0) {
                 remove_at(best);
+                ++broken;
             }
         }
         if (broken_count) {
             *broken_count = broken;
         }
-        return damage;
+        return consumed;
     }
 
     void add(int priority, int quantity, int source_id, int duration) {
@@ -129,6 +146,34 @@ private:
             }
         }
         return best;
+    }
+
+    // absorb 的统一实现：bonus_pct>0 时每条护盾的**等效抵挡容量** = quantity×(100+pct)/100，
+    // quantity 按等效消耗换算回真实点数扣（见 absorb_with_bonus 注释）。
+    int absorb_impl(int damage, int bonus_pct, int* broken_count) {
+        int broken = 0;
+        while (damage > 0 && count_ > 0) {
+            const int best = find_highest_priority_index();
+            if (best < 0) {
+                break;
+            }
+            Shield& s = slots_[best];
+            const long long effective =
+                static_cast<long long>(s.quantity) * (100 + bonus_pct) / 100;
+            if (effective > damage) {
+                s.quantity -= static_cast<int>(
+                    static_cast<long long>(damage) * 100 / (100 + bonus_pct));
+                damage = 0;
+            } else {
+                damage -= static_cast<int>(effective);
+                ++broken;
+                remove_at(best);
+            }
+        }
+        if (broken_count) {
+            *broken_count = broken;
+        }
+        return damage;
     }
 
     void remove_at(int index) {

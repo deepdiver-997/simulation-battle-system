@@ -11,6 +11,8 @@
 #include <db/official_data_repository.h>
 #include <effects/effect.h>
 #include <effects/effect_unit.h>
+#include <entities/effect_param.h>
+#include <plugin/plugin_interface.h>
 
 // Forward declare BattleContext and State
 class BattleContext;
@@ -70,15 +72,31 @@ struct SkillEffectNode {
 class Skills {
 public:
     Skills() = delete;
+    // 空位构造（2026-09-26 上场少于 6 支持）：不查库、无效果、不可用——
+    // 填充队伍空槽（0 号位必须为真实精灵，其余槽允许空位垫底）。
+    struct EmptyPetTag {};
+    explicit Skills(EmptyPetTag) : id(-1) {
+        name = "空位";
+        maxPP = 0;
+        pp = 0;
+    }
     Skills(int id) : id(id) {
         if (!loadSkills()) {
             throw std::runtime_error("Failed to load skill with id: " + std::to_string(id));
         }
     }
-    Skills(int id, const official_data::MonsterRecord& monster);
+    // 带词条参数覆盖的构造（调试台"词条编辑"线，2026-09-26）：overrides 在 loadSkills
+    // 内于 rawEffectRecords 定型后、效果构建前应用——先改记录、后建效果。
+    Skills(int id, const official_data::MonsterRecord& monster,
+           std::vector<EffectParamOverride> arg_overrides = {},
+           const DisabledEffects& disabled = {});
     // 拷贝构造：parsed_units_ 深拷贝成新 vector 后，须把引用它元素的 Effect args.extra
-    // 指针重定基到新 vector（否则组合语法效果的 extra 悬垂 → 执行崩溃）。
-    // 移动构造保持默认（buffer 所有权转移，extra 指针仍有效）。
+    // 指针**以及 parsed_units_ 内部单元间的分支自引用指针**（on_success/on_immune/
+    // on_blocked/on_other，见 effect_unit_parser.cpp / effect_unit_loader.cpp 的接线）
+    // 重定基到新 vector，否则悬垂读 → UB（历史上表现为给 Skills 加成员后 072 的 797
+    // 子句误判"消回合成功"，见 docs_local 任务台账"Skills 布局 UB"）。
+    // 移动构造未声明（声明拷贝构造会抑制隐式移动）——ElfPet 的 move 实际走这里，
+    // rebase 后同样安全。
     Skills(const Skills& other)
         : is_locked(other.is_locked)
         , maxPP(other.maxPP)
@@ -99,8 +117,40 @@ public:
         , effectBranches(other.effectBranches)
         , selection_effects_(other.selection_effects_)
         , parsed_units_(other.parsed_units_)
+        , carryEffects(other.carryEffects)
         , usabilityEffects(other.usabilityEffects) {
         rebase_parsed_unit_pointers(other.parsed_units_);
+    }
+    // 拷贝赋值：隐式版本不做任何 rebase（比拷贝构造的缺口更大——args.extra 也悬垂），
+    // 而 ElfPet::operator= 按值赋 skills 会走到这里，必须显式提供。
+    Skills& operator=(const Skills& other) {
+        if (this == &other) {
+            return *this;
+        }
+        is_locked = other.is_locked;
+        maxPP = other.maxPP;
+        pp = other.pp;
+        id = other.id;
+        name = other.name;
+        type = other.type;
+        power = other.power;
+        accuracy = other.accuracy;
+        must_hit = other.must_hit;
+        critical_strike_rate = other.critical_strike_rate;
+        combo_min = other.combo_min;
+        combo_max = other.combo_max;
+        penetration_flags = other.penetration_flags;
+        priority = other.priority;
+        element[0] = other.element[0];
+        element[1] = other.element[1];
+        rawEffectRecords = other.rawEffectRecords;
+        effectBranches = other.effectBranches;
+        selection_effects_ = other.selection_effects_;
+        parsed_units_ = other.parsed_units_;
+        carryEffects = other.carryEffects;
+        usabilityEffects = other.usabilityEffects;
+        rebase_parsed_unit_pointers(other.parsed_units_);
+        return *this;
     }
     ~Skills() = default;
     // 计划从官方 SQLite 中加载技能静态层：
@@ -109,10 +159,38 @@ public:
     // 3. 再按本地映射规则生成 effectBranches
     bool loadSkills();
     bool skill_usable(BattleContext* ctx = nullptr, int owner = -1);
-    void register_usability_effect(int effectId, SkillUsabilityEffectType type, bool active = true);
-    void set_usability_effect_active(int effectId, bool active);
-    void remove_usability_effect(int effectId);
-    void clear_usability_effects();
+    // ⚠️ 四个 usability 修饰方法**头内联**（2026-09-20 从 skills.cpp 迁入）：
+    //   本条是"魂印/印记带来的 PP=0 仍可释放"的**按技能**通道（区别于 `ctx->ignore_pp`
+    //   的按方旗标），首个生产调用方 = 空元行者之铭·叵「2号位的技能不受PP值限制」——
+    //   按方旗标会把 1/3/4/5 号位一并放行，与"2号位"不符。插件不链接 sim_core，
+    //   必须头内可用。纯数据操作（只碰 `usabilityEffects`），无布局变化。
+    void register_usability_effect(int effectId, SkillUsabilityEffectType type, bool active = true) {
+        for (auto& entry : usabilityEffects) {
+            if (entry.effectId == effectId) {
+                entry.type = type;
+                entry.active = active;
+                return;
+            }
+        }
+        usabilityEffects.push_back(SkillUsabilityEffectEntry{effectId, type, active});
+    }
+    void set_usability_effect_active(int effectId, bool active) {
+        for (auto& entry : usabilityEffects) {
+            if (entry.effectId == effectId) {
+                entry.active = active;
+                return;
+            }
+        }
+    }
+    void remove_usability_effect(int effectId) {
+        for (auto it = usabilityEffects.begin(); it != usabilityEffects.end(); ++it) {
+            if (it->effectId == effectId) {
+                usabilityEffects.erase(it);
+                return;
+            }
+        }
+    }
+    void clear_usability_effects() { usabilityEffects.clear(); }
     Effect clone_effect(int effectId, EffectArgs args = {}) const;
     void add_effect_node(SkillExecResult result, SkillEffectNode node);
     // 万相乖离"取消触发条件"：按解析顺序找 parsed_units_ 里第一条 condition != None 的
@@ -140,8 +218,14 @@ public:
     std::pair<SkillExecResult, SkillResolutionFlags> execute(BattleContext* ctx, int owner, State trigger_state);
 
 private:
-    // 把 effectBranches/selection_effects_ 里指向 old_units 元素的 extra 指针重定基到
-    // 本对象 parsed_units_（拷贝构造用；旧元素必然整体落在 old_units 缓冲区间内）。
+    // 词条参数覆盖：改 rawEffectRecords 里的 args（arg_index = 模板 {n} 下标）。
+    // 只能在 loadSkills 的 rawEffectRecords 定型后、效果构建前调用一次。
+    void apply_arg_overrides();
+
+    // 把指向 old_units 缓冲的指针重定基到本对象 parsed_units_（拷贝构造/拷贝赋值用；
+    // 旧指针必然整体落在 old_units 缓冲区间内）。覆盖两类：
+    //   1) parsed_units_ 内部单元间的分支自引用指针（on_success/on_immune/on_blocked/on_other）
+    //   2) effectBranches/selection_effects_ 里 Effect 的 args.extra
     void rebase_parsed_unit_pointers(const std::vector<EffectUnit>& old_units) {
         if (old_units.empty() || parsed_units_.empty()) {
             return;
@@ -149,13 +233,33 @@ private:
         const char* old_lo = reinterpret_cast<const char*>(old_units.data());
         const char* old_hi = old_lo + old_units.size() * sizeof(EffectUnit);
         const char* new_lo = reinterpret_cast<const char*>(parsed_units_.data());
+        auto in_old = [&](const void* p) {
+            const char* pc = static_cast<const char*>(p);
+            return pc >= old_lo && pc < old_hi;
+        };
+        auto rebased = [&](const void* p) -> const EffectUnit* {
+            return reinterpret_cast<const EffectUnit*>(new_lo + (static_cast<const char*>(p) - old_lo));
+        };
+        for (EffectUnit& u : parsed_units_) {
+            if (u.on_success && in_old(u.on_success)) {
+                u.on_success = rebased(u.on_success);
+            }
+            if (u.on_immune && in_old(u.on_immune)) {
+                u.on_immune = rebased(u.on_immune);
+            }
+            if (u.on_blocked && in_old(u.on_blocked)) {
+                u.on_blocked = rebased(u.on_blocked);
+            }
+            if (u.on_other && in_old(u.on_other)) {
+                u.on_other = rebased(u.on_other);
+            }
+        }
         auto rebase_effect = [&](Effect& e) {
             if (!e.args.extra) {
                 return;
             }
-            const char* p = static_cast<const char*>(e.args.extra);
-            if (p >= old_lo && p < old_hi) {
-                e.args.extra = new_lo + (p - old_lo);
+            if (in_old(e.args.extra)) {
+                e.args.extra = new_lo + (static_cast<const char*>(e.args.extra) - old_lo);
             }
         };
         for (auto& [result, nodes] : effectBranches) {
@@ -176,17 +280,19 @@ private:
 
 public:
     bool is_locked = false;
-    int maxPP;
-    int pp;  // pp == -1 -> 技能使用无限制
+    // ⚠️ NSDMI：正常路径下 loadSkills() 会全部赋值（失败即 throw），这些默认值是
+    //    保险丝——防将来出现"构造早退/缓存复用"路径时对象带着垃圾成员被读。
+    int maxPP = 0;
+    int pp = 0;  // pp == -1 -> 技能使用无限制
     int id = -1;
     std::string name;
 
     // 技能分类：与官方 moves.Category 对齐后再映射到本地枚举。
-    SkillType type;
-    int power;
-    int accuracy;
+    SkillType type = SkillType::Physical;
+    int power = 0;
+    int accuracy = 0;
     bool must_hit = false;   // 必中：命中结算无视命中率
-    float critical_strike_rate;
+    float critical_strike_rate = 0.0f;
 
     //========== 连击（"1回合做 x~y 次攻击"）==========
     // 官方把"n次连击"与"威力提升n%/n点"并列为**变威力效果**（L453），伤害是
@@ -218,9 +324,15 @@ public:
         int  level = 0;                       // 0=无, 1=可穿盔
     };
     PenetrationFlags penetration_flags;
-    int priority;   // 先制等级：官方 priority + 本地调整值，数值越大越先行动
-    int element[2];  // 元素属性
+    int priority = 0;   // 先制等级：官方 priority + 本地调整值，数值越大越先行动
+    int element[2] = {0, 0};  // 元素属性
     std::vector<official_data::SkillEffectRecord> rawEffectRecords;
+    // 词条参数覆盖（仅构造期输入，效果建成后即无用；拷贝构造/赋值不搬运——
+    // 拷贝发生在战斗期，源对象的覆盖早已烧进 rawEffectRecords/effectBranches）。
+    std::vector<EffectParamOverride> arg_overrides_;
+    // 效果禁用（2026-09-26 禁用基建）：loadSkills 过滤 rawEffectRecords 用
+    //（skill_effects 按记录 effect_id 摘除）。
+    DisabledEffects disabled_;
 
     // 效果分支表：
     // 官方 moves.SideEffect / SideEffectArg 先被解释成效果调用序列，
@@ -247,6 +359,15 @@ public:
     // 技能可用性修饰列表：
     // 典型用途：魂印/印记带来的“PP=0 仍可释放”或“禁止无视PP”。
     std::vector<SkillUsabilityEffectEntry> usabilityEffects;
+
+    // 携带类效果槽位（"携带此技能时魂印/专属特性…"族，2026-09-19 拍板恢复）：
+    // loadSkills 装载时逐条 rawEffectRecords 查 EffectFactory 携带注册表，命中即把
+    // (effect_id, fn) 装进本槽；init_battle 的携带扫描只读本槽、不再查注册表——
+    // "加载期识别、战斗期只读"两段分离（见 CarryEffectFn 注释）。
+    // 纯数据成员（函数指针 + id），拷贝无需 rebase；每条 side_effect 至多一条，随
+    // rawEffectRecords 保序。曾因 Skills 布局 UB（Effect 成员未初始化，已修）被临时
+    // 拿掉，根因修复后按用户拍板恢复原设计。
+    std::vector<std::pair<int, CarryEffectFn>> carryEffects;
 };
 
 #endif // SKILLS_H

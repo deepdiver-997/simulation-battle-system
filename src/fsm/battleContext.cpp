@@ -1,5 +1,9 @@
 #include <fsm/battleContext.h>
 #include <fsm/battleFsm.h>
+#include <entities/soul_mark_manager.h>
+#include <primitives/battle_primitives.h>
+
+#include <algorithm>
 #include <numerical-calculation/calculation.h>
 #include <iostream>
 #include <sstream>
@@ -58,11 +62,21 @@ std::size_t find_state_index(State state) {
 }
 
 TimedBucket& bucket_for(BattleContext* ctx, EffectContainer container) {
-    return (container == EffectContainer::SoulMark) ? ctx->soul_mark_effects : ctx->skills_effects;
+    switch (container) {
+        case EffectContainer::SoulMark: return ctx->soul_mark_effects;
+        case EffectContainer::Set:      return ctx->suit_effects;
+        case EffectContainer::Skill:    break;
+    }
+    return ctx->skills_effects;
 }
 
 const TimedBucket& bucket_for(const BattleContext* ctx, EffectContainer container) {
-    return (container == EffectContainer::SoulMark) ? ctx->soul_mark_effects : ctx->skills_effects;
+    switch (container) {
+        case EffectContainer::SoulMark: return ctx->soul_mark_effects;
+        case EffectContainer::Set:      return ctx->suit_effects;
+        case EffectContainer::Skill:    break;
+    }
+    return ctx->skills_effects;
 }
 
 // 时点桶的执行逻辑已移入 TimedBucket::execute_at（src/effects/timed_bucket.cpp）。
@@ -91,6 +105,14 @@ BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robot
     , resolvedDamage(ws.resolvedDamage)
     , resolvedPink(ws.resolvedPink)
 {
+    // 装备/套装静态数据：穿戴清单从机器人原样拷入，激活套装与数值加成在此一次算定
+    // （战斗中只读）。空穿戴清单不触 DB（场景测试/旧协议零开销）。
+    for (int side = 0; side < 2; ++side) {
+        worn_equipment[side] = robots[side].equip_item_ids;
+        if (!worn_equipment[side].empty()) {
+            resolve_equipment(side);
+        }
+    }
     init_battle();
 }
 
@@ -125,12 +147,52 @@ void BattleContext::init_battle() {
     install_default_abnormal_mods();   // 异常状态自带的增/减伤与增粉（2026-09-18）
     install_common_trait_effects(this);
     // 死亡归因初值 -1（"无来源"）。不能靠零初始化：0 是合法方 id，会被误读成"第 0 方击杀"。
-    // clearAllEffects 也复位它（连续对局复用同一 context 的场景）。
+    // clearAllEffects 也复位它（连续对局复用同一 context 的场景）。落血记录一并复位。
     for (int side = 0; side < 2; ++side) {
         for (int slot = 0; slot < 6; ++slot) {
             last_damage_actor[side][slot] = -1;
+            last_landed_hit[side][slot] = {};
         }
     }
+    // 套装激活（2026-09-19 套装线接手收口）：把 active_suits 的程序展开为套装桶的
+    // TEAM 常驻条目（全队、整场、不可抹除/屏蔽）。放在全部 install_* 之后：
+    // 套装条目不经 clear/reset（只有 clearAllEffects 清，见 suit_effects 注释），
+    // 位置只影响"和默认管线安装的相对序"——套装条目按 trigger_state 进桶，
+    // 与 install_* 注册的默认管线节点各占各的桶位，无覆盖关系。
+    // ⚠️ 空穿戴清单时 active_suits 为空 → 本调用零开销（Suit 构造都不发生）。
+    activate_suits();
+
+    // ── 携带类效果扫描（2026-09-19 迁入 init_battle，用户拍板"更早的 init 阶段更保险"）──
+    // "携带此技能时魂印/专属特性…"族：loadSkills 装槽时已把 (effect_id, fn) 装进
+    // Skills::carryEffects（加载期识别），这里只读槽位执行——授予改写票等（典型载荷
+    // ANOMALY_POOL_MOD / 魂印参数改写票，见台账"携带类技能强化"行）。
+    // ⚠️ 每场战斗只扫一次（BattleContext 构造期）；技能替换后的重扫待做。
+    // 不按存活过滤：携带是 loadout 事实，效果体自判（需要宿主存活的自查）。
+    for (int side = 0; side < 2; ++side) {
+        for (int slot = 0; slot < 6; ++slot) {
+            ElfPet& carry_pet = seerRobot[side].elfPets[slot];
+            for (std::size_t skill_idx = 0; skill_idx < carry_pet.skills.size(); ++skill_idx) {
+                Skills& carry_skill = carry_pet.skills[skill_idx];
+                for (const auto& [effect_id, carry_fn] : carry_skill.carryEffects) {
+                    carry_fn(this, side, static_cast<int>(skill_idx), effect_id);
+                }
+            }
+        }
+    }
+
+    // ── 战前魂印补丁（两时段，2026-09-19）──
+    // 快照段（PANEL_SNAPSHOT）：任何魂印面板修改之前，原始面板上做一次性判定（极战·
+    // 阿尔斯兰的"攻击高于对手"族），结果自存 pet.soulmark_storage，后续时点直读。
+    // 修改段（STAT_MODIFY）：快照段全部跑完后按注册序执行面板改写（无为觉者减半、
+    // 卫岳双防改写族）——先执行的改写会被后执行的看到。
+    // 两个注册表都扫：soul_plugin 的 flush 落 SoulMarkManager（soul_lib 通道），
+    // EffectFactory 收核心侧/其他库的手动注册（086 携带先例同款）。每时段先
+    // SoulMarkManager 后 EffectFactory——插件库先加载，其补丁先注册先执行。
+    // 两段都放在携带扫描之后：改写票（loadout 层）先就位，魂印补丁（面板层）后落笔。
+    SoulMarkManager::getInstance().run_pre_battle_patches(this, PreBattlePhase::PANEL_SNAPSHOT);
+    EffectFactory::getInstance().run_pre_battle_patches(this, PreBattlePhase::PANEL_SNAPSHOT);
+    SoulMarkManager::getInstance().run_pre_battle_patches(this, PreBattlePhase::STAT_MODIFY);
+    EffectFactory::getInstance().run_pre_battle_patches(this, PreBattlePhase::STAT_MODIFY);
 }
 
 void BattleContext::install_default_pink_mitigation() {
@@ -312,7 +374,7 @@ void BattleContext::install_default_damage_reduction() {
                 ctx->resolvedDamage.final = std::max(0, ctx->resolvedDamage.final - flat_sum);
             }
         );
-        // ② REDUCE_PCT：**百分比减伤**——加算槽求和（钳 ±100，官方"通用减伤叠加超 100% 即失效"）
+        // ② REDUCE_PCT：**百分比减伤**——加算槽求和（钳 100；2026-09-20 口径：叠加超 100% 修正为\n        //    100%——红伤归零，而不是整段减伤失效）
         //    + 乘算槽逐条连乘。实现在 Calculation::applyDamageReduction。
         register_default_damage_effect(
             DamagePhase::REDUCE_PCT,
@@ -546,6 +608,35 @@ void BattleContext::install_default_abnormal_mods() {
                     r.final = r.final * 130 / 100;
                 }
             });
+
+        // ⑥ FLOOR·承受方：沸涌 36（官方 effect_des 304「受到的攻击伤害至少为其最大体力的
+        //    30%，对手打出致命一击时效果提升至50%」；2026-09-20 烧伤三精灵线入编，燔薪照日
+        //    effect 1676 施加）。红伤规则、与 FLOOR 阶段既有的 447 保底同相位——取 max 语义
+        //    （两个保底并存时抬到更高者）；AMP 类别 → 不被挡伤失效掩码抑制。
+        register_default_damage_effect(
+            DamagePhase::FLOOR, owner, DamageEffectCategory::AMP,
+            [](BattleContext* ctx, int bucket_owner) {
+                if (!ctx) {
+                    return;
+                }
+                DamageSnapshot& d = ctx->resolvedDamage;
+                if (d.defenderId < 0 || d.defenderId > 1 || bucket_owner != d.defenderId
+                    || !d.isRed || d.final < 0) {
+                    return;
+                }
+                if (!ctx->has_active_abnormal_status(bucket_owner,
+                        static_cast<int>(AbnormalStatusId::Boil))) {
+                    return;
+                }
+                const int max_hp = ctx->seerRobot[bucket_owner]
+                                       .elfPets[ctx->on_stage[bucket_owner]]
+                                       .numericalBase[NumericalPropertyIndex::HP];
+                const int floor_pct = d.isCrit ? 50 : 30;
+                const int floor_value = max_hp * floor_pct / 100;
+                if (d.final < floor_value) {
+                    d.final = floor_value;
+                }
+            });
     }
 }
 
@@ -746,6 +837,8 @@ void BattleContext::cleanup_expired_effects() {
     // 同时扣减各自的回合计数。判定谓词只在 TimedBucket::cleanup 内写一次。
     skills_effects.cleanup(roundCount, round_effect_valid_id);
     soul_mark_effects.cleanup(roundCount, round_effect_valid_id);
+    suit_effects.cleanup(roundCount, round_effect_valid_id);   // 套装 TEAM 条目不随回合过期，清理只走惰性移除
+    passive_effects.cleanup(roundCount, round_effect_valid_id);
 
     // 清理过期的断回合补偿 watcher（事件中心统一管理生命周期）
     // 传 watcher_valid_id 供 cleanup 检查 ON_STAGE 监听器是否被切换作废
@@ -811,6 +904,39 @@ bool BattleContext::has_active_abnormal_status(int robotId, int statusId) const 
     return roundCount < abnormal_status_end_round[robotId][statusId];
 }
 
+// 「被击败效果失效」覆盖的死亡时点桶（百罗鬼帝 2085，2026-09-22）。
+// 只收"倒下方自己的被击败效果"两个桶：DEFEAT_STATUS = 新版"未被击败/被击败时"、
+// AFTER_DEFEATED = "被击败后"。击败方的两个桶（OPPONENT_DEFEAT_STATUS /
+// AFTER_DEFEATING_OPPONENT）是击杀者的击败类效果，不在压制面；免死拦截器层也
+// 不在（见 battleContext.h 字段注释）。
+// 引擎内部保留 source 段（插件 source_id 均为正的技能/魂印 id）：印记结算节点的
+// 同源去重键。999900001 远超现网 id 段。
+static constexpr int kHpConsumeMarkSourceId = 999900001;
+
+// 印记结算节点（被动桶，挂印者侧 13/23 各一个）：转发逐印记结算。
+static EffectResult hp_consume_mark_settle_node(BattleContext* ctx, const EffectArgs& args) {
+    if (ctx && args.int_count >= 1) {
+        ctx->settle_hp_consume_marks(args.int_args[0]);
+    }
+    return EffectResult::kOk;
+}
+
+static bool is_defeated_timing_state(State state) {
+    return state == State::BATTLE_DEFEAT_STATUS
+        || state == State::BATTLE_AFTER_DEFEATED;
+}
+
+// 动作流程时点：这些桶的前提是"该 owner 本回合出了手（选择技能）"。
+// 嗑药(USE_MEDICINE)/空操作(NONE)不产生出手，这些时点整条不执行——
+//   ① 常规技能的出手前后效果（要求出手才有意义）不触发；
+//   ② 受击类效果不归时点桶管（注册在 event 中心，由对方出手派发，不受影响）；
+//   ③ 死亡/额外动作时点（15 先手死亡/26 后手死亡/14、24 EXTRA_ACTION）不在此列——
+//      斩杀印记等"就算嗑药也触发"的效果以及免死/复活拦截照常走到。
+static bool is_action_flow_state(State state) {
+    const int id = static_cast<int>(state);
+    return (id >= 6 && id <= 13) || (id >= 16 && id <= 23);
+}
+
 void BattleContext::execute_registered_actions(int robotId, State state) {
     if (robotId == -1) {
         execute_registered_actions(0, state);
@@ -818,9 +944,128 @@ void BattleContext::execute_registered_actions(int robotId, State state) {
         return;
     }
 
-    // 魂印容器优先于技能容器执行。
-    soul_mark_effects.execute_at(state, robotId, this);
-    skills_effects.execute_at(state, robotId, this);
+    // 非出手（嗑药/空操作/无法行动）owner 跳过动作流程时点的魂印/套装/技能桶——
+    // 大量技能效果的前提是"出手"。"就算嗑药/空操作也会触发"的效果（死亡印记结算等）
+    // 注册进被动桶，不受此守门（时点本身照常走到，只是桶跳过）。
+    const bool acted =
+        roundChoice[robotId][0] == static_cast<int>(BattleFsm::ActionType::SELECT_SKILL);
+    const bool run_action_buckets = acted || !is_action_flow_state(state);
+
+    // 「被击败效果失效」（event_center_.defeat_effects_suppressed，2026-09-22）：
+    // 该方被压制时，它的"被击败时/被击败后"桶整体不执行 = 被击败效果无法触发。
+    const bool defeated_suppressed =
+        event_center_.defeat_effects_suppressed[robotId] && is_defeated_timing_state(state);
+
+    if (run_action_buckets && !defeated_suppressed) {
+        // 魂印容器 → 套装容器 → 技能容器（官方口径：回合开始"先结算魂印，后结算套装"，
+        // "造成伤害前"链套装节点同样在魂印之后；技能侧现状保持不变。见套装线设计文档）。
+        soul_mark_effects.execute_at(state, robotId, this);
+        suit_effects.execute_at(state, robotId, this);
+        skills_effects.execute_at(state, robotId, this);
+    }
+    // 被动桶：不受动作流程守门；被击败压制同口径生效。
+    if (!defeated_suppressed) {
+        passive_effects.execute_at(state, robotId, this);
+    }
+}
+
+//--- 消耗全部体力印记（死亡印记）---
+
+void BattleContext::attach_hp_consume_mark(int marker_side, int marker_slot,
+                                           int target_side, int target_slot) {
+    if (marker_side < 0 || marker_side > 1 || target_side < 0 || target_side > 1 ||
+        marker_slot < 0 || marker_slot >= 6 || target_slot < 0 || target_slot >= 6) {
+        return;
+    }
+    for (const auto& mark : hp_consume_marks) {
+        if (mark.marker_side == marker_side && mark.marker_slot == marker_slot &&
+            mark.target_side == target_side && mark.target_slot == target_slot) {
+            return;  // 幂等：同挂印者-同目标只挂一条
+        }
+    }
+    if (seerRobot[target_side].elfPets[target_slot].hp <= 0) {
+        return;  // 目标已倒：没有可消耗的体力
+    }
+    hp_consume_marks.push_back(
+        {marker_side, marker_slot, target_side, target_slot, /*last_settled_round=*/-1});
+
+    // 结算节点（被动桶）：挂印者侧的先/后手**额外行动时点（14/24）**各注册一个
+    // ON_STAGE 常驻节点——嗑药/空操作/被控的跳过路径（ACTION_START 直跳 14/24）与
+    // 正常路径都必然经过这里，是"对方行动结束后"的唯一收敛点；逐印记
+    // last_settled_round 保证每回合只结一次，无印记时节点空转。
+    static constexpr int kSettleEffectId = 1;  // 低 32 位；source 段已隔离
+    const EffectArgs args(std::vector<int>{marker_side});
+    for (const State st : {State::BATTLE_FIRST_EXTRA_ACTION,
+                           State::BATTLE_SECOND_EXTRA_ACTION}) {
+        Effect wrapper(kSettleEffectId, 0, marker_side, /*left_round=*/-1, args,
+                       &hp_consume_mark_settle_node);
+        auto ce = std::make_unique<ContinuousEffect>(
+            wrapper, st, marker_side, /*duration=*/-1, roundCount);
+        ce->source_id_ = kHpConsumeMarkSourceId;
+        // ON_STAGE（用户 2026-09-23 口径"挂印者切走即失效"）：挂印者下场时
+        // perform_switch bump epoch 使节点作废；断回合不走此路
+        // （invalidate_all_round_effects 对被动桶常驻条目刷 epoch 保命——
+        // 印记是非回合类，不吃断回合）。
+        ce->scope_ = EffectScope::ON_STAGE;
+        passive_effects.register_effect(st, marker_side, std::move(ce),
+                                        round_effect_valid_id[marker_side]);
+    }
+}
+
+void BattleContext::clear_hp_consume_marks(int side, int slot) {
+    hp_consume_marks.erase(
+        std::remove_if(hp_consume_marks.begin(), hp_consume_marks.end(),
+                       [side, slot](const HpConsumeMark& m) {
+                           return m.target_side == side && m.target_slot == slot;
+                       }),
+        hp_consume_marks.end());
+}
+
+void BattleContext::clear_hp_consume_marks_attached_by(int side, int slot) {
+    hp_consume_marks.erase(
+        std::remove_if(hp_consume_marks.begin(), hp_consume_marks.end(),
+                       [side, slot](const HpConsumeMark& m) {
+                           return m.marker_side == side && m.marker_slot == slot;
+                       }),
+        hp_consume_marks.end());
+}
+
+void BattleContext::settle_hp_consume_marks(int marker_side) {
+    if (hp_consume_marks.empty()) {
+        return;
+    }
+    // ⚠️ defeat_pet 内部会因"目标真死"清印记（erase 本向量），迭代必须走快照；
+    // last_settled_round 回写到真表的同条记录上。
+    const std::vector<HpConsumeMark> snapshot = hp_consume_marks;
+    for (const HpConsumeMark& mark : snapshot) {
+        if (mark.marker_side != marker_side || mark.last_settled_round == roundCount) {
+            continue;  // 14/24 两个结算节点只让先到的生效
+        }
+        ElfPet& target = seerRobot[mark.target_side].elfPets[mark.target_slot];
+        if (target.hp <= 0) {
+            continue;  // 已死：尾部统一解除
+        }
+        // 消耗全部体力：目标体力直清 0 → 死亡漏斗（免死不可见 / 复活可见，
+        // 真二命每回合掉一命——赛学必修15口径）。
+        target.hp = 0;
+        defeat_pet(this, mark.target_side, mark.target_slot, marker_side,
+                   DefeatCause::HP_CONSUME);
+        // INTERCEPTED（复活拉起）→ 印记保留，下回合再算（白龙"斩杀延后"）
+        for (auto& m : hp_consume_marks) {
+            if (m.marker_side == mark.marker_side && m.marker_slot == mark.marker_slot &&
+                m.target_side == mark.target_side && m.target_slot == mark.target_slot) {
+                m.last_settled_round = roundCount;
+                break;
+            }
+        }
+    }
+    // 目标已死（含本次结算致死）→ 印记解除（"直到挂上印记的精灵死亡或切走为止"）
+    hp_consume_marks.erase(
+        std::remove_if(hp_consume_marks.begin(), hp_consume_marks.end(),
+                       [this](const HpConsumeMark& m) {
+                           return seerRobot[m.target_side].elfPets[m.target_slot].hp <= 0;
+                       }),
+        hp_consume_marks.end());
 }
 
 template<int EffectId>
@@ -903,6 +1148,37 @@ std::string BattleContext::getStateJson() const {
         oss << "]";
     };
 
+    // 玩家级异常状态（异常挂在 robot 上，不跟单只宠物走）：id + 中文名 + 剩余回合。
+    // 快照（INPUT_REQUIRED/SYNC_STATE 内嵌）就带上，前端不必再追问 fullstate。
+    auto json_escape = [](const std::string& s) -> std::string {
+        std::string out;
+        for (char c : s) {
+            if (c == '"' || c == '\\') {
+                out += '\\';
+            }
+            out += c;
+        }
+        return out;
+    };
+    auto append_abnormals = [this, &json_escape](std::ostringstream& oss, int robot_id) {
+        oss << "\"abnormalStates\":[";
+        bool first = true;
+        for (int ab_id = 0; ab_id <= kOfficialAbnormalStatusMaxId; ++ab_id) {
+            if (abnormal_status_end_round[robot_id][ab_id] <= roundCount) {
+                continue;
+            }
+            if (!first) {
+                oss << ",";
+            }
+            first = false;
+            oss << "{\"id\":" << ab_id
+                << ",\"name\":\"" << json_escape(abnormal_status_name_cn(ab_id))
+                << "\",\"remaining\":" << (abnormal_status_end_round[robot_id][ab_id] - roundCount)
+                << "}";
+        }
+        oss << "]";
+    };
+
     auto append_party = [this, &append_skills](std::ostringstream& oss, int robot_id) {
         oss << "\"party\":[";
         for (int slot = 0; slot < 6; ++slot) {
@@ -965,6 +1241,8 @@ std::string BattleContext::getStateJson() const {
     oss << "}";
     oss << ",";
     append_party(oss, 0);
+    oss << ",";
+    append_abnormals(oss, 0);
     oss << "},";
 
     // Player 1 info
@@ -986,6 +1264,8 @@ std::string BattleContext::getStateJson() const {
     oss << "}";
     oss << ",";
     append_party(oss, 1);
+    oss << ",";
+    append_abnormals(oss, 1);
     oss << "},";
 
     // Last actions
@@ -1050,8 +1330,19 @@ std::string BattleContext::getFullStateJson() const {
         oss << "]";
     };
 
-    auto append_pet_full = [&](std::ostringstream& oss, const ElfPet& pet, int slot, int robot_id) {
-        const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
+    // 嗑药库存（item_id → 数量）序列化为 [{"id":300011,"count":3}, ...]，按 item_id 升序。
+    auto append_medicine_stock = [&](std::ostringstream& oss, const MedicineStock& stock) {
+        oss << "[";
+        bool first = true;
+        for (const auto& [item_id, count] : stock) {
+            if (!first) oss << ",";
+            first = false;
+            oss << "{\"id\":" << item_id << ",\"count\":" << count << "}";
+        }
+        oss << "]";
+    };
+
+    auto append_pet_full = [&](std::ostringstream& oss, const ElfPet& pet, int slot, int robot_id) {        const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
         oss << "{"
             << "\"slot\":" << slot << ","
             << "\"id\":" << pet.id << ","
@@ -1060,7 +1351,9 @@ std::string BattleContext::getFullStateJson() const {
             << "\"maxHp\":" << max_hp << ","
             << "\"alive\":" << (pet.hp > 0 ? "true" : "false") << ","
             << "\"onStage\":" << (on_stage[robot_id] == slot ? "true" : "false") << ","
-            << "\"shield\":" << pet.shield << ","
+            // 真实护盾 = ShieldBank 总额（pet.shield 是未参与计算的旧死字段；2026-09-26
+            // 修正——精灵王线登场盾等全在 bank 里，客户端此前恒显示 0）
+            << "\"shield\":" << pet.shield_bank_.total() << ","
             << "\"cover\":" << pet.cover << ","
             << "\"isLocked\":" << (pet.is_locked ? "true" : "false") << ","
             << "\"speedPriority\":" << pet.speed_priority << ",";
@@ -1156,12 +1449,9 @@ std::string BattleContext::getFullStateJson() const {
     // Player 0 full party
     oss << "\"player0\":{";
     oss << "\"onStage\":" << on_stage[0] << ",";
-    oss << "\"medicines\":[";
-    for (int m = 0; m < MEDICINES_SIZE; ++m) {
-        oss << seerRobot[0].medicines[m];
-        if (m + 1 < MEDICINES_SIZE) oss << ",";
-    }
-    oss << "],";
+    oss << "\"medicines\":";
+    append_medicine_stock(oss, seerRobot[0].medicines);
+    oss << ",";
     oss << "\"aliveCount\":" << seerRobot[0].allive() << ",";
     oss << "\"party\":[";
     for (int slot = 0; slot < 6; ++slot) {
@@ -1188,12 +1478,9 @@ std::string BattleContext::getFullStateJson() const {
     // Player 1 full party
     oss << "\"player1\":{";
     oss << "\"onStage\":" << on_stage[1] << ",";
-    oss << "\"medicines\":[";
-    for (int m = 0; m < MEDICINES_SIZE; ++m) {
-        oss << seerRobot[1].medicines[m];
-        if (m + 1 < MEDICINES_SIZE) oss << ",";
-    }
-    oss << "],";
+    oss << "\"medicines\":";
+    append_medicine_stock(oss, seerRobot[1].medicines);
+    oss << ",";
     oss << "\"aliveCount\":" << seerRobot[1].allive() << ",";
     oss << "\"party\":[";
     for (int slot = 0; slot < 6; ++slot) {
@@ -1271,6 +1558,47 @@ std::string BattleContext::getFullStateJson() const {
         << "," << ws.battle_attrs[1][NumericalPropertyIndex::SPEED]
         << "," << ws.battle_attrs[1][NumericalPropertyIndex::HP] << "]"
         << "},";
+    // ── 本回合技能视图 / 攻击凭证（Stage 1 只读序列化，2026-09-27 控制台状态显示开工）──
+    // 数据面只传 id/数值：名字解析在客户端（开工文档 §2.1）。skill_exec_result 传枚举 int
+    // （SkillExecResult，include/effects/effect.h），客户端按枚举表映射。
+    oss << "\"views\":{"
+        << "\"skillPowerView\":{"
+        << "\"player0\":{" << "\"value\":" << ws.skill_power_view[0].value
+        << ",\"rewritten\":" << (ws.skill_power_view[0].rewritten ? "true" : "false") << "},"
+        << "\"player1\":{" << "\"value\":" << ws.skill_power_view[1].value
+        << ",\"rewritten\":" << (ws.skill_power_view[1].rewritten ? "true" : "false") << "}"
+        << "},";
+    oss << "\"skillElementView\":{"
+        << "\"player0\":[" << ws.skill_element_view[0][0] << "," << ws.skill_element_view[0][1] << "],"
+        << "\"player1\":[" << ws.skill_element_view[1][0] << "," << ws.skill_element_view[1][1] << "]"
+        << "},";
+    oss << "\"skillTypeView\":[" << ws.skill_type_view[0] << "," << ws.skill_type_view[1] << "],";
+    oss << "\"petElementView\":{"
+        << "\"player0\":[" << ws.view_elementalAttributes[0][0] << "," << ws.view_elementalAttributes[0][1] << "],"
+        << "\"player1\":[" << ws.view_elementalAttributes[1][0] << "," << ws.view_elementalAttributes[1][1] << "]"
+        << "},";
+    oss << "\"mustCrit\":[" << (ws.must_crit[0] ? "true" : "false") << ","
+        << (ws.must_crit[1] ? "true" : "false") << "],";
+    oss << "\"ignoreShield\":[" << (ws.ignore_shield[0] ? "true" : "false") << ","
+        << (ws.ignore_shield[1] ? "true" : "false") << "]";
+    oss << "},";
+    oss << "\"attackCredentials\":{"
+        << "\"player0\":{\"valid\":" << (ws.attack_credential[0].valid ? "true" : "false")
+        << ",\"ignoreAttackImmunity\":" << (ws.attack_credential[0].ignore_attack_immunity ? "true" : "false")
+        << ",\"ignoreDamageLimit\":" << (ws.attack_credential[0].ignore_damage_limit ? "true" : "false")
+        << ",\"forceExecute\":" << (ws.attack_credential[0].force_execute ? "true" : "false")
+        << ",\"mustHit\":" << (ws.attack_credential[0].must_hit ? "true" : "false")
+        << ",\"level\":" << ws.attack_credential[0].level << "},"
+        << "\"player1\":{\"valid\":" << (ws.attack_credential[1].valid ? "true" : "false")
+        << ",\"ignoreAttackImmunity\":" << (ws.attack_credential[1].ignore_attack_immunity ? "true" : "false")
+        << ",\"ignoreDamageLimit\":" << (ws.attack_credential[1].ignore_damage_limit ? "true" : "false")
+        << ",\"forceExecute\":" << (ws.attack_credential[1].force_execute ? "true" : "false")
+        << ",\"mustHit\":" << (ws.attack_credential[1].must_hit ? "true" : "false")
+        << ",\"level\":" << ws.attack_credential[1].level << "}"
+        << "},";
+    oss << "\"critHappened\":[" << (crit_happened[0] ? "true" : "false") << ","
+        << (crit_happened[1] ? "true" : "false") << "],";
+    oss << "\"executingSkillSlot\":[" << executing_skill_slot(0) << "," << executing_skill_slot(1) << "],";
     // Skill resolution status
     oss << "\"skillResolution\":{";
     oss << "\"player0Ready\":" << (ws.skill_resolution_ready[0] ? "true" : "false") << ",";
@@ -1320,6 +1648,7 @@ std::string BattleContext::getFullStateJson() const {
     append_effect_table(oss, skills_effects);
     oss << ",\"soulMarkEffects\":";
     append_effect_table(oss, soul_mark_effects);
+    oss << ",";  // 上一版漏了这个逗号：soulMarkEffects 直接怼上 "operationLog"，全量状态 JSON 一直非法
 
     // Operation log
     oss << "\"operationLog\":\"" << json_escape(operation_log_) << "\",";

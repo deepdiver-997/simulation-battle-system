@@ -5,8 +5,11 @@
 //
 // 2026-09-18（用户口径「36 槽是之前的数量，新增了就继续加呗」）把 **icon 37~43** 一并收进来：
 //   37 砥砺 / 38 星赎 / 39 神游 / 40 空定 / 41 狂信 / 42 雷解 / 43 渐冻
-// ⇒ 槽数 36 → **44**。⚠️ `icon = 36` 在官方表里**没有条目**（空号），故槽 36 留空
-//   （`abnormal_status_name_cn` 会回"未知异常"）；不要为了"填满"给它编一条。
+// ⇒ 槽数 36 → **44**。
+// 2026-09-20（烧伤三精灵线）：官方库已有 `icon = 36` 条目 —— effect_des **304**「沸涌」
+//   （`kinddes=沸涌`，弱化类：「受到的攻击伤害至少为其最大体力的30%，对手打出致命一击时
+//   效果提升至50%」）。当日"36 是空号"的记录系快照过时，槽 36 由沸涌入编
+//   （燔薪照日 29275 的 effect 1676 args={3,100,36,1} 直接按 id 36 引用）。
 constexpr int kOfficialAbnormalStatusMaxId = 43;
 constexpr int kOfficialAbnormalStatusSlotCount = kOfficialAbnormalStatusMaxId + 1;
 
@@ -47,7 +50,9 @@ enum class AbnormalStatusId : int {
     StarBlessing = 33,          // 星赐
     StarWisdom = 34,            // 星哲
     Overclock = 35,             // 超频
-    // ── 2026-09-18 扩表：icon 37~43（36 是官方空号，故意跳过）──
+    // ── 2026-09-18 扩表：icon 37~43 ──
+    // ── 2026-09-20：icon 36 = 沸涌（effect_des 304，弱化类；此前误记为官方空号）──
+    Boil = 36,                  // 沸涌（弱化类：受攻击伤害保底 30% 最大体力，暴击 50%）
     Resolution = 37,            // 砥砺（附属类）
     StarRedemption = 38,        // 星赎（附属类）
     Wandering = 39,             // 神游（控制类）
@@ -112,6 +117,7 @@ inline const char* abnormal_status_name_cn(AbnormalStatusId status_id) {
         case AbnormalStatusId::StarBlessing: return "星赐";
         case AbnormalStatusId::StarWisdom: return "星哲";
         case AbnormalStatusId::Overclock: return "超频";
+        case AbnormalStatusId::Boil: return "沸涌";
         case AbnormalStatusId::Resolution: return "砥砺";
         case AbnormalStatusId::StarRedemption: return "星赎";
         case AbnormalStatusId::Wandering: return "神游";
@@ -158,6 +164,8 @@ inline AbnormalStatusKind abnormal_status_kind(AbnormalStatusId status_id) {
         case AbnormalStatusId::Silence:
         case AbnormalStatusId::Submission:
         case AbnormalStatusId::Stasis:
+        // 官方 effect_des 304「沸涌：弱化类异常状态」（2026-09-20 入编）
+        case AbnormalStatusId::Boil:
             return AbnormalStatusKind::Debuff;
         case AbnormalStatusId::MountainGuardian:
         case AbnormalStatusId::Berserk:
@@ -191,6 +199,43 @@ inline AbnormalStatusKind abnormal_status_kind(int status_id) {
         return AbnormalStatusKind::Unknown;
     }
     return abnormal_status_kind(static_cast<AbnormalStatusId>(status_id));
+}
+
+// ----------------------------------------------------------------
+// 附属类异常（官方 effect_des kind=2 逐条自述"附属类异常状态"；2026-09-22 百罗鬼帝
+// 2085 登场转化审计时收口成单一真相源）：
+//   山神守护(280) / 狂暴(275) / 异常免疫(281) / 烈焰诅咒(22) / 致命诅咒(23) /
+//   虚弱诅咒(24) / 星赐(265) / 星哲(276) / 超频(352) / 砥砺(300) / 星赎(418) /
+//   雷解(522) / 渐冻(526)
+// ⚠️ 异常免疫(281) 自述「附属类异常状态，**无效果**」——语料 idx=73《机制解析—百罗鬼帝》
+//    「有效果的附属类就除了异常抵抗是没有效果的附属类，其余的附属类全都会转化为4回合诅咒」
+//    里的"没有效果的附属类"就是它：**在转化判定里要排除**（is_effect_subsidiary 异常才转）。
+// ----------------------------------------------------------------
+inline bool is_subsidiary_abnormal_status(AbnormalStatusId status_id) {
+    switch (status_id) {
+        case AbnormalStatusId::MountainGuardian:    // 山神守护
+        case AbnormalStatusId::Berserk:             // 狂暴
+        case AbnormalStatusId::AbnormalImmunity:    // 异常免疫（附属类但无效果）
+        case AbnormalStatusId::FlameCurse:          // 烈焰诅咒
+        case AbnormalStatusId::DeathCurse:          // 致命诅咒
+        case AbnormalStatusId::WeaknessCurse:       // 虚弱诅咒
+        case AbnormalStatusId::StarBlessing:        // 星赐
+        case AbnormalStatusId::StarWisdom:          // 星哲
+        case AbnormalStatusId::Overclock:           // 超频
+        case AbnormalStatusId::Resolution:          // 砥砺
+        case AbnormalStatusId::StarRedemption:      // 星赎
+        case AbnormalStatusId::ThunderRelease:      // 雷解
+        case AbnormalStatusId::SlowFreeze:          // 渐冻
+            return true;
+        default:
+            return false;
+    }
+}
+
+// "有效果的附属类"（百罗鬼帝登场的转化对象集）：附属类里挖掉无效果的异常免疫。
+inline bool is_effect_subsidiary_abnormal_status(AbnormalStatusId status_id) {
+    return is_subsidiary_abnormal_status(status_id)
+        && status_id != AbnormalStatusId::AbnormalImmunity;
 }
 
 inline bool is_control_abnormal_status(AbnormalStatusId status_id) {

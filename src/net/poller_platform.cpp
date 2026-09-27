@@ -180,15 +180,36 @@ private:
         }
 
         // kevent 的 nchanges 是 int；本层连接数远小于 INT_MAX，直接提交。
+        //
+        // ⚠️ 必须给**同等大小的返回数组**：kqueue 处理 changelist 时遇到出错条目，
+        // 若没有地方放错误事件，会**立即中止整批**——排在出错项之后的 EV_ADD 全部
+        // 静默丢弃，而本层的 registered_ 簿记已把整批记为生效 → 之后永远不再注册
+        // → 那条连接永远不会可读 → 客户端阻塞在 send 里无限挂死（实测 2026-09-22，
+        // fd 高速复用时 EV_DELETE 打在已关闭 fd 上的 ENOENT/EBADF 触发，~1-2% 频率）。
+        // 配了返回数组后，内核把每条出错项作为 EV_ERROR 事件逐项报告并**继续处理
+        // 剩余变更**；ENOENT/EBADF 是"注销已消失 fd"的良性结果，其余错误才算真失败。
+        if (kevs.size() > kMaxChanges) {
+            return false;  // 单批过大：理论上到不了（连接数 << INT_MAX），防御
+        }
+        std::vector<struct kevent> errors(kevs.size());
         int rc = 0;
         do {
-            rc = ::kevent(kq_, kevs.data(), static_cast<int>(kevs.size()), nullptr, 0, nullptr);
+            rc = ::kevent(kq_, kevs.data(), static_cast<int>(kevs.size()), errors.data(),
+                          static_cast<int>(errors.size()), nullptr);
         } while (rc < 0 && errno == EINTR);
 
-        // EV_DELETE 打在不存在的 filter 上会回 ENOENT；fd 已在对端关闭时也可能
-        // 拿到 EBADF——两种都不影响后续 wait，交给上层下一次读写失败去收敛。
-        if (rc < 0 && errno != ENOENT && errno != EBADF) {
+        if (rc < 0) {
             return false;
+        }
+        for (int i = 0; i < rc; ++i) {
+            if (errors[i].flags & EV_ERROR) {
+                const int err = static_cast<int>(errors[i].data);
+                if (err != ENOENT && err != EBADF) {
+                    errno = err;
+                    return false;
+                }
+                // 良性：注销打在已被内核自动摘除的 fd 上，簿记已同步，忽略。
+            }
         }
         return true;
     }
@@ -196,6 +217,7 @@ private:
     int kq_ = -1;
     std::vector<Change> changes_;
     std::unordered_map<int, uint8_t> registered_;
+    static constexpr std::size_t kMaxChanges = 4096;
 };
 
 #elif defined(NET_POLLER_EPOLL)

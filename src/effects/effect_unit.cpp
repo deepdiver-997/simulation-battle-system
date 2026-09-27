@@ -9,7 +9,12 @@ namespace {
 
 // 概率 roll：chance_value（字面）优先；否则 chance_arg 指向 EffectArgs.int_args 下标。
 // -1 或参数缺失视为必定执行。
-bool roll_chance(const EffectArgs& args, int chance_value, int chance_arg) {
+// ⚠️ **只有异常附加这一类概率才过闸门**（亮节族，2026-09-22）：`gate_target >= 0` 表示
+//    本单元是 PrimitiveTag::Anomaly，按 ChanceSource::Skill 裁定（解析器生成的都是技能效果）；
+//    其余概率（强化/弱化/回血/伤害…）**不走闸门**——亮节原文只管"附加异常效果"，
+//    概率挡伤/概率强化等不在它的管辖面内。这就是 ChanceTag 按类切分的落点。
+bool roll_chance(BattleContext* ctx, const EffectArgs& args, int chance_value, int chance_arg,
+                 int gate_actor, int gate_target) {
     int percent = -1;
     if (chance_value >= 0) {
         percent = chance_value;
@@ -18,6 +23,10 @@ bool roll_chance(const EffectArgs& args, int chance_value, int chance_arg) {
     }
     if (percent < 0) {
         return true;  // 无概率 → 必定
+    }
+    if (gate_target >= 0) {
+        percent = ctx->rewrite_anomaly_chance(gate_target, gate_actor, percent,
+                                              ChanceSource::Skill);
     }
     if (percent <= 0) {
         return false;
@@ -107,6 +116,11 @@ BranchKey anomaly_result_to_branch(ApplyAnomalyResult result) {
             return BranchKey::Blocked;
         case ApplyAnomalyResult::TARGET_DEFEATED:
             return BranchKey::TargetDefeated;
+        case ApplyAnomalyResult::ROLL_FAILED:
+            // 概率没过门。⚠️ 正常路径到不了这里——掷骰在 execute_effect_unit_impl 的
+            // 概率前置（roll_chance）就已判定，原语入口收到的 chance_pct 恒为"未申报"。
+            // 留着是为了让"申报概率 → ROLL_FAILED"这条链在别处复用时语义自洽（= 没发生）。
+            return BranchKey::Never;
         default:
             return BranchKey::Invalid;
     }
@@ -219,8 +233,15 @@ BranchKey execute_effect_unit_impl(BattleContext* ctx, const EffectArgs& args,
         return unit.on_other ? execute_effect_unit(ctx, args, *unit.on_other) : BranchKey::Never;
     }
     // 概率前置：未触发 → on_other 兜底（或返回 Never）
-    if (!roll_chance(args, unit.chance_value, unit.chance_arg)) {
-        return unit.on_other ? execute_effect_unit(ctx, args, *unit.on_other) : BranchKey::Never;
+    // ⚠️ 只有异常附加类单元把 actor/target 交给闸门（见 roll_chance 注）；其余传 -1。
+    {
+        const bool is_anomaly = (unit.primary_tag == PrimitiveTag::Anomaly);
+        const int gate_actor = is_anomaly ? resolve_actor(args, unit) : -1;
+        if (!roll_chance(ctx, args, unit.chance_value, unit.chance_arg, gate_actor,
+                         is_anomaly ? resolve_target(gate_actor, unit) : -1)) {
+            return unit.on_other ? execute_effect_unit(ctx, args, *unit.on_other)
+                                 : BranchKey::Never;
+        }
     }
     // 主动作 → 归一化细码 → 选分支
     const BranchKey key = run_primitive(ctx, args, unit);

@@ -47,8 +47,9 @@ enum class EffectWindowKind {
 
 class ContinuousEffect {
 public:
-    explicit ContinuousEffect(int owner = -1) : owner_(owner) {}
-
+    // ⚠️ 唯一构造入口（Effect 全参 + 时点/owner/duration）。旧的无 Effect 版本
+    //    （`ContinuousEffect(int owner = -1)`）已删：它会把 effect_ 留成"logic 为空"
+    //    的空壳，operator()/getEffectId() 全部静默失效——构造来源必须显式给 Effect。
     // 构造：持有 Effect（函数指针+参数）+ 运行时状态。
     // duration_rounds_ > 0 = 回合效果；<= 0 = 永久/一次性。
     ContinuousEffect(Effect e, State trigger, int owner, int duration, int registeredRound)
@@ -81,9 +82,24 @@ public:
     }
     int getEffectId() const { return effect_.logic ? effect_.id : -1; }
     bool isRoundEffect() const { return duration_rounds_ > 0; }
+    // ★ 一次性动作节点（技能自身效果在桶里的执行条目，2026-09-27）：容器要求
+    //   duration≥1 才能活到执行（left_round==0 归一化为 1），但它们是"本次动作的
+    //   在途节点"、不是回合类效果——不计入 active_round_count（has_round_effects /
+    //   "有无可断物"判定面），也不吃断回合的 force_expire。否则"消回合类效果"类
+    //   效果（1237 等）会把自己技能的后继条目当回合类断掉（渎神 1237 断掉自家
+    //   43/1814，2026-09-27 场景 137 实测）。真回合窗口 left_round>0 不受影响。
+    bool isActionOneShot() const { return duration_rounds_ == 1 && effect_.left_round == 0; }
     int getEffectCategory() const { return effect_.logic ? effect_.id : -1; }
     Effect* getEffect() { return &effect_; }
     int getRegisteredRound() const { return registered_round_; }
+
+    // 断回合用：把回合类条目立即置为过期（isExpired 在 currentRound 起为 true）。
+    // 常驻条目（duration<=0）不可被断回合终结，调用方应先用 isRoundEffect 过滤。
+    void force_expire(int currentRound) {
+        if (duration_rounds_ > 0) {
+            registered_round_ = currentRound - duration_rounds_;
+        }
+    }
 
     // 回合效果版本号 — 用于 O(1) 断回合/切换作废
     // 注册时从 BattleContext::round_effect_valid_id[owner] 复制。

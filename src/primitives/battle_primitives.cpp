@@ -29,9 +29,13 @@ namespace {
 // 成功（异常状态实际改变）时向事件中心投递事件：
 // - EVENT_ANOMALY_APPLIED：任意异常施加成功（第三方"当对方被挂异常时XXX"监听）
 // - EVENT_CONTROLLED：控场类异常施加成功（第三方"当对方被控场时XXX"监听）
+// amount = 落地的异常状态 id（2026-09-20 烧伤三精灵线补载荷：监听方要区分
+// "这次落地的是不是烧伤"——如 上古炎兽 2481 的"下1次进入的异常转化为烧伤"撤除判定；
+// 旧监听不读 amount，补载荷无行为影响）。
 // emit 只入队，不内联执行；FSM 在 State 桶后 drain 投递。
 void emit_anomaly_events(BattleContext* ctx, int target, int anomaly_id, int actor) {
-    ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_APPLIED, actor, target});
+    ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_APPLIED, actor, target,
+                                        anomaly_id});
     if (is_control_abnormal_status(static_cast<AbnormalStatusId>(anomaly_id))) {
         ctx->event_center_.emit(BattleEvent{EventType::EVENT_CONTROLLED, actor, target});
     }
@@ -110,13 +114,16 @@ static int resolve_anomaly_conversion(BattleContext* ctx, int target, int incomi
 
 // 内部实现。reflect_depth = 反弹深度（0=原生施加；1=反弹回来：不再反弹、不过抗性）。
 // channel = 施加通道（Modern=全检查链；Ancient=主动毒：只查古代层免疫、跳抗性/转化、不反弹）。
+// chance_pct = 施加方**申报的概率**（<0 = 未申报，闸门不介入；见 battle_primitives.h 注）。
 static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
                                              int target,
                                              int anomaly_id,
                                              int duration_rounds,
                                              int actor,
                                              int reflect_depth,
-                                             AnomalyChannel channel) {
+                                             AnomalyChannel channel,
+                                             int chance_pct,
+                                             ChanceSource source) {
     // 古早施加对现代免疫/弹控不可见 → 查询时按层级过滤（-1 = 不限层级）。
     // Raw（遗留裸施加）不做任何检测：免疫/抗性/转化/弹控全部跳过。
     const int tier_filter =
@@ -133,12 +140,35 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     if (duration_rounds <= 0) {
         duration_rounds = random_anomaly_duration();
     }
+    // [1.1] 异常持续时间上限（套装线 2026-09-19 圣芒佑界 476："自身进入的异常状态
+    // 最高为2回合"）。per-side 上限，0 = 无上限；在随机时长落定之后、进入任何
+    // 判定分支之前钳制——[4] 抗性标记（固定 2 回合）、[7] 覆盖、[8] 落地统一生效。
+    // 上限由效果层设置（shengmang_476.cpp 激活时装一次），clearAllEffects 复位。
+    if (ctx->anomaly_duration_cap[target] > 0) {
+        duration_rounds = std::min(duration_rounds, ctx->anomaly_duration_cap[target]);
+    }
 
     ElfPet& pet = ctx->getPet(target);
 
     // [2] 目标存活检查
     if (pet.hp <= 0) {
         return ApplyAnomalyResult::TARGET_DEFEATED;
+    }
+
+    // [2.0] **附加禁令**（ATTACH_BAN，2026-09-20 神觉·米斯蒂克 4676 引入，用户拍板的
+    // "查询式保护"落点）：actor 一侧的攻击技能无法附加异常状态——原语入口查询，**不是**
+    // 给被保护方上一段免疫（那会把回合开始前/结束后的异常也挡掉）。
+    //   · 只拦 **Modern 通道**（用户拍板"不拦"古早主动毒；Raw 被动毒同样不查）；
+    //   · 只拦 **reflect_depth==0 的原生施加**——弹控**弹回来**的异常（depth==1）不拦
+    //     （机制解析口径："对手无法附加异常"不能免疫被弹回来的异常，枫眠弹控反弹睡眠）；
+    //   · 窗口在票上（coverage=行动段时点位 + register_round/remaining_rounds），见
+    //     RuleCenter::has_attach_ban——回合开始前/结束后的施加天然不命中 coverage。
+    // ⚠️ 排在 [2.1] 砥砺置位之前：被禁令挡在门外的施加**没执行过**，不算砥砺条件位。
+    if (channel == AnomalyChannel::Modern && reflect_depth == 0 && actor >= 0 && actor <= 1
+        && ctx->rule_center_.has_attach_ban(actor, RuleCenter::kAttachBanAnomaly,
+                                            state_coverage_bit(ctx->currentState),
+                                            ctx->roundCount)) {
+        return ApplyAnomalyResult::BLOCKED_BY_EFFECT;
     }
 
     // [2.1] 砥砺(37) 的条件位：**对方**（Modern 通道的效果）对本方**执行过**"附加异常"这个动作。
@@ -155,6 +185,30 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     if (channel == AnomalyChannel::Modern && actor >= 0 && actor <= 1 && actor != target
         && anomaly_id != static_cast<int>(AbnormalStatusId::Resolution)) {
         ctx->ws.anomaly_applied_by_opponent[target] = true;
+    }
+
+    // [2.2] **概率裁定与掷骰**（2026-09-22，概率闸门管道；亮节 = 无极圣武 2436 / 帝皇侠）。
+    // 只有**施加方申报了概率**（chance_pct >= 0）才介入——未申报 = 调用方自己已经掷过骰
+    // 或本来就是"必定"，闸门一概不问（这是"未迁移调用点行为不变"的结构性保证）。
+    //   ① 先问闸门（**被施加方** target 持有的概率闸门票）改写本效果的实际概率。
+    //      官方口径「**以实际概率为准**」（战栗被提升到 100% 就不受影响）→ 判的是本次
+    //      实际值；且必须**在掷骰之前**，这正是闸门做成查询式、事件中心承载不了的原因。
+    //   ② 再按改写后的值掷一次：0 = 必定不触发（不消耗 rand）、>=100 = 必定触发
+    //      （同样不消耗 rand，与 roll_percent / trait_proc_roll 的契约一致）、其余 rand()%100。
+    // ⚠️ 位置：排在 ATTACH_BAN 与砥砺置位**之后**——"被禁令挡在门外"不算执行过（既有口径），
+    //    而"概率没掷中"算执行过（动作已经做了，与免疫/抗性同类；官方"不要求真落地"）。
+    // ⚠️ 通道无关：三个通道（Modern/Ancient/Raw）都过这一步。亮节原文点名覆盖"主动毒、
+    //    被动毒"，而它们正是 Ancient/Raw 通道——闸门在这里是**比免疫链更外层**的东西
+    //    （问的是"这次附加到底有没有发生"，不是"发生了会不会被挡"）。
+    if (chance_pct >= 0) {
+        const int final_pct = ctx->rule_center_.rewrite_anomaly_chance(
+            target, actor, chance_pct, ChanceTag::AnomalyAttach, source, ctx->roundCount);
+        if (final_pct <= 0) {
+            return ApplyAnomalyResult::ROLL_FAILED;
+        }
+        if (final_pct < 100 && static_cast<int>(std::rand() % 100) >= final_pct) {
+            return ApplyAnomalyResult::ROLL_FAILED;
+        }
     }
 
     // [2.5] **凝滞（32）免疫控制类异常**（官方 effect_des 32：「凝滞：弱化类异常状态，限制类异常状态，
@@ -183,7 +237,9 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
             && actor >= 0 && actor != target) {
             apply_anomaly_impl(ctx, actor, anomaly_id, duration_rounds,
                                /*actor=*/target, /*reflect_depth=*/1,
-                               /*channel=*/AnomalyChannel::Modern);
+                               /*channel=*/AnomalyChannel::Modern,
+                               /*chance_pct=*/-1,   // 概率已在原生那趟判定过，反弹不再掷
+                               source);
             return ApplyAnomalyResult::REFLECTED;
         }
         return ApplyAnomalyResult::TARGET_IMMUNE;
@@ -204,6 +260,10 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
             ctx->consume_immune(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
                                 /*soul_filter=*/0, tier_filter);
         }
+        // 免疫成功事件（2026-09-20 烧伤三精灵线）：「每次免疫成功…」族（秘纹护体 2059）
+        // 的检测点。弹控反弹也算免疫成功 → 照发。
+        ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_IMMUNED, actor, target,
+                                            anomaly_id, static_cast<int>(ctx->currentState)});
         return reflect();
     }
 
@@ -217,6 +277,10 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
             ctx, target, static_cast<int>(AbnormalStatusId::AbnormalImmunity));
         ctx->set_abnormal_status_end_round(target, resolved, ctx->roundCount + 2);
         emit_anomaly_events(ctx, target, resolved, actor);
+        // 抗性触发专属事件（套装线 2026-09-19 圣芒佑界 476"异常抗性触发时回血"用）：
+        // 语义唯一——21 的 APPLIED 事件混有其他来源，判"抗性触发"只认本事件。
+        ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_RESISTED, actor, target,
+                                            anomaly_id, static_cast<int>(ctx->currentState)});
         return ApplyAnomalyResult::RESISTED_BY_RESISTANCE;
     }
 
@@ -230,6 +294,9 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
             ctx->consume_immune(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
                                 /*soul_filter=*/1, tier_filter);
         }
+        // 免疫成功事件（同 [3]）：魂免命中也是"免疫成功"。
+        ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_IMMUNED, actor, target,
+                                            anomaly_id, static_cast<int>(ctx->currentState)});
         return reflect();
     }
 
@@ -299,9 +366,12 @@ ApplyAnomalyResult apply_anomaly(BattleContext* ctx,
                                  int target,
                                  int anomaly_id,
                                  int duration_rounds,
-                                 int actor) {
+                                 int actor,
+                                 int chance_pct,
+                                 ChanceSource source) {
     return apply_anomaly_impl(ctx, target, anomaly_id, duration_rounds, actor,
-                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Modern);
+                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Modern,
+                              chance_pct, source);
 }
 
 // 公开入口：古早施加（主动毒；reflect_depth=0，Ancient 通道不反弹、depth 恒 0）。
@@ -309,9 +379,12 @@ ApplyAnomalyResult apply_anomaly_ancient(BattleContext* ctx,
                                          int target,
                                          int anomaly_id,
                                          int duration_rounds,
-                                         int actor) {
+                                         int actor,
+                                         int chance_pct,
+                                         ChanceSource source) {
     return apply_anomaly_impl(ctx, target, anomaly_id, duration_rounds, actor,
-                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Ancient);
+                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Ancient,
+                              chance_pct, source);
 }
 
 // 公开入口：遗留裸施加（特性被动毒；不做任何检测，reflect_depth 恒 0）。
@@ -319,9 +392,62 @@ ApplyAnomalyResult apply_anomaly_raw(BattleContext* ctx,
                                      int target,
                                      int anomaly_id,
                                      int duration_rounds,
-                                     int actor) {
+                                     int actor,
+                                     int chance_pct,
+                                     ChanceSource source) {
     return apply_anomaly_impl(ctx, target, anomaly_id, duration_rounds, actor,
-                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Raw);
+                              /*reflect_depth=*/0, /*channel=*/AnomalyChannel::Raw,
+                              chance_pct, source);
+}
+
+// ----------------------------------------------------------------
+// 随机异常附加（2026-09-19）：解析池 → 概率门 → 不重复挑选 → apply_anomaly 单通道
+// （池 helper anomaly_pool_control/all 是头内联，见 battle_primitives.h）
+// ----------------------------------------------------------------
+
+RandomAnomalyResult attach_random_anomalies(BattleContext* ctx,
+                                            int target,
+                                            const std::vector<int>& base_pool,
+                                            int count,
+                                            int probability_pct,
+                                            int actor,
+                                            ChanceSource source) {
+    RandomAnomalyResult out;
+    if (!ctx || target < 0 || target > 1 || count <= 0 || probability_pct <= 0
+        || base_pool.empty()) {
+        return out;
+    }
+    // ① 解析池（⊕池改写票，授予序折叠 + 去重保序——都在 resolve_anomaly_pool 里）。
+    const std::vector<int> pool = ctx->rule_center_.resolve_anomaly_pool(ctx, base_pool);
+    if (pool.empty()) {
+        return out;
+    }
+    out.requested = std::min(count, static_cast<int>(pool.size()));
+    // ② 概率门：整个子句一次（同插件侧 roll_percent 语义：<100 时 rand()%100 判定）。
+    // ⚠️ 掷骰**之前**先过闸门（亮节族）——与三个施加原语的 chance_pct 是同一道门。
+    //    这是"整子句一次"的那次判定，故闸门在这里问；③ 里的逐只 apply_anomaly 传 -1
+    //    （已判定过，不能再掷一次，否则一次子句会被掷 N 次）。
+    const int gated_pct = ctx->rule_center_.rewrite_anomaly_chance(
+        target, actor, probability_pct, ChanceTag::AnomalyAttach, source, ctx->roundCount);
+    if (gated_pct < 100
+        && (gated_pct <= 0 || static_cast<int>(std::rand() % 100) >= gated_pct)) {
+        return out;
+    }
+    out.rolled = 1;
+    // ③ 不重复挑选（部分 Fisher-Yates：rand 序随引擎全局 std::rand，测试可 srand 固定）。
+    std::vector<int> bag = pool;
+    for (int pick = 0; pick < out.requested; ++pick) {
+        const int idx = pick + static_cast<int>(std::rand() % static_cast<unsigned>(bag.size() - pick));
+        std::swap(bag[pick], bag[idx]);
+        const ApplyAnomalyResult r = apply_anomaly(ctx, target, bag[pick],
+                                                   /*duration_rounds=*/-1, actor);
+        if (r == ApplyAnomalyResult::SUCCESS || r == ApplyAnomalyResult::REPLACED_EXISTING
+            || r == ApplyAnomalyResult::DURATION_EXTENDED
+            || r == ApplyAnomalyResult::CONVERTED) {
+            ++out.landed;
+        }
+    }
+    return out;
 }
 
 // ----------------------------------------------------------------
@@ -472,6 +598,20 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         deal_anomaly_damage(ctx, target, pet, p, /*actor=*/1 - target);
     }
 
+    // ①.5 **异常回合数冻结**（宙变之殢族，神谕古王线）：frozen 时对全部**活跃**异常
+    //    end_round +1，补偿本回合 roundCount 的推进 → 剩余回合数（end - roundCount）恒定，
+    //    永不进入下面的到期集合 → 无到期伤害/衍化/EVENT_ANOMALY_EXPIRED（星盘族冻住）。
+    //    已到期（end <= roundCount）的不补——冻结只保"还在身上的"，不复活已结束的异常。
+    if (ctx->anomaly_rounds_frozen[target]) {
+        for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
+            if (!ctx->has_active_abnormal_status(target, id)) {
+                continue;
+            }
+            const int end = ctx->get_abnormal_status_end_round(target, id);
+            ctx->set_abnormal_status_end_round(target, id, end + 1);
+        }
+    }
+
     // ② 到期项：先"…结束时"伤害，再**清槽**，最后衍化。
     //    ⚠️ 次序是刻意的：衍化会往同一个数组写转出异常的 end_round，
     //    若把清槽放在衍化之后，当"转出 id 恰好也在本次到期集合里"（如 感染→中毒 且中毒同时到期）
@@ -515,6 +655,26 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         }
         derive_anomaly(ctx, target, pet, expired[i], /*actor=*/1 - target);
         ++derived;
+    }
+
+    // ②d **异常自然到期事件**（EVENT_ANOMALY_EXPIRED，2026-09-20）。
+    // ⚠️ 只对**没有衍化规则**的到期项发——有衍化规则的走 ②c"转化"，按官方星盘族实测口径
+    //   （天启星魂：转化/转移都不算"异常状态结束"）不触发"自然结束"类效果。
+    //   事件在清槽**之后**发，监听方看到的是干净状态（该异常已不在身上）。
+    //   actor = -1（自然耗尽，无施加方）；amount = 到期的异常 id。
+    for (int i = 0; i < expired_count; ++i) {
+        const int id = expired[i];
+        if (abnormal_derivation(static_cast<AbnormalStatusId>(id)).group
+            != AbnormalDerivationGroup::None) {
+            continue;
+        }
+        BattleEvent ev;
+        ev.type = EventType::EVENT_ANOMALY_EXPIRED;
+        ev.actor = -1;
+        ev.target = target;
+        ev.amount = id;
+        ev.state = static_cast<int>(ctx->currentState);
+        ctx->event_center_.emit(ev);
     }
 
     // ③ **附属类异常的回合结束收益**（官方 33/34/38）。放在伤害与形态变化**之后**：
@@ -570,6 +730,107 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
     return derived;
 }
 
+int reduce_active_anomaly_rounds(BattleContext* ctx, int target, int delta) {
+    if (!ctx || target < 0 || target > 1 || delta <= 0) {
+        return 0;
+    }
+    // 冻结（宙变之殢族）：回合数不会减少——加速消耗整条短路（含天启星魂 2207 自身技能）。
+    if (ctx->anomaly_rounds_frozen[target]) {
+        return 0;
+    }
+    int reduced = 0;
+    for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
+        if (!ctx->has_active_abnormal_status(target, id)) {
+            continue;
+        }
+        const int end = ctx->get_abnormal_status_end_round(target, id);
+        // 只往下压，不钳底：压到 end <= roundCount 的那批由下一轮 tick 自然到期收尾
+        // （到期伤害/衍化/到期事件照常走）——这正是"加速消耗"与"直接解除"的分界。
+        ctx->set_abnormal_status_end_round(target, id, end - delta);
+        ++reduced;
+    }
+    return reduced;
+}
+
+int set_anomaly_rounds(BattleContext* ctx, int target, int status_id, int rounds) {
+    if (!ctx || target < 0 || target > 1 || !is_valid_abnormal_status_id(status_id)
+        || rounds <= 0) {
+        return 0;
+    }
+    // 直接设定剩余回合数（区别于 apply_anomaly 的"同种只延长不缩短"——2399 宿世归泯
+    // 的"衰弱回合数归 1"是刷新可以向下）。end = roundCount + rounds，与 apply_anomaly
+    // 同口径（施加时本回合还没打完，剩余 = rounds）。冻结不拦"设定"（那是写入不是减少）。
+    if (!ctx->has_active_abnormal_status(target, status_id)) {
+        return 0;   // 只对已存在的异常刷新（"归 1"语义，不无中生有）
+    }
+    ctx->set_abnormal_status_end_round(target, status_id, ctx->roundCount + rounds);
+    return 1;
+}
+
+int dispel_active_anomalies(BattleContext* ctx, int target) {
+    if (!ctx || target < 0 || target > 1) {
+        return 0;
+    }
+    int dispelled = 0;
+    for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
+        if (!ctx->has_active_abnormal_status(target, id)) {
+            continue;
+        }
+        ctx->set_abnormal_status_end_round(target, id, 0);
+        ++dispelled;
+    }
+    return dispelled;
+}
+
+int cure_anomalies(BattleContext* ctx, int target, const int* anomaly_ids, int count) {
+    if (!ctx || target < 0 || target > 1 || !anomaly_ids || count <= 0) {
+        return 0;
+    }
+    int cured = 0;
+    for (int i = 0; i < count; ++i) {
+        const int id = anomaly_ids[i];
+        if (id < 0 || id > kOfficialAbnormalStatusMaxId) {
+            continue;
+        }
+        if (!ctx->has_active_abnormal_status(target, id)) {
+            continue;
+        }
+        ctx->set_abnormal_status_end_round(target, id, 0);
+        ++cured;
+    }
+    return cured;
+}
+
+OffFieldTrueDamageResult deal_off_field_true_damage(BattleContext* ctx, int side, int slot,
+                                                    int amount, int actor, int residue_floor) {
+    if (!ctx || side < 0 || side > 1 || slot < 0 || slot > 5 || amount <= 0
+        || residue_floor < 0) {
+        return OffFieldTrueDamageResult::INVALID;
+    }
+    if (slot == ctx->on_stage[side]) {
+        return OffFieldTrueDamageResult::INVALID;   // 在场走 deal_true_damage（有事件/管线语义）
+    }
+    if (ctx->is_vanished(side, slot)) {
+        return OffFieldTrueDamageResult::INVALID;
+    }
+    ElfPet& pet = ctx->seerRobot[side].elfPets[slot];
+    if (pet.hp <= 0) {
+        return OffFieldTrueDamageResult::INVALID;
+    }
+    if (ctx->off_field_stats_protected(side, slot)) {
+        return OffFieldTrueDamageResult::PROTECTED;   // 保护规则不是抗性，真伤照旧被挡
+    }
+    const bool would_kill = pet.hp - amount <= residue_floor;
+    pet.hp = std::max(residue_floor, pet.hp - amount);
+    if (pet.hp <= 0) {
+        // 击杀走死亡漏斗：EVENT_DEATH + 拦截器（圣光灵神式场下复活照常响应）
+        defeat_pet(ctx, side, slot, actor, DefeatCause::DAMAGE);
+        return ctx->seerRobot[side].elfPets[slot].hp <= 0 ? OffFieldTrueDamageResult::DEFEATED
+                                                          : OffFieldTrueDamageResult::DEALT;
+    }
+    return would_kill ? OffFieldTrueDamageResult::RESIDUE : OffFieldTrueDamageResult::DEALT;
+}
+
 // ----------------------------------------------------------------
 // break_round_effects — 断回合原语
 //
@@ -585,7 +846,18 @@ BreakResult break_round_effects(BattleContext* ctx, int target) {
 
     // 免断检查：目标在当前时点免疫断回合 → 本次断回合无效。
     // 低级免断只覆盖部分时点，未覆盖时点 is_immune 返回 false，照常可断。
+    // ★ 次数型免断（"下1次免断"）在此消费：**仅当没有窗口票覆盖时**才烧次数票——
+    //   元神神之宣告的免断 = 「1回合免断 ➕ 下1次免断」两层票（语料《机制解析—免断》
+    //   + 作者顶置的官方 n-1 特判）：窗口期内断进来由窗口兜着，"下1次"留给窗口结束后。
+    //   consume_immune 对窗口票（counts==0）天然不扣；is_immune_window 门控解决的是
+    //   "两层并存"时保留次数票。（异常族"窗口在也烧次免"是 ANOMALY 官方口径，
+    //   免断不随——分层是「下1次」措辞的本意。）
     if (ctx->is_immune(target, ImmunityType::BREAK, ctx->currentState)) {
+        if (!ctx->rule_center_.is_immune_window(target, static_cast<int>(ImmunityType::BREAK),
+                                                state_coverage_bit(ctx->currentState),
+                                                ctx->roundCount)) {
+            ctx->consume_immune(target, ImmunityType::BREAK, ctx->currentState);
+        }
         return BreakResult::IMMUNE;
     }
 
@@ -659,6 +931,10 @@ static void run_pink_damage(BattleContext* ctx, int target, int amount,
     }
     const int actual_damage = hp_before - pet.hp;
 
+    // 落血记录（弹伤族数据源）：粉伤档位照实记，读方按 kind 排除（粉伤斩杀不弹）。
+    ctx->last_landed_hit[target][ctx->on_stage[target]] = {actor, actual_damage,
+                                                           static_cast<int>(kind), true};
+
     // 粉伤事件：**只有真的结算到本体（体力下降）才发**。
     // 经过护罩抵消后没有剩余 → 上面就 return 了，这里根本到不了。
     // ⚠️ 这就是「免粉补偿」一类检测的全部依据（用户 2026-09-15 口径）：
@@ -723,7 +999,10 @@ void deal_damage(BattleContext* ctx, int target, int amount,
     int broken = 0;
     int remaining = amount;
     if (!ignore_bank && kind == DamageKind::NORMAL) {
-        remaining = pet.shield_bank_.absorb(amount, &broken);
+        // 承伤乘区（精灵王线 K2）：封邪之嶂"每有1层印记护盾承伤值+10%"——
+        // ws 每回合 reset，由混地魂印程序按层数重写（damage_add_pct 同套路）。
+        remaining = pet.shield_bank_.absorb_with_bonus(
+            amount, ctx->ws.shield_absorb_bonus_pct[target], &broken);
     }
     if (broken > 0) {
         ctx->event_center_.emit(BattleEvent{EventType::EVENT_SHIELD_BROKEN, actor, target});
@@ -745,6 +1024,13 @@ void deal_damage(BattleContext* ctx, int target, int amount,
     // 只在体力确实下降时写——被护盾完全挡下不算"造成伤害"（同"点数减伤打盔不消耗"口径）。
     if (actual_damage > 0) {
         ctx->last_damage_actor[target][ctx->on_stage[target]] = actor;
+        // 落血记录（弹伤族数据源）：红伤(NORMAL)/真伤(TRUE)/属性直伤(ATTRIBUTE)档照实记，
+        // 读方只认 NORMAL/ATTRIBUTE（粉伤在 run_pink_damage 自己的落血点记）。
+        // 口径（2026-09-24 用户修正，替代 2026-09-20"实际掉血"拍板）：机盖弹伤 = 对手
+        // **造成了多少红伤/属性直伤就全额反弹多少**（致死时以真伤全额反弹），不按剩余
+        // 体力截断——记 remaining（护盾后全额伤害，过量击杀不缩水）。
+        ctx->last_landed_hit[target][ctx->on_stage[target]] = {actor, remaining,
+                                                               static_cast<int>(kind), true};
     }
 
     // 砥砺(37)「处于该状态的精灵**受到真实伤害后**，若**本回合未执行过附加异常状态的效果**，
@@ -895,6 +1181,13 @@ FixedDamageResult deal_pink_damage(BattleContext* ctx, int target, int amount,
         && kind != DamageKind::PERCENT_VALUE) {
         return FixedDamageResult::INVALID_PARAM;  // 只做粉伤；红伤/真伤另有入口
     }
+    // 「攻击技能无法造成伤害」票（1090 族，2026-09-21 口径）：**同时封锁红伤与粉伤**——
+    // 被压制一方的攻击效果（含强制执行放行的）产出粉伤一律无效。红伤那半边在
+    // finish_attack_damage 前置归零；真伤不封（独立通道）。
+    if (actor >= 0 && actor <= 1
+        && ctx->rule_center_.is_attack_nullified(actor, ctx->roundCount)) {
+        return FixedDamageResult::SUCCESS;   // 已"处理"，但不造成伤害
+    }
     // 臣服(31)：**固定伤害与百分比伤害**被拦（官方 effect_des 31；用户 2026-09-18 口径）。
     // 这里是"效果对对手造成粉伤"的唯一插件入口（插件不链接 sim_core，调不到 deal_damage）
     // → 拦这里即可，且**不会**碰到异常自身的粉伤扣血（那些走内部 deal_damage → run_pink_damage）。
@@ -997,6 +1290,37 @@ int seal_skill(BattleContext* ctx, int source, int target, int effect_id, bool a
                                         consumed_when_pierced);
 }
 
+// ── PP 恢复（精灵王线 K7，2026-09-24）──
+int pp_restore_slot(BattleContext* ctx, int side, int pet_slot, int skill_slot) {
+    if (!ctx || side < 0 || side > 1 || pet_slot < 0 || pet_slot > 5 || skill_slot < 0
+        || skill_slot > 4) {
+        return 0;
+    }
+    Skills& skill = ctx->seerRobot[side].elfPets[pet_slot].skills[skill_slot];
+    if (skill.pp == -1 || skill.maxPP <= 0 || skill.pp >= skill.maxPP) {
+        return 0;
+    }
+    const int restored = skill.maxPP - skill.pp;
+    skill.pp = skill.maxPP;
+    return restored;
+}
+
+int pp_restore_points(BattleContext* ctx, int target, int slot, int points) {
+    if (!ctx || target < 0 || target > 1 || slot < 0 || slot > 4 || points <= 0) {
+        return 0;
+    }
+    Skills& skill = ctx->getPet(target).skills[slot];
+    if (skill.pp == -1 || skill.maxPP <= 0) {
+        return 0;
+    }
+    const int restored = std::min(points, skill.maxPP - skill.pp);
+    if (restored <= 0) {
+        return 0;
+    }
+    skill.pp += restored;
+    return restored;
+}
+
 void hit_effect_invalid(BattleContext* ctx, int target, HitInvalidMode mode,
                         int count, bool is_attribute_skill, int source_id) {
     if (!ctx || target < 0 || target > 1 || count <= 0) {
@@ -1038,6 +1362,13 @@ StatChangeResult stat_change(BattleContext* ctx, int target, int stat, int delta
 // 内部：按指定量恢复，返回实际恢复量（封回血检查 + 恢复效果修正 + 记录 last_heal_amount）。
 static int heal_impl(BattleContext* ctx, int target, int heal_amount) {
     ElfPet& pet = ctx->getPet(target);
+    // 空位守卫（2026-09-26 上场少于 6）：空位 id=-1、hp=0，被群体恢复"复活"就是
+    // 事故——一律 0（last_heal_amount 同步置 0，监听方不误触发）。
+    // ⚠️ 用负 id 不用 0：0 是场景测试宠常用 id，不能误杀。
+    if (pet.id < 0) {
+        ctx->ws.last_heal_amount[target] = 0;
+        return 0;
+    }
     if (heal_amount <= 0) {
         ctx->ws.last_heal_amount[target] = 0;
         return 0;
@@ -1069,6 +1400,12 @@ static int heal_impl(BattleContext* ctx, int target, int heal_amount) {
     pet.hp = std::min(max_hp, pet.hp + heal_amount);
     const int actual = pet.hp - hp_before;
     ctx->ws.last_heal_amount[target] = actual;
+    // 体力恢复落地事件（精灵王线 K3）：蛊类"对手每次回血后插入真伤"的检测点。
+    // 只认实际恢复量 > 0——封回血/减疗吞掉的不算"恢复了"（解析 190：减疗期间不触发蛊）。
+    if (actual > 0) {
+        ctx->event_center_.emit(BattleEvent{EventType::EVENT_HEAL_RESTORED, -1, target,
+                                            actual, static_cast<int>(ctx->currentState)});
+    }
     return actual;
 }
 
@@ -1096,6 +1433,25 @@ HealResult heal_amount(BattleContext* ctx, int target, int amount) {
     return HealResult::SUCCESS;
 }
 
+int reset_hp(BattleContext* ctx, int target, int pct) {
+    if (!ctx || target < 0 || target > 1 || pct < 0) {
+        return 0;
+    }
+    ElfPet& pet = ctx->getPet(target);
+    const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
+    if (max_hp <= 0) {
+        return 0;   // 0/0（消逝等）：没有可重置的体力标尺
+    }
+    if (pct > 100) {
+        pct = 100;
+    }
+    const int before = pet.hp;
+    // 重置 ≠ 恢复（见头文件口径）：刻意不走 heal_impl——不查封回血、不吃恢复修正、
+    // 不记 last_heal_amount、不发 EVENT_HEAL_RESTORED（回血触发不认体力重置）。
+    pet.hp = max_hp * pct / 100;
+    return pet.hp - before;
+}
+
 int clear_stat_boosts(BattleContext* ctx, int target) {
     if (!ctx || target < 0 || target > 1) {
         return 0;
@@ -1116,6 +1472,37 @@ int clear_stat_boosts(BattleContext* ctx, int target) {
         }
     }
     return cleared;  // 0 = 目标本无提升（消强未成功）
+}
+
+int clear_stat_boosts_as(BattleContext* ctx, int target, int actor) {
+    const int cleared = clear_stat_boosts(ctx, target);
+    if (cleared > 0) {
+        ctx->event_center_.emit(BattleEvent{EventType::EVENT_STAT_REMOVED, actor, target,
+                                            cleared, static_cast<int>(ctx->currentState)});
+    }
+    return cleared;
+}
+
+// ── 主动消耗护盾（精灵王线 K2，2026-09-24）──
+// 沧岚 2263「消耗自身的护盾值」/ 混地 2318「消耗自身的全部护盾并附加消耗量100%的
+// 百分比伤害，以此法消耗的护盾视为被击破」用：消耗是**资源支出**而非挨打吸收，
+// 被拿空的每条盾 emit 一次 EVENT_SHIELD_BROKEN（"视为被击破"喂给魂印的破盾子句）。
+int consume_shield(BattleContext* ctx, int target, int amount, int* broken_count) {
+    if (!ctx || target < 0 || target > 1 || amount < 0) {
+        if (broken_count) {
+            *broken_count = 0;
+        }
+        return 0;
+    }
+    int broken = 0;
+    const int consumed = ctx->getPet(target).shield_bank_.consume(amount, &broken);
+    for (int i = 0; i < broken; ++i) {
+        ctx->event_center_.emit(BattleEvent{EventType::EVENT_SHIELD_BROKEN, -1, target});
+    }
+    if (broken_count) {
+        *broken_count = broken;
+    }
+    return consumed;
 }
 
 int clear_stat_drops(BattleContext* ctx, int target) {
@@ -1212,12 +1599,33 @@ int transfer_stat_boosts(BattleContext* ctx, int from, int to) {
     return moved;
 }
 
+int transfer_stat_boosts_as(BattleContext* ctx, int from, int to, int actor) {
+    const int moved = transfer_stat_boosts(ctx, from, to);
+    if (moved > 0) {
+        ctx->event_center_.emit(BattleEvent{EventType::EVENT_STAT_REMOVED, actor, from,
+                                            moved, static_cast<int>(ctx->currentState)});
+    }
+    return moved;
+}
+
 // 弱化原语：把目标的能力等级往下压。规则见头文件（先查免弱、可穿强化保护、钳 -6）。
-StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount) {
+StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount, int actor) {
     // stat 域 0..5（5 = 命中等级，同 stat_change 的说明）。
     if (!ctx || target < 0 || target > 1
         || stat < 0 || stat >= BattleContext::kAbilityLevelSlotCount || amount <= 0) {
         return StatDropResult::INVALID_PARAM;
+    }
+    // ⓪ **附加禁令**（ATTACH_BAN，2026-09-20 神觉·米斯蒂克 4676 引入，用户拍板的"查询式
+    // 保护"落点）：按**施加方 actor** 判定——被禁方自己的技能/效果施加弱化被整次挡下；
+    // 别的效果代为施加（如米斯蒂克魂印在对手行动中对对手的 -1，actor=米斯蒂克方）不受影响。
+    // 弱化没有通道之分、没有反弹路径 → 任何 stat_drop 都查（stat_drop_piercing 是衍化
+    // 专用、不查，见其注释）。窗口在票上（coverage=行动段时点位）：回合开始前/结束后的
+    // 弱化天然不受影响。actor<0 = 调用方未声明 → 跳过本查询（免弱照查）。
+    if (actor >= 0 && actor <= 1
+        && ctx->rule_center_.has_attach_ban(actor, RuleCenter::kAttachBanStatDrop,
+                                            state_coverage_bit(ctx->currentState),
+                                            ctx->roundCount)) {
+        return StatDropResult::IMMUNE;
     }
     // ① 免弱：**无条件、最先查**。目标身上还有强化也照样失败——不许拿"有 +N 可抵消"当理由降。
     if (ctx->is_immune(target, ImmunityType::STAT_DROP, ctx->currentState)) {
@@ -1302,10 +1710,8 @@ void grant_guaranteed_first(BattleContext* ctx, int owner, int tier) {
     }
     // 注册 once 回合类效果到 BATTLE_FIRST_MOVE_RIGHT：下一次先手权时点触发一次 → "下一回合必先"。
     // duration=2 保证活到下一回合(N+1)。先手权处每回合 memset → 只在下一回合生效；断回合可移除它。
-    Effect e;
-    e.id = 999201;  // 必先授予
-    e.logic = &effect_set_guaranteed_first;
-    e.args = EffectArgs(std::vector<int>{owner, owner ^ 1, tier});
+    Effect e(999201, 0, 0, 0, EffectArgs(std::vector<int>{owner, owner ^ 1, tier}),
+             &effect_set_guaranteed_first);  // 必先授予（全参构造，Effect 无默认构造）
     auto ce = std::make_unique<ContinuousEffect>(e, State::BATTLE_FIRST_MOVE_RIGHT, owner,
                                                  /*duration_rounds=*/2, ctx->roundCount);
     ce->once_ = true;
@@ -1330,17 +1736,82 @@ PpReduceResult pp_reduce(BattleContext* ctx, int target, int amount) {
     }
     ElfPet& pet = ctx->getPet(target);
     bool changed = false;
+    int slot = 0;
     for (Skills& skill : pet.skills) {
         if (skill.pp == -1) {
+            ++slot;
             continue;  // 无限 PP 不参与
         }
         const int before = skill.pp;
         skill.pp = std::max(0, skill.pp - amount);
         if (skill.pp != before) {
             changed = true;
+            ctx->event_center_.emit(BattleEvent{
+                EventType::EVENT_PP_REDUCED, /*actor=*/-1, target,
+                /*amount=*/before - skill.pp, static_cast<int>(ctx->currentState),
+                /*grant_id=*/-1, /*blocked=*/false, /*slot=*/slot});
         }
+        ++slot;
     }
     return changed ? PpReduceResult::SUCCESS : PpReduceResult::INVALID_PARAM;
+}
+
+PpReduceResult pp_zero_slot(BattleContext* ctx, int target, int slot, int actor) {
+    if (!ctx || target < 0 || target > 1 || slot < 0
+        || slot >= static_cast<int>(ctx->getPet(target).skills.size())) {
+        return PpReduceResult::INVALID_PARAM;
+    }
+    Skills& skill = ctx->getPet(target).skills[static_cast<std::size_t>(slot)];
+    if (skill.pp == -1) {
+        return PpReduceResult::INVALID_PARAM;  // 无限 PP 不参与（也不发事件）
+    }
+    if (skill.pp <= 0) {
+        return PpReduceResult::SUCCESS;  // 已是 0：幂等成功、无变化、不发事件
+    }
+    // PP 保留（琼华之庇，2026-09-25 语料 idx=94 口径"挂着1层印记可以跳掉帝天战佛"）：
+    // 庇持有侧（pp_retained，豁免槽=莫妮卡自己）的技能对**对手来源**的清除/归零免疫——
+    // 本击不归零，按"被清除但保留"发事件（blocked=true, amount=原值），莫妮卡魂印的
+    // watcher 据此挂对手下回合攻先 ≤0 反应。消耗（自然使用，不经本原语）、调整
+    // （pp_reduce 减 N）、无归属（actor=-1，如己方 1237 双方归零）不保留、也不触发反应。
+    if (ctx->pp_retain_pet[target][slot] && actor == 1 - target) {
+        ctx->event_center_.emit(BattleEvent{
+            EventType::EVENT_PP_REDUCED, actor, target, skill.pp,
+            static_cast<int>(ctx->currentState),
+            /*grant_id=*/-1, /*blocked=*/true, /*slot=*/slot});
+        return PpReduceResult::SUCCESS;  // 保留：PP 不变
+    }
+    const int before = skill.pp;
+    skill.pp = 0;
+    ctx->event_center_.emit(BattleEvent{
+        EventType::EVENT_PP_REDUCED, /*actor=*/-1, target,
+        /*amount=*/before, static_cast<int>(ctx->currentState),
+        /*grant_id=*/-1, /*blocked=*/false, /*slot=*/slot});
+    return PpReduceResult::SUCCESS;
+}
+
+int pp_restore(BattleContext* ctx, int target, int amount, bool only_empty) {
+    if (!ctx || target < 0 || target > 1 || amount <= 0) {
+        return 0;
+    }
+    ElfPet& pet = ctx->getPet(target);
+    int changed = 0;
+    for (Skills& skill : pet.skills) {
+        if (skill.pp == -1) {
+            continue;  // 无限 PP 不参与
+        }
+        if (only_empty && skill.pp != 0) {
+            continue;  // 亮节口径：只恢复 pp==0 的槽
+        }
+        if (skill.pp >= skill.maxPP) {
+            continue;  // 只补不削
+        }
+        const int before = skill.pp;
+        skill.pp = std::min(skill.maxPP, skill.pp + amount);
+        if (skill.pp != before) {
+            ++changed;
+        }
+    }
+    return changed;
 }
 
 RemoveRoundEffectsResult remove_round_effects(BattleContext* ctx, int target) {
@@ -1364,7 +1835,10 @@ DrainHpResult drain_hp(BattleContext* ctx, int actor, int target, int fraction_d
     if (defender.hp <= 0) {
         return DrainHpResult::TARGET_DEFEATED;
     }
-    const int max_hp = std::max(1, defender.numericalProperties[NumericalPropertyIndex::HP]);
+    // ⚠️ 必须读 numericalBase（体力上限的权威槽）：numericalProperties[HP] 被 `hp` 成员
+    //    别名（elf-pet.h 构造处 hp 是它的引用）——读它拿到的是**当前体力**，官方口径
+    //    "吸取对手最大体力的1/{denom}"（CoreApi 槽注释同）。2026-09-24 批 9 光螳螂②修正。
+    const int max_hp = std::max(1, defender.numericalBase[NumericalPropertyIndex::HP]);
     const int amount = std::max(1, max_hp / fraction_denom);
     deal_damage(ctx, target, amount, DamageKind::FIXED, actor);
     // 自身恢复等量——走 heal_impl（封回血/恢复效果修正生效；被封则吸不到血）
@@ -1550,6 +2024,8 @@ DefeatResult defeat_pet(BattleContext* ctx, int side, int slot, int actor, Defea
         }
     }
     ctx->pet_death_notified[side][slot] = true;
+    // 目标真死：解除其身上全部消耗体力印记（"直到挂上印记的精灵死亡或切走为止"）
+    ctx->clear_hp_consume_marks(side, slot);
     BattleEvent ev{EventType::EVENT_DEATH, actor, side, 0};
     ev.state = static_cast<int>(ctx->currentState);
     ev.slot = slot;
@@ -1566,6 +2042,11 @@ int revive_pet(BattleContext* ctx, int side, int slot, int hp) {
         return -1;   // 官方 idx=251：重生复活"被消逝的精灵除外"——消逝不可逆
     }
     ElfPet& pet = ctx->seerRobot[side].elfPets[slot];
+    // 空位守卫（同 heal_impl）：复活扫描（如重生之翼随机复活）不得选中空位——
+    // max_hp=0 会钳回 0（数值无害）但会白耗一次复活名额。
+    if (pet.id < 0) {
+        return -1;
+    }
     const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
     if (hp > max_hp) {
         hp = max_hp;

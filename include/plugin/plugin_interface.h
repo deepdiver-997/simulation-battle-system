@@ -1,6 +1,7 @@
 #ifndef PLUGIN_INTERFACE_H
 #define PLUGIN_INTERFACE_H
 
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,11 +41,17 @@ struct SoulMarkNodeRef {
     bool once = false;
     bool early = false;
     SoulScope scope = SoulScope::STAGE;
+    // boss 无效标注（2026-09-26 "boss 有效"线）：本节点实现的官方子句带"（boss无效）"
+    // 尾注时置位——boss 挑战对局（is_boss_challenge）中该节点**不注册不执行**。
+    // 标注单位 = 带尾注的子句（tips 按 | 分句；同一子句的**所有**节点必须统一置位，
+    // 漏标会产生半初始化状态，如轮回只禁 arm 留着回档）。未标注 = 任何对局照常。
+    bool boss_invalid = false;
 
     SoulMarkNodeRef() = default;
     SoulMarkNodeRef(State trigger, EffectFn fn, bool once_ = false, bool early_ = false,
-                    SoulScope scope_ = SoulScope::STAGE)
-        : trigger_state(trigger), effect_fn(fn), once(once_), early(early_), scope(scope_) {}
+                    SoulScope scope_ = SoulScope::STAGE, bool boss_invalid_ = false)
+        : trigger_state(trigger), effect_fn(fn), once(once_), early(early_), scope(scope_),
+          boss_invalid(boss_invalid_) {}
 };
 
 // 魂印级可选钩子（插件提供；留空则走引擎默认行为）。
@@ -89,6 +96,49 @@ struct SoulMarkHooks {
 typedef bool (*UnitAdmissionFn)(BattleContext*, int owner, int skill_id, int unit_index,
                                 int condition);
 
+// **携带类效果**（"携带此技能时，魂印/专属特性…"族，2026-09-19）：
+// 不是传统运行时效果（iconHit"技能使用成功时"），而是"只要携带就生效"的固有为
+// （官方 DB 用 analyze 里的 sprite 名区分：iconInherent=固有为 / iconHit=运行时）。
+// 执行模型（用户 2026-09-19 拍板，同日恢复槽位）：**查库加载时识别**——loadSkills 逐条
+// effect 查本注册表，命中就把函数指针装进 Skills::carryEffects 槽位；**init_battle**
+// （构造期，activate_suits 之后）遍历全部精灵的全部技能执行槽位里的非空指针（授予改写
+// 票等；典型载荷是 RuleCenter::ANOMALY_POOL_MOD / 魂印参数改写票，见台账"携带类技能
+// 强化"行）。曾经因 Skills 布局 UB（根因=Effect 成员未初始化，已修）在扫描期查注册表
+// 过渡，槽位已按原设计恢复。
+// ⚠️ 每场战斗只扫一次；技能替换后的重扫待做。owner=携带方，skill_slot=0..4。
+typedef void (*CarryEffectFn)(BattleContext* ctx, int owner, int skill_slot, int effect_id);
+
+// **战前魂印补丁**（魂印的"战斗开始时"面板族，2026-09-19）：无为觉者的能力减半、
+// 卫岳的双防改写、极战·阿尔斯兰的"攻击高于对手"一次性判定等都属此族——它们不是
+// 运行时时点效果，而是**战斗开始前**就该执行完的面板程序。执行模型与携带类同款：
+// 注册表按魂印 id 索引，init_battle 扫描全部 12 个槽位、魂印 id 命中即执行。
+//
+// ⚠️ 分**两个时段**（历史遗留的先后顺序，用户 2026-09-19 拍板）——同一份面板，
+//    两时段读到的不一样：
+//
+//   PANEL_SNAPSHOT 「战前快照」：**任何魂印面板修改之前**执行。此时所有 12 只精灵的
+//      面板都是"未被魂印改过"的原始值（装备/套装数值不写面板、走独立视图，同样不在）。
+//      适用：历史遗留的"比的是游戏前面板"族——极战·阿尔斯兰「自身攻击值高于对手时
+//      所有技能额外先制+1」在这里拿原始面板**一次性判定**，结果自存（建议
+//      `pet.soulmark_storage`，下场保留），后续时点直接读，不再重比。
+//
+//   STAT_MODIFY 「战斗开始」：快照段全部跑完**之后**，按注册序逐个执行。先执行的
+//      改写会被后执行的看到——"比的是游戏后面板"族（无为觉者的总和减半、卫岳的
+//      双防=双攻较低项）在这里落笔。
+//
+// side=0/1，slot=0..5（战场全 roster，不按在场过滤——"战斗开始时"是面板事实，
+// 与上下场无关；需要在场语义的效果体自查）。
+enum class PreBattlePhase {
+    PANEL_SNAPSHOT = 1,
+    STAT_MODIFY = 2,
+};
+typedef void (*PreBattlePatchFn)(BattleContext* ctx, int side, int slot);
+struct PreBattlePatchEntry {
+    int soulmark_id;
+    PreBattlePhase phase;
+    PreBattlePatchFn fn;
+};
+
 // Plugin interface version for compatibility checking
 constexpr const char* kPluginInterfaceVersion = "1.0";
 
@@ -119,6 +169,22 @@ public:
 
     // 注册**单元准入门**（见 UnitAdmissionFn 注释）。默认空实现，不强制既有实现者改写。
     virtual void registerUnitAdmission(UnitAdmissionFn fn) { (void)fn; }
+
+    // 注册**携带类效果**（见 CarryEffectFn 注释）。默认空实现，不强制既有实现者改写。
+    // 注册表按 effect_id 索引；loadSkills 加载技能时逐条查询、命中装槽。
+    virtual void registerCarryEffect(int effect_id, CarryEffectFn fn) {
+        (void)effect_id;
+        (void)fn;
+    }
+
+    // 注册**战前魂印补丁**（见 PreBattlePhase 注释）。默认空实现，不强制既有实现者改写。
+    // 注册表按 (魂印 id, 时段) 索引；init_battle 分两时段扫描执行。
+    virtual void registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
+                                           PreBattlePatchFn fn) {
+        (void)soulmark_id;
+        (void)phase;
+        (void)fn;
+    }
 
     // Register a skill/move effect
     virtual void registerSkillEffect(int effect_id, EffectFn effect_fn) = 0;
@@ -211,6 +277,43 @@ inline bool add_unit_admission(UnitAdmissionFn fn) {
     return true;
 }
 
+// 携带类效果：按 effect_id 索引（id → fn）。同 id 重复注册以后到者为准（覆盖键语义）。
+inline std::map<int, CarryEffectFn>& carry_effects() {
+    static std::map<int, CarryEffectFn> table;
+    return table;
+}
+inline bool add_carry_effect(int effect_id, CarryEffectFn fn) {
+    carry_effects()[effect_id] = fn;
+    return true;
+}
+
+// 战前魂印补丁：按注册序存（同魂印可多条、跨时段保序——同注册序内先快照段后修改段
+// 由执行侧两次扫描保证，这里只保注册序）。
+inline std::vector<PreBattlePatchEntry>& pre_battle_patches() {
+    static std::vector<PreBattlePatchEntry> table;
+    return table;
+}
+inline bool add_pre_battle_patch(int soulmark_id, PreBattlePhase phase, PreBattlePatchFn fn) {
+    pre_battle_patches().push_back(PreBattlePatchEntry{soulmark_id, phase, fn});
+    return true;
+}
+
+// 魂印级钩子（登场/离场额外动作）：按魂印 id 存（2026-09-20，阿尔忒弥斯 4745
+// 离场清狩杀之魂首用）。见 SoulMarkHooks 注释——引擎默认行为（节点注册 + epoch 作废）
+// 之外的"桶外状态"清理走这里。
+struct SoulHookEntry {
+    int soulmark_id;
+    SoulMarkHooks hooks;
+};
+inline std::vector<SoulHookEntry>& soul_hooks() {
+    static std::vector<SoulHookEntry> table;
+    return table;
+}
+inline bool add_soul_hook(int soulmark_id, const SoulMarkHooks& hooks) {
+    soul_hooks().push_back(SoulHookEntry{soulmark_id, hooks});
+    return true;
+}
+
 // 把本 dylib 的三张表一次性推给 registry（在 `plugin_register` 里调一次）。
 inline void flush(IEffectRegistry* registry) {
     if (!registry) {
@@ -227,6 +330,15 @@ inline void flush(IEffectRegistry* registry) {
     }
     for (UnitAdmissionFn fn : unit_admissions()) {
         registry->registerUnitAdmission(fn);
+    }
+    for (const auto& [effect_id, fn] : carry_effects()) {
+        registry->registerCarryEffect(effect_id, fn);
+    }
+    for (const PreBattlePatchEntry& e : pre_battle_patches()) {
+        registry->registerSoulMarkPreBattle(e.soulmark_id, e.phase, e.fn);
+    }
+    for (const SoulHookEntry& e : soul_hooks()) {
+        registry->registerSoulMarkHooks(e.soulmark_id, e.hooks);
     }
 }
 
@@ -253,6 +365,29 @@ inline void flush(IEffectRegistry* registry) {
     namespace {                                                                     \
     [[maybe_unused]] const bool kUnitAdmissionReg_##fn =                            \
         ::plugin_reg::add_unit_admission(&(fn));                                    \
+    }
+
+// 携带类效果：CARRY_EFFECT(id, fn) —— fn 签名见 CarryEffectFn（战斗开始扫描执行）。
+#define CARRY_EFFECT(id, fn)                                                        \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kCarryEffectReg_##id =                              \
+        ::plugin_reg::add_carry_effect((id), &(fn));                                \
+    }
+
+// 战前魂印补丁：SOUL_PRE_BATTLE(id, phase, fn) —— 见 PreBattlePhase 注释。
+// 例：SOUL_PRE_BATTLE(4327, PreBattlePhase::PANEL_SNAPSHOT, alslan_panel_snapshot);
+#define SOUL_PRE_BATTLE(id, phase, fn)                                              \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kPreBattlePatchReg_##id##_##fn =                    \
+        ::plugin_reg::add_pre_battle_patch((id), (phase), &(fn));                   \
+    }
+
+// 魂印级钩子：SOUL_MARK_HOOKS(id, on_enter_fn, on_exit_fn) —— 两参均可传 nullptr。
+// 例：SOUL_MARK_HOOKS(4745, nullptr, &artemis_exit_clear_hunt_soul);
+#define SOUL_MARK_HOOKS(id, enter_fn, exit_fn)                                      \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kSoulHookReg_##id =                                 \
+        ::plugin_reg::add_soul_hook((id), ::SoulMarkHooks{(enter_fn), (exit_fn)});  \
     }
 
 // Utility to convert effect ID to function name

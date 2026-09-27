@@ -65,15 +65,24 @@ public:
         return false;
     }
     // 注册魂印节点到对应时点桶（更新器桶在回合首时点会重调本方法刷新 once 效果）。
+    // host_slot = 宿主精灵槽（战斗内不变；绑进效果 args[2]，见 bind_soulmark_args 约定）。
     // - 程序链路：按节点 trigger_state 注册；scope 决定注册条件与作废语义：
     //     STAGE  → 仅 owner_on_stage 时注册，ContinuousEffect::scope_ = ON_STAGE（离场 epoch 作废）
     //     ROSTER → 无条件注册（只要宿主存活），ContinuousEffect::scope_ = TEAM（跨切换保留）
     // - 单效果链路：effect 包成 ContinuousEffect 注册到 BATTLE_ROUND_START（恒收）。
-    void register_soul_effect(BattleContext* context, int owner, bool owner_on_stage = true);
+    void register_soul_effect(BattleContext* context, int owner, bool owner_on_stage,
+                              int host_slot);
 
     // 魂印激活（登场：战斗开始 OPERATION_ENTER_EXIT_STAGE / 切换上场 perform_switch）：
     // 注册符合作用域的节点 + 立即执行 early 节点（信号在选择前就绪）+ 调用 on_enter 钩子。
-    void activate_soul_mark(BattleContext* context, int owner, bool owner_on_stage = true);
+    void activate_soul_mark(BattleContext* context, int owner, bool owner_on_stage,
+                            int host_slot);
+
+    // 重触发登场行为（**只执行、不重注册**）：early 节点（scope 门照查）+ on_enter 钩子，
+    // 全部以 (owner, host_slot) 为主体绑定。供"击败对手时重新触发自身登场时效果"族
+    // （莫塔里安 4541）经 CoreApi::retrigger_entrance 调用——阿尔忒弥斯式副本重触发时，
+    // 主体是当前效果归属 pet，天然落到她自己的登场效果（2026-09-20 官方实测口径）。
+    void retrigger_entrance(BattleContext* context, int owner, int host_slot);
 
     // 在更新器桶登记"每回合刷新本魂印节点"的对象（回合边界执行，刷新 once 效果）。
     // 登场时调用一次即可（条目 source_id 去重，重复调用幂等）。

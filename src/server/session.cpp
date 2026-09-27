@@ -132,6 +132,16 @@ void Session::dispatch(proto::Command cmd, std::uint32_t uuid, const std::string
             return;
         }
 
+        case proto::Command::DEBUG_MUTATE: {
+            RoomPtr r = room();
+            if (!r) {
+                send_error("no room");
+                return;
+            }
+            r->debug_mutate(payload);
+            return;
+        }
+
         case proto::Command::DEBUG_BREAKPOINT: {
             RoomPtr r = room();
             if (!r) {

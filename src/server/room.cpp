@@ -2,8 +2,11 @@
 
 #include <fsm/battleContext.h>
 #include <fsm/battleFsm.h>
+#include <fsm/battle_mutate.h>
 #include <server/output_json.h>
 #include <server/session.h>
+
+#include <nlohmann/json.hpp>
 
 #include <cstdio>
 #include <exception>
@@ -124,10 +127,31 @@ bool Room::try_start_battle(std::string& err) {
     std::unique_ptr<BattleContext> fresh;
     try {
         SeerRobot robots[2] = {
-            SeerRobotFactory::create_robot(lineup_.side1),
-            SeerRobotFactory::create_robot(lineup_.side2),
+            SeerRobotFactory::create_robot(lineup_.side1, lineup_.medicines[0],
+                                           lineup_.equip_item_ids[0]),
+            SeerRobotFactory::create_robot(lineup_.side2, lineup_.medicines[1],
+                                           lineup_.equip_item_ids[1]),
         };
         fresh.reset(new BattleContext(this, robots));
+        // boss 挑战对局（2026-09-26 "boss 有效"线）：开关注入 context，
+        // 魂印程序注册口按节点 boss_invalid 标签过滤。
+        fresh->is_boss_challenge = lineup_.boss_challenge;
+        // 双背包快照（精灵王线）：待命背包进 context（只读），空 = 直开对局（待命 6 格全空）。
+        // 装配期旗标按 id 走 PetFactory 判定——待命背包与出战背包同构（静态 6+6），
+        // 战斗创建时定死，故出战侧的装配期判定对待命 id 同样成立。
+        for (int side = 0; side < 2; ++side) {
+            const auto& ids = lineup_.standby_pet_ids[side];
+            if (!ids.empty()) {
+                fresh->standby_initialized = true;
+                for (std::size_t i = 0; i < ids.size() && i < 6; ++i) {
+                    fresh->standby_pet_ids[side][i] = ids[i];
+                    fresh->standby_is_spirit_king[side][i] =
+                        PetFactory::pet_is_spirit_king(ids[i]);
+                    fresh->standby_hp_consume_kit[side][i] =
+                        PetFactory::pet_has_hp_consume_kit(ids[i]);
+                }
+            }
+        }
     } catch (const std::exception& ex) {
         std::lock_guard<std::mutex> lk(mu_);
         side_received_[0] = false;  // 回滚：允许改了阵容重新提交
@@ -278,14 +302,17 @@ void Room::submit_action(int seat, int robot, int action_type, int index) {
     {
         std::lock_guard<std::mutex> lk(mu_);
 
-        const int max_index = (action_type == static_cast<int>(proto::ActionType::CHOOSE_PET)) ? 6 : 5;
+        const int max_index = (action_type == static_cast<int>(proto::ActionType::CHOOSE_PET)) ? 6
+            : (action_type == static_cast<int>(proto::ActionType::NONE)) ? 1 : 5;
         if (!battle_started_ || context_ == nullptr) {
             err = "battle not started";
         } else if (!seat_owns_player(seat, robot)) {
             err = "your seat cannot act for player " + std::to_string(robot);
-        } else if (action_type < 0 || action_type > 2) {
+        } else if (action_type < 0 || action_type > 3) {
             err = "bad action type";
-        } else if (index < 0 || index >= max_index) {
+        } else if (action_type == static_cast<int>(proto::ActionType::NONE)
+                   ? (index != 0)
+                   : (index < 0 || index >= max_index)) {
             err = "bad action index";
         } else if (waiting_ && waiting_player_ == robot && pending_inputs_[robot].empty()) {
             // 正等着这个玩家 → 直接派发
@@ -523,6 +550,102 @@ void Room::toggle_breakpoint(int state_id) {
 int Room::current_state() const {
     std::lock_guard<std::mutex> lk(mu_);
     return context_ == nullptr ? -999 : static_cast<int>(context_->currentState);
+}
+
+// ---------------------------------------------------------------- 调试手术（二期）
+
+// 白名单操作集：客户端不能裸写 context（会把免死/复活/清除时点等不变量改破），
+// 只发具名操作，由 battle_mutate 走引擎存储与校验落地。
+// 执行窗口 = FSM 泊车（waiting_）：battle 单线程泊车时无引擎活动，持 run_mutex
+// 与可能的推进任务互斥后改状态是安全的——这正是场景测试"CHOOSE 停泊期直调
+// 原语"的同一姿势。推进中拒绝而不是排队：注入语义要求"此刻"，排队会埋雷。
+void Room::debug_mutate(const std::string& payload) {
+    const auto reply = [this](const std::string& body) {
+        send_frame_to_all_seats(proto::build_frame(
+            proto::Command::DEBUG_MUTATE, static_cast<std::uint32_t>(match_id_), body));
+    };
+
+    nlohmann::json doc;
+    try {
+        doc = nlohmann::json::parse(payload);
+    } catch (const std::exception& ex) {
+        reply(std::string("{\"ok\":false,\"error\":\"bad json: ") + ex.what() + "\"}");
+        return;
+    }
+    if (!doc.is_object() || !doc.contains("ops") || !doc["ops"].is_array()) {
+        reply("{\"ok\":false,\"error\":\"expected {\\\"ops\\\": [...]}}\"}");
+        return;
+    }
+
+    // —— 取任务与状态（锁内只做快照）——
+    BattleContext* ctx = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (!battle_started_ || context_ == nullptr) {
+            reply("{\"ok\":false,\"error\":\"battle not started\"}");
+            return;
+        }
+        if (!waiting_) {
+            reply("{\"ok\":false,\"error\":"
+                  "\"引擎未泊车：等输入提示出现（或逐步/断点停下）后再注入\"}");
+            return;
+        }
+        ctx = context_.get();
+    }
+
+    // —— 逐条执行（持 run_mutex 与推进任务互斥；泊车时通常无竞争）——
+    nlohmann::json notes = nlohmann::json::array();
+    {
+        std::lock_guard<std::mutex> run_lk(ctx->run_mutex);
+        for (const auto& item : doc["ops"]) {
+            if (!item.is_object() || !item.contains("op")) {
+                notes.push_back("✗ 非法操作项");
+                continue;
+            }
+            const std::string op = item.value("op", "");
+            const auto ival = [&item](const char* key, int dflt) {
+                return item.contains(key) && item[key].is_number_integer()
+                           ? item[key].get<int>() : dflt;
+            };
+            battle_mutate::Outcome out;
+            if (op == "set_hp") {
+                out = battle_mutate::set_hp(*ctx, ival("side", -1), ival("slot", -1),
+                                            ival("value", 0));
+            } else if (op == "set_pp") {
+                out = battle_mutate::set_pp(*ctx, ival("side", -1), ival("slot", -1),
+                                            ival("skill", -1), ival("value", 0));
+            } else if (op == "set_level") {
+                out = battle_mutate::set_level(*ctx, ival("side", -1), ival("stat", -1),
+                                               ival("value", 0));
+            } else if (op == "anomaly") {
+                out = battle_mutate::apply_anomaly(*ctx, ival("side", -1), ival("id", -1),
+                                                   ival("rounds", 1));
+            } else if (op == "cure") {
+                out = battle_mutate::cure_anomaly(*ctx, ival("side", -1), ival("id", -1));
+            } else if (op == "mark") {
+                out = battle_mutate::attach_mark(*ctx, ival("src", -1), ival("dst", -1));
+            } else if (op == "unmark") {
+                out = battle_mutate::clear_marks(*ctx, ival("side", -1));
+            } else {
+                out = battle_mutate::Outcome{false, "", "unknown op: " + op};
+            }
+            if (out.ok) {
+                notes.push_back(out.note);
+                log_room("INFO", match_id_, "手术: " + out.note);
+            } else {
+                notes.push_back("✗ " + out.err);
+                log_room("WARN", match_id_, "手术被拒: " + out.err);
+            }
+        }
+    }
+
+    nlohmann::json body;
+    body["ok"] = true;
+    body["notes"] = notes;
+    reply(body.dump());
+    // 状态变了：把新快照推给客户端（mutation 结果立刻可见）。
+    send_frame_to_all_seats(proto::build_frame(
+        proto::Command::SYNC_STATE, static_cast<std::uint32_t>(match_id_), state_json()));
 }
 
 bool Room::is_waiting_for_input() const {

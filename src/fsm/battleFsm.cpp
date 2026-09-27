@@ -2,6 +2,7 @@
 #include <fsm/battleContext.h>
 #include <fsm/iControlBlock.h>
 #include <effects/continuousEffect.h>
+#include <effects/burn_perception.h>
 #include <numerical-calculation/calculation.h>
 #include <primitives/battle_primitives.h>
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 
 namespace {
@@ -61,20 +63,36 @@ bool field_has_on_stage_death(const BattleContext* ctx) {
 //      星光鲁斯王，命中即检）——需要伤害结算内的即时判定，**待做**
 //      （落点应是伤害管线 DETECT 阶段之后，不在 FSM 时点桶里）。
 // 击杀方归因取 last_damage_actor（deal_damage/force_hp_to_zero 写入）；无记录传 -1。
+//
+// ⚠️ **循环到稳定**（圣甲·盖亚"死亡判定里弹伤"，2026-09-20）：拦截器在询问中可能把
+// **另一方**打进 0 血（盖亚死亡判定 → 弹真实伤害 → 攻击方倒下），甚至再触发对方的
+// 反同归拦截——单圈 for 会把后倒下的一方漏到下一个死亡时点才判。这里反复扫，直到
+// 一圈内既没有新进入判定的一方为止（DEFEATED 的槽被 pet_death_notified 幂等挡住，
+// INTERCEPTED 的槽 hp>0 自然跳过，均不会死循环；pass 上限只作防御）。
 void funnel_on_stage_deaths(BattleContext* ctx, DefeatCause cause) {
     if (!ctx) {
         return;
     }
-    for (int side = 0; side < 2; ++side) {
-        const int slot = ctx->on_stage[side];
-        if (slot < 0 || slot >= 6) {
-            continue;
+    for (int pass = 0; pass < 8; ++pass) {
+        bool asked = false;
+        for (int side = 0; side < 2; ++side) {
+            const int slot = ctx->on_stage[side];
+            if (slot < 0 || slot >= 6) {
+                continue;
+            }
+            if (ctx->seerRobot[side].elfPets[slot].hp > 0) {
+                continue;
+            }
+            if (ctx->pet_death_notified[side][slot]) {
+                continue;   // 本次死亡已登记（DEFEATED），不重复问
+            }
+            const int actor = ctx->last_damage_actor[side][slot];
+            defeat_pet(ctx, side, slot, (actor >= 0 && actor <= 1) ? actor : -1, cause);
+            asked = true;
         }
-        if (ctx->seerRobot[side].elfPets[slot].hp > 0) {
-            continue;
+        if (!asked) {
+            break;
         }
-        const int actor = ctx->last_damage_actor[side][slot];
-        defeat_pet(ctx, side, slot, (actor >= 0 && actor <= 1) ? actor : -1, cause);
     }
 }
 
@@ -223,12 +241,14 @@ void overclock_restore_selected_pp(BattleContext* ctx, int side) {
 //
 // ⚠️ 只拦**主动**切换：死后换宠（必须补位，否则对局卡死）走 `is_forced=true` 绕过。
 // ⚠️ 与 `ElfPet::is_locked` 无关，别混：那个是 pet 级"能否被换**上场**"且引擎从不 set
-//    （语义方向相反）。目前"限制切换"的唯一来源是限制类异常；"下N回合无法主动切换"这类
-//    **回合类锁切**效果（全库 17 条 effect）以后接在同一处，别另开门。
+//    （语义方向相反）。目前"限制切换"的两个来源：限制类异常（凝滞 32 / 瘫痪 19）与
+//    **回合类锁切票**（RuleCenter SWITCH_LOCK，「下N回合无法主动切换精灵」族，
+//    2026-09-20 莫塔里安第五技能接入）——两条独立来源，同在下面这个函数里查。
 bool has_blocking_restriction_status(const BattleContext* ctx, int robot_id) {
     if (!ctx || robot_id < 0 || robot_id > 1) {
         return false;
     }
+    // ① 限制类异常（凝滞 / 瘫痪）
     for (int status_id = 0; status_id <= kOfficialAbnormalStatusMaxId; ++status_id) {
         if (!is_restriction_abnormal_status(static_cast<AbnormalStatusId>(status_id))) {
             continue;
@@ -237,7 +257,8 @@ bool has_blocking_restriction_status(const BattleContext* ctx, int robot_id) {
             return true;
         }
     }
-    return false;
+    // ② 回合类锁切票（RuleCenter SWITCH_LOCK：莫塔里安第五技能"下1回合令对手无法主动切换"）
+    return ctx->rule_center_.is_switch_locked(robot_id, ctx->roundCount);
 }
 
 int resolve_selected_skill_index(const BattleContext* ctx, int robot_id) {
@@ -300,6 +321,9 @@ bool should_skip_action_flow(const BattleContext* ctx, int robot_id) {
         return true;  // CHOOSE_PET/USE_MEDICINE 在 OPERATION_CHOOSE_SKILL_MEDICAMENT
                       // 收到时已同步应用（perform_switch + EVENT_SWAP / robot.use_medicine），
                       // 此处主流程（BEFORE_SKILL_HIT → ... → AFTER_ACTION）无技能可执行，跳过。
+    }
+    if (ctx->cannot_act_round[robot_id]) {
+        return true;  // effect 39 族"当回合无法行动"：主流程与额外行动一并跳过
     }
     if (ctx->seerRobot[robot_id].elfPets[ctx->on_stage[robot_id]].hp <= 0) {
         return true;
@@ -406,9 +430,11 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
     //    SKILL_EFFECT 之后，那会引入 rewritten，不采纳。
     {
         int base_power = skill.power;
-        if (skill.type != SkillType::Attribute
-            && ctx->has_active_abnormal_status(robot_id,
-                   static_cast<int>(AbnormalStatusId::Burn))) {
+        if (skill.type != SkillType::Attribute && is_burn_effective(ctx, robot_id)) {
+            // 烧伤(2) 与**虚拟烧伤**（上古炎兽 4875「对手免弱视为处于烧伤」）在"威力减半 /
+            // 行动开始 1/8 真伤"这两件**伴生效果**上行为一致（语料《机制解析—永烬劫炎·
+            // 上古炎兽》：「"视为处于烧伤"的精灵会扣 1/8 真伤和威力减半」）→ 判据统一走
+            // burn_perception.h 的 is_burn_effective（真实 ∪ 虚拟，同一异常语义**不双算**）。
             base_power = base_power / 2;
         }
         ctx->ws.skill_power_view[robot_id].materialize(base_power);
@@ -489,6 +515,12 @@ void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
     ElfPet& old_pet = ctx->seerRobot[robot_id].elfPets[ctx->on_stage[robot_id]];
     // ① 清旧宠公共状态：ON_STAGE 效果 + 穿透授予 + 命中失效 + 魂印信号 + 拦截桶
     ctx->invalidate_on_stage_effects(robot_id);
+    // ①'' 清旧宠身上的消耗全部体力印记（死亡印记下场即解除——赛学必修15口径）：
+    //     下场宠是**被标者** → 它身上的印记解除；是**挂印者** → 它挂出去的印记一并
+    //     失效（结算节点 ON_STAGE 已随上面 invalidate 的 epoch bump 作废，表条目在此
+    //     同步清——否则它再上场重挂时会被幂等分支挡住，印记挂了却不再结算）。
+    ctx->clear_hp_consume_marks(robot_id, ctx->on_stage[robot_id]);
+    ctx->clear_hp_consume_marks_attached_by(robot_id, ctx->on_stage[robot_id]);
     // ①' 旧宠魂印离场钩子：只在"该魂印不依赖出战背包"（无 ROSTER 节点）时触发。
     //     常驻魂印（如星皇 903 / 薇尔诗 2513）下场后仍在背包生效，不能在这里关掉。
     if (!old_pet.soulMark.has_roster_nodes()) {
@@ -502,6 +534,10 @@ void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
     // ②' 清旧宠"本次上场"私有槽（on_stage_storage）：下场即失效——"每次使用递增"这类
     //     计数官方实测下场不保留（用户 2026-09-13）。soulmark_storage（下场保留）不动。
     old_pet.on_stage_storage.clear();
+    // ②'' 上只在场记录（圣莫最优系别视图用）：旧在场槽位 + 系别快照
+    ctx->prev_on_stage_slot[robot_id] = ctx->on_stage[robot_id];
+    ctx->prev_on_stage_elem[robot_id] = {old_pet.elementalAttributes[0],
+                                         old_pet.elementalAttributes[1]};
     // ③ 更新在场槽位
     ctx->on_stage[robot_id] = target_slot;
     // ③'' 登场特性槽：新精灵的通用特性拷入 context（查询/行为函数读槽，见 trait_state.h）
@@ -512,7 +548,7 @@ void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
     // ④ 新精灵魂印激活（登场：STAGE 节点注册 + early 信号 + on_enter 钩子）+ 登记更新器
     {
         ElfPet& new_pet = ctx->getPet(robot_id);
-        new_pet.soulMark.activate_soul_mark(ctx, robot_id, /*owner_on_stage=*/true);
+        new_pet.soulMark.activate_soul_mark(ctx, robot_id, /*owner_on_stage=*/true, target_slot);
         new_pet.soulMark.register_updater(ctx, robot_id);
     }
     // ⑤ ws 同步新精灵数值（伤害/先手判定用）
@@ -558,7 +594,27 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
     snapshot.defenderId = defender_id;
     // base 为原始伤害；减伤不再在此同步结算，改由 DamagePipeline 的 REDUCE 阶段施加
     // （install_default_damage_reduction 注册，可被 damage_suppress_mask 抑制）。
+    // 最优系别视图（圣莫 K7）：armed 时在 {对手在场系别, 对方上只在场系别} 候选中
+    // 取克制最优者，经 ws.restraint_view 覆盖槽喂给伤害公式；算完还原（多段逐段重算）。
+    bool optimal_armed = false;
+    const double saved_restraint_view = ctx->ws.restraint_view[attacker_id];
+    if (ctx->ws.optimal_elem_rounds[attacker_id] > 0
+        && ctx->ws.restraint_view[attacker_id] < 0.0
+        && ctx->prev_on_stage_slot[1 - attacker_id] >= 0) {
+        const int defender = 1 - attacker_id;
+        const auto& elem_view = ctx->ws.skill_element_view[attacker_id];
+        const double cur = Calculation::calculateRestraintMultiples(
+            elem_view, ctx->ws.view_elementalAttributes[defender]);
+        const int prev_pair[2] = {ctx->prev_on_stage_elem[defender][0],
+                                  ctx->prev_on_stage_elem[defender][1]};
+        const double prev = Calculation::calculateRestraintMultiples(elem_view, prev_pair);
+        ctx->ws.restraint_view[attacker_id] = cur > prev ? cur : prev;
+        optimal_armed = true;
+    }
     snapshot.base = std::max(0, Calculation::calculateDamage(attacker_id, ctx->ws, skill));
+    if (optimal_armed) {
+        ctx->ws.restraint_view[attacker_id] = saved_restraint_view;
+    }
     // 次数型攻击增伤（attack_boost_grants，"下N次攻击伤害提升X%"）：累加该攻击方所有 active 增伤 %。
     // 成功后由 consume_attack_boost_grants_after_attack 消费（见 skills.cpp），此处只累加不扣次数。
     {
@@ -750,6 +806,16 @@ void apply_resolved_damage(BattleContext* ctx) {
 // 两条出口共用（正常出口 / 技能无效出口），区别只在之前有没有跑 ATTACK_DAMAGE 时点桶。
 void finish_attack_damage(BattleContext* ctx, int attacker_id) {
     apply_variable_power_recalc(ctx, attacker_id);
+    // 「攻击技能无法造成伤害」票（effect 1090 族，2026-09-21 口径）：在伤害管线**之前**
+    // 强制归零——护盾/护罩不消耗（它们还没介入）、裸伤台账记 0（雷解这类"造成伤害后"
+    // 族不触发）。命中效果失效那半边走 ③层（resolve_skill_execution 里物化
+    // ws.hit_invalid_detected + kFullNull：force 标记外的效果不执行——无相谛的强制
+    // 断回合正是靠"force 效果照常执行"先拆掉缔笙的光环，变威力重结算才打得动）。
+    // ⚠️ 与下方 ③层 kFullNull 的"管线后归零"是两回事：那条是防御方按次挂的命中失效
+    //    （护盾照常消耗）；本条是持续票，官方口径连护盾都不碰。
+    if (ctx->rule_center_.is_attack_nullified(attacker_id, ctx->roundCount)) {
+        ctx->resolvedDamage.final = 0;
+    }
     // ★ 裸伤台账（**唯一写入点**，见 battleWorkspace.h 的三值说明）：必须在变威力重算
     // 之后（重算会重跑公式并覆盖第一次结果）、管线之前（管线会逐阶段改写 final）。
     // 消费方：effect 422「附加所造成伤害值{0}%的固定伤害」族——实测口径是"挡伤/锁伤
@@ -915,6 +981,19 @@ void stage_action_start_abnormal_damage(BattleContext* ctx, int robot_id) {
         }
         ctx->ws.action_start_abnormal_damage_ids[robot_id][count] = status_id;
         ctx->ws.action_start_abnormal_damage_amounts[robot_id][count] = amount;
+        ++count;
+    }
+
+    // 虚拟烧伤（上古炎兽 4875「对手免弱视为处于烧伤」，语料《机制解析—永烬劫炎·上古炎兽》）：
+    // 与真实烧伤同样扣 1/8 最大体力的**真实伤害** → 复用烧伤档位（id=Burn，settle 期按
+    // TruePercent 走 deal_damage(TRUE)）。⚠️ **真实烧伤在时不追加**——同一异常语义不双算
+    // （is_burn_effective 是 OR，具体落脚在这里的互斥）。
+    if (count < 8 && !ctx->has_active_abnormal_status(robot_id, static_cast<int>(AbnormalStatusId::Burn))
+        && has_virtual_burn(ctx, robot_id)) {
+        ctx->ws.action_start_abnormal_damage_ids[robot_id][count] =
+            static_cast<int>(AbnormalStatusId::Burn);
+        ctx->ws.action_start_abnormal_damage_amounts[robot_id][count] =
+            std::max(1, max_hp / 8);
         ++count;
     }
 
@@ -1168,10 +1247,27 @@ void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType 
                 std::cerr << "Skill not usable: " << pet.skills[index].name << std::endl;
             }
             break;
-        case ActionType::USE_MEDICINE:
-            (robot.use_medicine(battleContext, robotId, index) ? std::cout << "Used medicine: " << robot.medicines[index] << std::endl : std::cerr << "Cannot use medicine: " << robot.medicines[index] << std::endl);
+        case ActionType::USE_MEDICINE: {
+            // index = 嗑药库存(按 item_id 升序)位次 —— legal_actions 发的顺序原样带回来；
+            // 真正的结算按 item_id 查 battle_items 表（见 seer-robot.cpp）。
+            // ⚠️ 与旧行为保持一致：结算失败（没库存/非法位次）**也照记 roundChoice**——
+            //     "嗑药跳过出手"是既有测法（090 等），嗑药失败同样算交了动作。
+            auto stock_it = robot.medicines.begin();
+            if (index >= 0 && index < static_cast<int>(robot.medicines.size())) {
+                std::advance(stock_it, index);
+                robot.use_medicine(battleContext, robotId, stock_it->first);
+            } else {
+                std::cerr << "Invalid medicine index: " << index << std::endl;
+            }
             battleContext->roundChoice[robotId][0] = static_cast<int>(ActionType::USE_MEDICINE);
             battleContext->roundChoice[robotId][1] = index;
+            break;
+        }
+        case ActionType::NONE:
+            // 空操作（超时/什么都不做）：只记选择、不产生出手。回合类效果与控制
+            // 异常的后续处理照走（is_skill_action=false → ACTION_START 跳主流程）。
+            battleContext->roundChoice[robotId][0] = static_cast<int>(ActionType::NONE);
+            battleContext->roundChoice[robotId][1] = -1;
             break;
         case ActionType::CHOOSE_PET:
             if (index < 0 || index >= 6) {
@@ -1185,7 +1281,10 @@ void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType 
                           << std::endl;
                 return;
             }
-            if (robot.elfPets[index].hp > 0 && robot.elfPets[index].is_locked == false) {
+            // is_locked = 放逐位（启灵元神 1581 [神殇] 的神秘结界，2026-09-21 起归其所有）：
+            // 「使其不能**主动**切换上场」→ 死亡补位（is_forced）同样绕过——不是主动切换。
+            if (robot.elfPets[index].hp > 0
+                && (is_forced || robot.elfPets[index].is_locked == false)) {
                 battleContext->roundChoice[robotId][0] = static_cast<int>(ActionType::CHOOSE_PET);
                 battleContext->roundChoice[robotId][1] = index;
             } else {
@@ -1280,7 +1379,7 @@ void BattleFsm::handle_OperationEnterExitStage(BattleContext* battleContext) {
                 }
                 activated_ids.push_back(mark_id);
             }
-            pet.soulMark.activate_soul_mark(battleContext, i, owner_on_stage);
+            pet.soulMark.activate_soul_mark(battleContext, i, owner_on_stage, slot);
             pet.soulMark.register_updater(battleContext, i);  // 回合边界刷新节点（once 复位）
         };
         activate_slot(battleContext->on_stage[i], /*owner_on_stage=*/true);
@@ -1290,7 +1389,18 @@ void BattleFsm::handle_OperationEnterExitStage(BattleContext* battleContext) {
             }
         }
     }
-    battleContext->execute_registered_actions(-1, State::OPERATION_ENTER_EXIT_STAGE);
+
+    // 携带类效果扫描已于 2026-09-19 迁入 BattleContext::init_battle（用户拍板：
+    // 更早的 init 阶段更保险，与套装激活同层）——这里是原扫描位，勿再回填；
+    // 现场只保留 ENTER_EXIT_STAGE 桶执行。
+
+    // 登场时效果按**角色序**：房主先登场先结算、挑战方后（2026-09-22 官方判定，
+    // 涂蝶砥砺 vs 百鬼转化视频：首回合无论点击顺序都是房主先挂）。
+    // 默认 host_side=0 时与旧的单次 execute(-1) 行为等价（0→1 序）。
+    battleContext->execute_registered_actions(battleContext->host_side,
+                                              State::OPERATION_ENTER_EXIT_STAGE);
+    battleContext->execute_registered_actions(battleContext->challenger_side(),
+                                              State::OPERATION_ENTER_EXIT_STAGE);
     battleContext->generateState();
 }
 
@@ -1323,7 +1433,8 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
 
     const bool accepted =
         battleContext->roundChoice[actor][0] == buf[1] &&
-        battleContext->roundChoice[actor][1] == buf[2];
+        (static_cast<ActionType>(buf[1]) == ActionType::NONE ||
+         battleContext->roundChoice[actor][1] == buf[2]);
 
     if (accepted) {
         // 选择期生命周期：技能可选 → 注册先制等即时效果
@@ -1362,12 +1473,23 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
             // 只在"实际切到不同槽位"时 emit+执行 perform_switch：切到同一只精灵时不应触发
             // EVENT_SWAP（不算"中切"，watcher 不应响应），也不应重复清状态。
             if (battleContext->on_stage[actor] != buf[2]) {
-                perform_switch(battleContext, actor, buf[2]);
-                // 操作选择时点广播中切事件：让 event_center 派发给"对方中切"类 watcher
-                // （如启灵元神 1581 神印）。drain 在 CHOOSE 桶跑完后、PROTECTION_1 跑前派发，
-                // 紧跟的 PROTECTION_1 节点可以直接读对方 soulmark_storage[1581].stacks 结算真伤。
-                battleContext->event_center_.emit(
-                    BattleEvent{EventType::EVENT_SWAP, actor, 1 - actor, 0});
+                // ★ 首回合双方中切强制**房主先登场**（2026-09-22 官方判定，涂蝶砥砺 vs
+                //   百鬼转化视频：无论点击顺序都是房主侧先挂）：挑战方的切换在房主
+                //   本回合输入收集完成之前先到 → 缓冲，两输入齐后按房主→挑战方应用。
+                //   第二回合起无此强制——按提交顺序（先切先登场，百鬼须后切才转化）。
+                const bool defer_for_host_first = battleContext->roundCount == 0
+                    && actor == battleContext->challenger_side()
+                    && !battleContext->operation_collected[battleContext->host_side];
+                if (defer_for_host_first) {
+                    battleContext->deferred_switch_slot[actor] = buf[2];
+                } else {
+                    perform_switch(battleContext, actor, buf[2]);
+                    // 操作选择时点广播中切事件：让 event_center 派发给"对方中切"类 watcher
+                    // （如启灵元神 1581 神印）。drain 在 CHOOSE 桶跑完后、PROTECTION_1 跑前派发，
+                    // 紧跟的 PROTECTION_1 节点可以直接读对方 soulmark_storage[1581].stacks 结算真伤。
+                    battleContext->event_center_.emit(
+                        BattleEvent{EventType::EVENT_SWAP, actor, 1 - actor, 0});
+                }
             }
         }
     } else {
@@ -1383,6 +1505,21 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
         return;
     }
 
+    // 首回合双中切：两输入齐后按 房主→挑战方 应用缓冲的挑战方切换（此时房主若也切了
+    // 早已先行应用）——登场顺序与点击顺序解耦。
+    {
+        const int chal = battleContext->challenger_side();
+        const int slot = battleContext->deferred_switch_slot[chal];
+        if (slot >= 0) {
+            battleContext->deferred_switch_slot[chal] = -1;
+            if (battleContext->on_stage[chal] != slot) {
+                perform_switch(battleContext, chal, slot);
+                battleContext->event_center_.emit(
+                    BattleEvent{EventType::EVENT_SWAP, chal, 1 - chal, 0});
+            }
+        }
+    }
+
     {
         std::ostringstream oss;
         oss << "round choices ready: p0=(" << battleContext->roundChoice[0][0] << "," << battleContext->roundChoice[0][1]
@@ -1394,8 +1531,11 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
 }
 
 void BattleFsm::handle_OperationProtectionMechanism1(BattleContext* battleContext) {
-    battleContext->execute_registered_actions(0, State::OPERATION_PROTECTION_MECHANISM_1);
-    battleContext->execute_registered_actions(1, State::OPERATION_PROTECTION_MECHANISM_1);
+    // 按角色序：房主先、挑战方后（2026-09-22 登场先后规则；默认 host=0 行为不变）
+    battleContext->execute_registered_actions(battleContext->host_side,
+                                              State::OPERATION_PROTECTION_MECHANISM_1);
+    battleContext->execute_registered_actions(battleContext->challenger_side(),
+                                              State::OPERATION_PROTECTION_MECHANISM_1);
 
     if (battleContext->seerRobot[0].elfPets[battleContext->on_stage[0]].hp <= 0)
         battleContext->seerRobot[0].elfPets[battleContext->on_stage[0]].hp = 1;
@@ -1427,7 +1567,16 @@ void BattleFsm::handle_BattleRoundStart(BattleContext* battleContext) {
     // 注：魂印的每回合重注册**不在这里**——ROUND_START 晚于本回合的 CHOOSE（线性序里
     // OPERATION_CHOOSE_SKILL_MEDICAMENT 在前），在此注册会让选择期缺失 once 效果（迟到一拍）。
     // 重注册已改由**更新器桶**在 ROUND_COMPLETION 末尾完成（见 handle_BattleRoundCompletion）。
-    battleContext->execute_registered_actions(-1, State::BATTLE_ROUND_START);
+    // ★ 回合开始时是官方共享时点（名词解释 idx=128："被挑战方优先结算"）→ 按**角色序**
+    //   两趟执行：房主先、挑战方后（2026-09-22 补齐，与部署桶/PROTECTION_1 同批地基）。
+    //   默认 host_side=0 时与旧的单次 execute(-1)（0→1 序）行为等价；翻转后服务
+    //   "回合开始时魂印断回合 vs 回合开始时魂印免断续上"的房主先手交互
+    //   （语料《机制解析—免断》：魔灵王式每回合开始续 1 回合免断，房主侧枫眠式
+    //   断回合先结算就能断掉它——角色位决定胜负，与操作速度无关）。
+    battleContext->execute_registered_actions(battleContext->host_side,
+                                              State::BATTLE_ROUND_START);
+    battleContext->execute_registered_actions(battleContext->challenger_side(),
+                                              State::BATTLE_ROUND_START);
     battleContext->generateState();
 }
 
@@ -1454,6 +1603,11 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
     for (int side = 0; side < 2; ++side) {
         if (battleContext->has_active_abnormal_status(
                 side, static_cast<int>(AbnormalStatusId::Bind))) {
+            battleContext->ws.preemptive_level[side] = 0;
+        }
+        // 先制失效区（精灵王线 K9，非异常条件区：火电 2479"对手体力低于X%则所有技能
+        // 先制效果失效"）：与束缚同语义、独立来源——效果侧按条件重写 ws，此处统一清零。
+        if (battleContext->ws.priority_nullified[side]) {
             battleContext->ws.preemptive_level[side] = 0;
         }
         if (battleContext->has_active_abnormal_status(
@@ -1510,11 +1664,17 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
         pr = PreemptiveRight::SEER_ROBOT_2;
         log("Preemptive right determined by preemptive level: player1 wins.");
     } else {
-        // 先制等级相同，比较速度
-        if (battleContext->ws.getTempAbilityValue(0, NumericalPropertyIndex::SPEED) > battleContext->ws.getTempAbilityValue(1, NumericalPropertyIndex::SPEED)) {
+        // 先制等级相同，比较速度。
+        // 套装线（2026-09-19 晨曦之星 447）："当回合忽略对手10点速度"——有效速度
+        // = 面板速度 − ws.speed_ignore_points[side]（被对手忽略的点数，ROUND_START 写入）。
+        const int spd0 = battleContext->ws.getTempAbilityValue(0, NumericalPropertyIndex::SPEED)
+                         - battleContext->ws.speed_ignore_points[0];
+        const int spd1 = battleContext->ws.getTempAbilityValue(1, NumericalPropertyIndex::SPEED)
+                         - battleContext->ws.speed_ignore_points[1];
+        if (spd0 > spd1) {
             pr = PreemptiveRight::SEER_ROBOT_1;
             log("Preemptive right determined by speed: player0 wins.");
-        } else if (battleContext->ws.getTempAbilityValue(0, NumericalPropertyIndex::SPEED) < battleContext->ws.getTempAbilityValue(1, NumericalPropertyIndex::SPEED)) {
+        } else if (spd0 < spd1) {
             pr = PreemptiveRight::SEER_ROBOT_2;
             log("Preemptive right determined by speed: player1 wins.");
         } else {
@@ -1550,9 +1710,27 @@ void BattleFsm::handle_BattleFirstActionStart(BattleContext* battleContext) {
     battleContext->generateState();
 }
 
+// 命中前全局锚点（EVENT_BEFORE_SKILL_HIT，2026-09-23 王之哈莫/重生之翼线）：
+// 一回合只在**第一次**进入命中前时点时发一次（先手方/后手方两个 handler 共用，
+// ws.before_hit_anchor_fired 去重；ws 每回合 reset 天然复位）。
+// emit 后**立即 drain**：监听方（锚点窗口式魂免的撤旧窗/授新窗/击杀挂起清零）必须在
+// 该时点桶执行之前完成授票，才能挡住桶内的命中前控——统一 drain 点在 handler 结束后，
+// 晚于桶执行，来不及。先手方嗑药/切宠跳过主流程时本 handler 不会跑到，锚点顺延到
+// 后手方的命中前（"任意一方技能命中前"语义，两边对称）。
+void BattleFsm::emit_before_hit_anchor(BattleContext* ctx, int mover_id) {
+    if (ctx->ws.before_hit_anchor_fired) {
+        return;
+    }
+    ctx->ws.before_hit_anchor_fired = true;
+    ctx->event_center_.emit(
+        BattleEvent{EventType::EVENT_BEFORE_SKILL_HIT, mover_id, 1 - mover_id});
+    ctx->event_center_.drain(ctx, ctx->roundCount);
+}
+
 void BattleFsm::handle_BattleFirstBeforeSkillHit(BattleContext* battleContext) {
     log("Battle: First Before Skill Hit.");
     const int first_mover_id = resolve_first_mover_id(battleContext);
+    emit_before_hit_anchor(battleContext, first_mover_id);
     battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_BEFORE_SKILL_HIT);
     // 被动属性提升特性（反击/抵抗/反攻/坚韧/借风）：**命中判定之前**赋予自身能力提升
     //（必修6 ①"在技能命中时之前赋予"——先赋予后挨打，对方的消强/吸强才能作用于它；
@@ -1646,8 +1824,16 @@ void BattleFsm::handle_BattleFirstExtraAction(BattleContext* battleContext) {
     // 额外行动（通用机制）：只有**声明过**才跑该时点桶（官方"A行动结束之后，可以**根据效果**
     // 进行一次追加的行动"——效果是前提）。本状态同时是"跳过主流程"（嗑药/换宠/被控/死宠）
     // 的跳转目标，那条路进来时 pending 为 false → 纯空转通过，行为与引入本机制前一致。
-    if (battleContext->consume_extra_action_declaration(first_mover_id)) {
+    // 额外行动时点的分流：声明授予 → 魂印/套装/技能桶 + 被动桶；未授予/无法行动
+    // → 只有被动桶照走（死亡印记结算等"无须出手也执行"的效果不依赖授予与出手）。
+    const bool granted_first =
+        battleContext->consume_extra_action_declaration(first_mover_id);
+    const bool locked_first = battleContext->cannot_act_round[first_mover_id];
+    if (granted_first && !locked_first) {
         battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_EXTRA_ACTION);
+    } else {
+        battleContext->passive_effects.execute_at(State::BATTLE_FIRST_EXTRA_ACTION,
+                                                  first_mover_id, battleContext);
     }
     battleContext->generateState();
 }
@@ -1687,6 +1873,7 @@ void BattleFsm::handle_BattleSecondActionStart(BattleContext* battleContext) {
 void BattleFsm::handle_BattleSecondBeforeSkillHit(BattleContext* battleContext) {
     log("Battle: Second Before Skill Hit.");
     const int second_mover_id = resolve_second_mover_id(battleContext);
+    emit_before_hit_anchor(battleContext, second_mover_id);
     battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_BEFORE_SKILL_HIT);
     // 被动属性提升特性：同上（先手方同款钩位）。
     trait_pre_hit_stat_boost_hook(battleContext, second_mover_id);
@@ -1774,8 +1961,19 @@ void BattleFsm::handle_BattleSecondExtraAction(BattleContext* battleContext) {
     log("Battle: Second Extra Action.");
     const int second_mover_id = resolve_second_mover_id(battleContext);
     // 同 handle_BattleFirstExtraAction：声明过才跑桶。
-    if (battleContext->consume_extra_action_declaration(second_mover_id)) {
+    if (battleContext->cannot_act_round[second_mover_id]) {
+        battleContext->ws.extra_action_pending[second_mover_id] = false;
+        battleContext->generateState();
+        return;
+    }
+    const bool granted_second =
+        battleContext->consume_extra_action_declaration(second_mover_id);
+    const bool locked_second = battleContext->cannot_act_round[second_mover_id];
+    if (granted_second && !locked_second) {
         battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_EXTRA_ACTION);
+    } else {
+        battleContext->passive_effects.execute_at(State::BATTLE_SECOND_EXTRA_ACTION,
+                                                  second_mover_id, battleContext);
     }
     battleContext->generateState();
 }
@@ -1936,6 +2134,9 @@ void BattleFsm::handle_BattleAfterDefeatingOpponent(BattleContext* battleContext
 }
 
 void BattleFsm::handle_BattleRoundCompletion(BattleContext* battleContext) {
+    // effect 39 族"当回合无法行动"只覆盖当回合：回合完成即清
+    battleContext->cannot_act_round[0] = false;
+    battleContext->cannot_act_round[1] = false;
     log("Battle: Round Completion.");
     battleContext->execute_registered_actions(-1, State::BATTLE_ROUND_COMPLETION);
     battleContext->advanceRound();
@@ -1944,6 +2145,8 @@ void BattleFsm::handle_BattleRoundCompletion(BattleContext* battleContext) {
     battleContext->roundChoice[0][1] = -1;
     battleContext->roundChoice[1][0] = -1;
     battleContext->roundChoice[1][1] = -1;
+    battleContext->deferred_switch_slot[0] = -1;
+    battleContext->deferred_switch_slot[1] = -1;
     battleContext->set_current_player(0);
 
     // 回合首时点：执行更新器桶，刷新各魂印节点（once 复位）。

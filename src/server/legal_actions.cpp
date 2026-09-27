@@ -1,5 +1,6 @@
 #include <server/legal_actions.h>
 
+#include <db/official_data_repository.h>
 #include <entities/seer-robot.h>
 #include <entities/skills.h>
 #include <fsm/battleContext.h>
@@ -71,24 +72,21 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
         && (ctx.currentState == State::OPERATION_CHOOSE_SKILL_MEDICAMENT
             || ctx.currentState == State::CHOOSE_AFTER_DEATH);
 
+    // 没轮到 / 没在等输入 → 预提交视角：列表照给（当下快照），can_act=false。
+    // 调试台要"先给对手交换宠、再给自己交"这类自由顺序 —— 服务端的 pending
+    // 队列本来就会把提前交的动作排到轮到时再派发（见 Room::submit_action）。
+    bool prospective = false;
     if (!waiting) {
-        out.reason = "not_waiting";
-        return out;
-    }
-
-    // ⚠️ 两个时点的"轮到谁"判据**不同**，不能都用 current_player_id_：
-    //   - 选技能期：就是 current_player_id_（引擎在一方选完后 set_current_player 切另一方）。
-    //   - 死亡换宠期：谁**自己的场上精灵倒了**谁换。current_player_id_ 这时可能指向另一方
-    //     （引擎的 need_input 只看"有一方倒了"），照着它提示会让客户端去换健康那一侧的精灵，
-    //     结果精灵来回切、败方永远不换、对局打不完。
-    if (ctx.currentState == State::CHOOSE_AFTER_DEATH) {
+        prospective = true;
+    } else if (ctx.currentState == State::CHOOSE_AFTER_DEATH) {
+        // ⚠️ 死亡换宠期只等"场上精灵倒了"的那一方，判据不能都用 current_player_id_：
+        //   谁的宠物倒了谁换，照 current_player_id_ 提示会让健康一侧去换、败方永不换。
         if (!player_must_switch_pet(ctx, player)) {
             out.reason = "your_on_stage_pet_is_alive";
             return out;
         }
     } else if (ctx.current_player_id_ != player) {
-        out.reason = "not_your_turn";
-        return out;
+        prospective = true;
     }
 
     const int slot = ctx.on_stage[player];
@@ -98,8 +96,10 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
     }
     ElfPet& pet = ctx.seerRobot[player].elfPets[slot];
 
-    out.can_act = true;
-    out.must_choose_pet = (ctx.currentState == State::CHOOSE_AFTER_DEATH);
+    out.can_act = !prospective;
+    out.prospective = prospective;
+    out.reason = prospective ? "prospective" : "";
+    out.must_choose_pet = !prospective && (ctx.currentState == State::CHOOSE_AFTER_DEATH);
 
     // 技能：两个门槛都要过 —— FSM 的 operation() 先用 skill_usable 做第一道闸，
     // 通过后再用 query_selectable 做"PP/锁定"第二道（不过会回"请重选"）。
@@ -155,14 +155,20 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
     }
 
     // 药剂：与 SeerRobot::use_medicine 同口径（数量 > 0；精灵已死不能嗑）。
+    // index = 嗑药库存(按 item_id 升序)位次 —— 客户端提交 USE_MEDICINE 时原样带回。
     // 死亡换宠时点同样一律不可用（FSM 只收 CHOOSE_PET）。
     const SeerRobot& robot = ctx.seerRobot[player];
-    for (int i = 0; i < MEDICINES_SIZE; ++i) {
+    int medicine_index = 0;
+    for (const auto& [item_id, count] : robot.medicines) {
         LegalMedicine lm;
-        lm.index = i;
-        lm.type = i;
-        lm.count = robot.medicines[i];
-        lm.usable = !out.must_choose_pet && (robot.medicines[i] > 0) && (pet.hp > 0);
+        lm.index = medicine_index++;
+        lm.item_id = item_id;
+        if (auto item = official_data::OfficialDataStore::instance().repository()
+                             .load_battle_item(item_id)) {
+            lm.name = item->name;
+        }
+        lm.count = count;
+        lm.usable = !out.must_choose_pet && (count > 0) && (pet.hp > 0);
         out.medicines.push_back(std::move(lm));
     }
 

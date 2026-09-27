@@ -164,7 +164,12 @@ std::vector<SkillEffectRecord> build_skill_effects(
     for (int effect_id : effect_ids) {
         SkillEffectRecord effect;
         effect.effect_id = effect_id;
-        effect.arg_count = query_side_effect_arg_count(db, effect_id).value_or(0);
+        fill_effect_metadata(db, effect);
+        // 切片数 = side_effect.arg_count；**表缺行时**（神谕新效果段常见：2380/2428/2429、
+        // 2425~2432 整段都没有行，2026-09-25 圣莫技能组发现）用 effect_info.args_num 兜底
+        // ——否则切片长度算 0，尾部效果的参数整段饿死（带参技能效果静默 no-op）。
+        // 两表都有行时以 side_effect 为准（口径存在既存不一致，如 118/596/1154，不可互换）。
+        effect.arg_count = query_side_effect_arg_count(db, effect_id).value_or(effect.effect_args_num);
 
         if (effect.arg_count > 0) {
             const std::size_t end = std::min(flat_args.size(), arg_cursor + static_cast<std::size_t>(effect.arg_count));
@@ -173,7 +178,6 @@ std::vector<SkillEffectRecord> build_skill_effects(
             arg_cursor = end;
         }
 
-        fill_effect_metadata(db, effect);
         effects.push_back(std::move(effect));
     }
 
@@ -397,6 +401,96 @@ std::vector<LearnableMoveRecord> OfficialDataRepository::load_monster_learnable_
     return moves;
 }
 
+std::vector<int> OfficialDataRepository::load_monster_hidden_moves(int monster_id) const {
+    std::vector<int> moves;
+    if (!db_) {
+        last_error_ = "database is not open";
+        return moves;
+    }
+
+    Statement stmt(
+        db_,
+        "SELECT move_id FROM hide_moves "
+        "WHERE pet_id = ?1 "
+        "ORDER BY move_id ASC"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, monster_id)) {
+        last_error_ = sqlite3_errmsg(db_);
+        return moves;
+    }
+
+    while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+        moves.push_back(sqlite3_column_int(stmt.get(), 0));
+    }
+
+    return moves;
+}
+
+OracleMoves OfficialDataRepository::load_monster_oracle_moves(int monster_id) const {
+    OracleMoves oracle;
+    if (!db_) {
+        last_error_ = "database is not open";
+        return oracle;
+    }
+
+    // 分类判据用 moves 表的威力列（sp_hide_moves 自身无威力）：≥155 = 第五，
+    // 其余（属性位 0 / 先三 85 / 150 位）= 1~4 号槽候选。kind 列不参与分类。
+    Statement stmt(
+        db_,
+        "SELECT s.moves, COALESCE(m.power, 0) "
+        "FROM sp_hide_moves s LEFT JOIN moves m ON m.id = s.moves "
+        "WHERE s.monster = ?1 "
+        "ORDER BY s.moves ASC"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, monster_id)) {
+        last_error_ = sqlite3_errmsg(db_);
+        return oracle;
+    }
+
+    while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+        const int move_id = sqlite3_column_int(stmt.get(), 0);
+        const int power = sqlite3_column_int(stmt.get(), 1);
+        if (move_id <= 0) {
+            continue;
+        }
+        if (power >= 155) {
+            oracle.fifth_moves.push_back(move_id);
+        } else {
+            oracle.normal_moves.push_back(move_id);
+        }
+    }
+    return oracle;
+}
+
+bool OfficialDataRepository::pet_has_move_effect(int monster_id, int effect_id) const {
+    if (!db_) {
+        last_error_ = "database is not open";
+        return false;
+    }
+
+    Statement stmt(
+        db_,
+        "SELECT DISTINCT m.side_effect FROM moves m WHERE m.id IN ("
+        "  SELECT move_id FROM monster_learnable_moves WHERE monster_id = ?1"
+        "  UNION SELECT move_id FROM hide_moves WHERE pet_id = ?1"
+        "  UNION SELECT moves FROM sp_hide_moves WHERE monster = ?1"
+        ")"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, monster_id)) {
+        last_error_ = sqlite3_errmsg(db_);
+        return false;
+    }
+
+    while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+        const std::vector<int> effects =
+            parse_json_int_array(column_text(stmt.get(), 0));
+        if (std::find(effects.begin(), effects.end(), effect_id) != effects.end()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::optional<MonsterRecord> OfficialDataRepository::load_monster(int monster_id) const {
     if (!db_) {
         last_error_ = "database is not open";
@@ -445,6 +539,8 @@ std::optional<MonsterRecord> OfficialDataRepository::load_monster(int monster_id
     monster.type = components.first;
     monster.secondary_type = components.second;
     monster.learnable_moves = load_monster_learnable_moves(monster.id);
+    monster.hidden_moves = load_monster_hidden_moves(monster.id);
+    monster.oracle_moves = load_monster_oracle_moves(monster.id);
     return monster;
 }
 
@@ -522,6 +618,220 @@ std::optional<CommonTraitRecord> OfficialDataRepository::load_common_trait(int i
     return record;
 }
 
+std::optional<EquipRecord> OfficialDataRepository::load_equip(int item_id) const {
+    if (!db_) {
+        last_error_ = "database is not open";
+        return std::nullopt;
+    }
+    if (item_id <= 0) {
+        return std::nullopt;
+    }
+
+    Statement stmt(
+        db_,
+        "SELECT item_id, COALESCE(name, ''), COALESCE(quality, 0), "
+        "COALESCE(suit_id, 0), COALESCE(desc, '') "
+        "FROM equip WHERE item_id = ?1"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, item_id)) {
+        last_error_ = sqlite3_errmsg(db_);
+        return std::nullopt;
+    }
+    if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+        return std::nullopt;
+    }
+
+    EquipRecord record;
+    record.item_id = sqlite3_column_int(stmt.get(), 0);
+    record.name = column_text(stmt.get(), 1);
+    record.quality = sqlite3_column_int(stmt.get(), 2);
+    record.suit_id = sqlite3_column_int(stmt.get(), 3);
+    record.desc = column_text(stmt.get(), 4);
+    return record;
+}
+
+std::optional<SuitRecord> OfficialDataRepository::load_suit(int suit_id) const {
+    if (!db_) {
+        last_error_ = "database is not open";
+        return std::nullopt;
+    }
+    if (suit_id <= 0) {
+        return std::nullopt;
+    }
+
+    Statement stmt(
+        db_,
+        "SELECT id, COALESCE(name, ''), COALESCE(cloths, '[]'), COALESCE(suitdes, '') "
+        "FROM suit WHERE id = ?1"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, suit_id)) {
+        last_error_ = sqlite3_errmsg(db_);
+        return std::nullopt;
+    }
+    if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+        return std::nullopt;
+    }
+
+    SuitRecord record;
+    record.id = sqlite3_column_int(stmt.get(), 0);
+    record.name = column_text(stmt.get(), 1);
+    record.cloths = parse_json_int_array(column_text(stmt.get(), 2));
+    record.suitdes = column_text(stmt.get(), 3);
+    return record;
+}
+
+std::vector<EquipStatRecord> OfficialDataRepository::load_equip_stats(int item_id) const {
+    std::vector<EquipStatRecord> rows;
+    if (!db_ || item_id <= 0) {
+        return rows;
+    }
+
+    Statement stmt(
+        db_,
+        "SELECT item_id, stat_index, amount, COALESCE(add_way, 0), COALESCE(scope, 'per_piece'), "
+        "COALESCE(target_monster, 0) "
+        "FROM custom_equip_stats WHERE item_id = ?1"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, item_id)) {
+        return rows;   // custom 表可能尚未建（旧库）——视为无数值，不报错
+    }
+    while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+        EquipStatRecord row;
+        row.item_id = sqlite3_column_int(stmt.get(), 0);
+        row.stat_index = sqlite3_column_int(stmt.get(), 1);
+        row.amount = sqlite3_column_int(stmt.get(), 2);
+        row.add_way = sqlite3_column_int(stmt.get(), 3);
+        row.scope = column_text(stmt.get(), 4);
+        row.target_monster = sqlite3_column_int(stmt.get(), 5);
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+std::optional<NatureRecord> OfficialDataRepository::load_nature(int nature_id) const {
+    if (!db_ || nature_id < 0) {
+        return std::nullopt;
+    }
+
+    Statement stmt(
+        db_,
+        "SELECT id, COALESCE(name, ''), COALESCE(atk, 1.0), COALESCE(sp_atk, 1.0), "
+        "COALESCE(def, 1.0), COALESCE(sp_def, 1.0), COALESCE(spd, 1.0) "
+        "FROM nature WHERE id = ?1"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, nature_id)) {
+        return std::nullopt;   // nature 表可能尚未建（旧库）——视为无性格
+    }
+    if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+        return std::nullopt;
+    }
+
+    NatureRecord record;
+    record.id = sqlite3_column_int(stmt.get(), 0);
+    record.name = column_text(stmt.get(), 1);
+    record.mult[0] = sqlite3_column_double(stmt.get(), 2);  // 攻
+    record.mult[1] = sqlite3_column_double(stmt.get(), 3);  // 特攻
+    record.mult[2] = sqlite3_column_double(stmt.get(), 4);  // 防
+    record.mult[3] = sqlite3_column_double(stmt.get(), 5);  // 特防
+    record.mult[4] = sqlite3_column_double(stmt.get(), 6);  // 速
+    return record;
+}
+
+std::optional<MintmarkRecord> OfficialDataRepository::load_mintmark(int item_id) const {
+    if (!db_ || item_id <= 0) {
+        return std::nullopt;
+    }
+
+    Statement stmt(
+        db_,
+        "SELECT id, COALESCE(name, ''), COALESCE(effect_des, ''), COALESCE(type, 0), "
+        "COALESCE(grade, 0), COALESCE(quality, 0), COALESCE(class_id, 0), "
+        "COALESCE(arg_json, '[]'), COALESCE(base_json, '[]'), COALESCE(max_json, '[]'), "
+        "COALESCE(monster_ids, '[]'), COALESCE(hide, 0) "
+        "FROM mintmark WHERE id = ?1"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, item_id)) {
+        return std::nullopt;   // mintmark 表可能尚未建（旧库）
+    }
+    if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+        return std::nullopt;
+    }
+
+    MintmarkRecord record;
+    record.id = sqlite3_column_int(stmt.get(), 0);
+    record.name = column_text(stmt.get(), 1);
+    record.effect_des = column_text(stmt.get(), 2);
+    record.type = sqlite3_column_int(stmt.get(), 3);
+    record.grade = sqlite3_column_int(stmt.get(), 4);
+    record.quality = sqlite3_column_int(stmt.get(), 5);
+    record.class_id = sqlite3_column_int(stmt.get(), 6);
+    const auto read6 = [&](int col, std::array<int, 6>& out) {
+        const std::vector<int> v = parse_json_int_array(column_text(stmt.get(), col));
+        for (std::size_t i = 0; i < out.size() && i < v.size(); ++i) {
+            out[i] = v[i];
+        }
+    };
+    // 官方 mintmark 六维序 = [攻, 防, 特攻, 特防, 速, 体]（圣·虚无 effect_des 实测钉死：
+    // "攻击/防御/特防/速度/体力"五项 ↔ max=[55,25,0,25,35,90]——防在 index1、特攻恒 0
+    // 在 index2；圣·元素 max=[55,30,0,30,30,85] 同构印证）。⚠️ 与引擎 NumericalPropertyIndex
+    // 序 [攻,特攻,防,特防,速,体] 不同，此处重排，调用方拿到的统一是引擎序。
+    std::array<int, 6> raw_arg{}, raw_base{}, raw_max{};
+    read6(7, raw_arg);
+    read6(8, raw_base);
+    read6(9, raw_max);
+    const auto to_engine_order = [](const std::array<int, 6>& raw) {
+        return std::array<int, 6>{raw[0], raw[2], raw[1], raw[3], raw[4], raw[5]};
+    };
+    record.stat_arg = to_engine_order(raw_arg);
+    record.stat_base = to_engine_order(raw_base);
+    record.stat_max = to_engine_order(raw_max);
+    record.monster_ids = parse_json_int_array(column_text(stmt.get(), 10));
+    record.hide = sqlite3_column_int(stmt.get(), 11) != 0;
+    return record;
+}
+
+std::optional<BattleItemRecord> OfficialDataRepository::load_battle_item(int item_id) const {
+    if (!db_ || item_id <= 0) {
+        return std::nullopt;
+    }
+
+    // hp / pp / remove_mon_stat 保留 NULL 语义（官方 JSON 无该字段 = 无此效果），
+    // 不能 COALESCE 成 0——0 会和"回复 0 点"混淆，也让"带 HP 效果"判定失真。
+    Statement stmt(
+        db_,
+        "SELECT item_id, COALESCE(name, ''), COALESCE(item_type, 0), hp, pp, remove_mon_stat, "
+        "COALESCE(remove_all_mon_stat, 0), COALESCE(remove_bt_lv_down, 0), "
+        "COALESCE(bonus, 0), COALESCE(max_count, 0) "
+        "FROM battle_items WHERE item_id = ?1"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, item_id)) {
+        return std::nullopt;   // battle_items 表可能尚未建（旧库）——视为无此物品
+    }
+    if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+        return std::nullopt;
+    }
+
+    const auto column_nullable_int = [stmt = stmt.get()](int column) -> std::optional<int> {
+        if (sqlite3_column_type(stmt, column) == SQLITE_NULL) {
+            return std::nullopt;
+        }
+        return sqlite3_column_int(stmt, column);
+    };
+
+    BattleItemRecord record;
+    record.item_id = sqlite3_column_int(stmt.get(), 0);
+    record.name = column_text(stmt.get(), 1);
+    record.item_type = sqlite3_column_int(stmt.get(), 2);
+    record.hp = column_nullable_int(3);
+    record.pp = column_nullable_int(4);
+    record.remove_mon_stat = column_nullable_int(5);
+    record.remove_all_mon_stat = sqlite3_column_int(stmt.get(), 6);
+    record.remove_bt_lv_down = sqlite3_column_int(stmt.get(), 7);
+    record.bonus = sqlite3_column_double(stmt.get(), 8);
+    record.max_count = sqlite3_column_int(stmt.get(), 9);
+    return record;
+}
+
 // 去除官方富文本标记（[color=#xxx]...[/color]、[sprite name=xxx]、\n 转义）。
 std::string strip_rich_text(const std::string& raw) {
     std::string out;
@@ -556,9 +866,20 @@ std::string strip_rich_text(const std::string& raw) {
 std::optional<SoulMarkDisplayRecord> OfficialDataRepository::load_soul_mark_display_by_monster(
     int monster_id
 ) const {
+    const std::vector<SoulMarkDisplayRecord> all = load_soul_mark_displays_by_monster(monster_id);
+    if (all.empty()) {
+        return std::nullopt;
+    }
+    return all.back();   // 多版本取 icon_id 最大（= 当前版本，含神谕版）
+}
+
+std::vector<SoulMarkDisplayRecord> OfficialDataRepository::load_soul_mark_displays_by_monster(
+    int monster_id
+) const {
+    std::vector<SoulMarkDisplayRecord> rows;
     if (!db_) {
         last_error_ = "database is not open";
-        return std::nullopt;
+        return rows;
     }
 
     Statement stmt(
@@ -568,33 +889,32 @@ std::optional<SoulMarkDisplayRecord> OfficialDataRepository::load_soul_mark_disp
     );
     if (!stmt) {
         last_error_ = sqlite3_errmsg(db_);
-        return std::nullopt;
+        return rows;
     }
 
     // pet_id 是 JSON 数组字符串（如 "[4911]"），必须解析后精确比对，
-    // LIKE 匹配会把 14911 误认成 4911。多行（基础/强化版本）取 icon_id 最大。
-    std::optional<SoulMarkDisplayRecord> best;
+    // LIKE 匹配会把 14911 误认成 4911。多行（基础/强化/神谕版本）按 icon_id 升序返回。
     while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
         const std::vector<int> pet_ids = parse_json_int_array(column_text(stmt.get(), 1));
         if (std::find(pet_ids.begin(), pet_ids.end(), monster_id) == pet_ids.end()) {
             continue;
         }
-        const int icon_id = sqlite3_column_int(stmt.get(), 0);
-        if (best && best->icon_id >= icon_id) {
-            continue;
-        }
         SoulMarkDisplayRecord record;
         record.monster_id = monster_id;
-        record.icon_id = icon_id;
+        record.icon_id = sqlite3_column_int(stmt.get(), 0);
         record.effect_id = sqlite3_column_int(stmt.get(), 2);
         record.kind_tags = parse_json_int_array(column_text(stmt.get(), 3));
         record.args = parse_int_list(column_text(stmt.get(), 4));
         record.tips = column_text(stmt.get(), 5);
         record.tips_plain = strip_rich_text(record.tips);
         record.come = column_text(stmt.get(), 6);
-        best = std::move(record);
+        auto it = rows.begin();
+        while (it != rows.end() && it->icon_id < record.icon_id) {
+            ++it;
+        }
+        rows.insert(it, std::move(record));
     }
-    return best;
+    return rows;
 }
 
 std::optional<TermRecord> OfficialDataRepository::load_term(const std::string& term_name) const {

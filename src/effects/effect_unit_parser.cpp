@@ -82,6 +82,15 @@ bool parse_status_inflict_primary(const std::string& text, const std::vector<int
         if (status_ph < 0) {
             continue;
         }
+        const std::size_t close = text.find('}', brace_pos);
+        // ⚠️ 占位符后紧跟"回合" → 它是**回合数**，不是异常名：
+        //   "令对手{1}回合内属性技能无效"（2321 族）的 {1}=2 是时长，误当异常 id 施加
+        //   就会把烧伤(2)挂给对手（2026-09-27 堵煞事故）。这类"回合窗口"模板各有
+        //   专有实现/待做，本解析器不得接手。
+        if (close != std::string::npos
+            && text.compare(close + 1, std::strlen("回合"), "回合") == 0) {
+            continue;
+        }
         unit.primary_tag = PrimitiveTag::Anomaly;
         unit.target = (std::strstr(pat, "自身") != nullptr) ? 0 : 1;
         unit.param0 = arg_at(skill_args, status_ph);
@@ -89,7 +98,6 @@ bool parse_status_inflict_primary(const std::string& text, const std::vector<int
         unit.chance_value = (find_last_percent_placeholder(text, pos) >= 0)
             ? arg_at(skill_args, find_last_percent_placeholder(text, pos))
             : -1;
-        const std::size_t close = text.find('}', brace_pos);
         consumed_end = close != std::string::npos ? close + 1 : text.size();
         return true;
     }
