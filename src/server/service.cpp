@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <mutex>
 #include <thread>
 
 namespace server {

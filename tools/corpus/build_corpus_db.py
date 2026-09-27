@@ -10,6 +10,9 @@ FTS5 全文索引 + 别名表。2026-09-27 开工（docs：控制台状态显示
 - idx = all_posts_final.jsonl 的 **0-based 行号**——全库文档引用（idx=51 艾欧丽娅、
   idx=59 格劳恩斯）即此约定，已实测对齐。
 - 别名表带出处（source），错别名可回溯——符合"口径要有证词"的仓库文化。
+- 别名解析三规则（用户 2026-09-28）：①同名子串别名一般指序号大者；②"id 远大于 5000"
+  是皮肤/boss 序号不理会；③图鉴漏记的新宠以 unity 库 monsters.def_name 为准
+  （小写 def_name 与旧 DefName 混用——首版盘点名字全空即此因）。
 - 向量层留了接口没上模型：语料 479 篇规模下 FTS5+别名覆盖 80%，等跨措辞
   检索需求真出现了再加 sqlite-vec/嵌入列（见工单讨论 2026-09-27）。
 
@@ -97,6 +100,20 @@ def build(db_path: Path, jsonl_path: Path) -> None:
         "INSERT OR REPLACE INTO alias(nickname, canonical, pet_id, source) VALUES(?,?,?,?)",
         [(norm(nick), cano, pid, src) for cano, pid, nick, src in SEED_ALIASES],
     )
+    # 人工过目后的正式别名库（aliases_confirmed.json：用户批注 + 扫描 strong，见该文件头）。
+    # 这是**持久真相源**——build 重建 DB 时自动带上；临时试验用 alias-add（DB 重建会丢）。
+    confirmed_path = Path(__file__).parent / "aliases_confirmed.json"
+    if confirmed_path.exists():
+        conf = json.load(open(confirmed_path, encoding="utf-8"))
+        con.executemany(
+            "INSERT OR REPLACE INTO alias(nickname, canonical, pet_id, source) VALUES(?,?,?,?)",
+            [(norm(a["nickname"]), a["canonical"], a.get("pet_id"),
+              "confirmed:" + (a.get("sources") or ["?"])[0]) for a in conf["aliases"]],
+        )
+        n_alias = con.execute("SELECT COUNT(*) FROM alias").fetchone()[0]
+        print(f"建库完成 {db_path}: 文章 {len(rows)} 篇, 别名 {n_alias} 条（含 confirmed {len(conf['aliases'])}）")
+        con.commit()
+        return
     con.commit()
     n_alias = con.execute("SELECT COUNT(*) FROM alias").fetchone()[0]
     print(f"建库完成 {db_path}: 文章 {len(rows)} 篇, 别名 {n_alias} 条")

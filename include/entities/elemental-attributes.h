@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <memory>
+#include <string>
+#include <vector>
 
 // #include <db/db_service.h>
 

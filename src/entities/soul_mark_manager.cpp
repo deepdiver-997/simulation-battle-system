@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <mutex>
+#include <shared_mutex>
 #include <vector>
 
 #if defined(_WIN32) || defined(_WIN64)

@@ -1,0 +1,1311 @@
+{
+ "generated": "2026-09-27",
+ "note": "confirmed = 用户人工标注(过目即确认) + 扫描strong候选；weak/歧义未入库；解析规则（用户 2026-09-28）：①同名子串别名一般指序号大的（飞王=擎空·凡尔斯3697，小飞王=凡尔斯2988）；②id 远大于 5000 是皮肤/boss 序号不理会（如 5772=尤莉米特皮肤、1400576=生灵愈梦·克丽娅）",
+ "aliases": [
+  {
+   "nickname": "谱尼",
+   "canonical": "圣灵谱尼",
+   "pet_id": 5000,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：现在谱尼都是指5000，无论pve还是pvp"
+  },
+  {
+   "nickname": "神盖亚",
+   "canonical": "灭战神决·盖亚",
+   "pet_id": 4766,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：一般指4766这个形态"
+  },
+  {
+   "nickname": "明王",
+   "canonical": "大威势明王",
+   "pet_id": 3237,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：3237最多，他的魂印是死亡消回合"
+  },
+  {
+   "nickname": "寂灭",
+   "canonical": "凛戾·寂灭魔神",
+   "pet_id": 3924,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户写3927——DB 查证 3927=极炎魔兽，判为笔误，3924=凛戾·寂灭魔神"
+  },
+  {
+   "nickname": "苍月",
+   "canonical": "冥王·苍月影",
+   "pet_id": 3507,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：指3507"
+  },
+  {
+   "nickname": "大表哥",
+   "canonical": "帝皇之钺",
+   "pet_id": 3404,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：星皇的两个半年费"
+  },
+  {
+   "nickname": "大表姐",
+   "canonical": "帝皇之御",
+   "pet_id": 3512,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：星皇的两个半年费"
+  },
+  {
+   "nickname": "奥斯卡",
+   "canonical": "圣灵守护奥斯卡",
+   "pet_id": 3425,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：奥斯卡指圣灵守护奥斯卡，获新技能强化后被较多提及"
+  },
+  {
+   "nickname": "犀牛",
+   "canonical": "不灭地威·萨瑞卡",
+   "pet_id": 3637,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "草王",
+   "canonical": "芳馨·茉蕊儿",
+   "pet_id": 3613,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "混凝土",
+   "canonical": "混灵·莱茵哈特",
+   "pet_id": 4287,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "古王",
+   "canonical": "洪荒·列奥尼达",
+   "pet_id": 4125,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "古龙",
+   "canonical": "乔列尼德",
+   "pet_id": 3524,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "龙王",
+   "canonical": "镇世·乔特鲁德",
+   "pet_id": 4186,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：镇世·乔特鲁德（另一义，非哈莫雷特）"
+  },
+  {
+   "nickname": "白龙",
+   "canonical": "镇世·乔特鲁德",
+   "pet_id": 4186,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：白龙是镇世·乔特鲁德，也有叫龙妈的"
+  },
+  {
+   "nickname": "龙妈",
+   "canonical": "镇世·乔特鲁德",
+   "pet_id": 4186,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户"
+  },
+  {
+   "nickname": "秘王",
+   "canonical": "神觉·米斯蒂克",
+   "pet_id": 4676,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "密王",
+   "canonical": "神觉·米斯蒂克",
+   "pet_id": 4676,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "战螳螂",
+   "canonical": "战之狂热·英卡洛斯",
+   "pet_id": 3586,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "注意与 3577 光之惩戒·英卡洛斯区分"
+  },
+  {
+   "nickname": "黑椰子",
+   "canonical": "混沌魔尊",
+   "pet_id": 3683,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "哈基米",
+   "canonical": "讳迹·米修莉",
+   "pet_id": 4808,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "哈吉米",
+   "canonical": "讳迹·米修莉",
+   "pet_id": 4808,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "大姐",
+   "canonical": "斯布林蒂",
+   "pet_id": 4600,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：大姐就是斯布林蒂"
+  },
+  {
+   "nickname": "大姐猪",
+   "canonical": "库坦",
+   "pet_id": 4503,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：猪指库坦"
+  },
+  {
+   "nickname": "老灯",
+   "canonical": "孤烛灯使",
+   "pet_id": 4620,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "DB def_name=孤烛灯使（用户口述'孤独灯使'）"
+  },
+  {
+   "nickname": "次王",
+   "canonical": "不羁·弗里德",
+   "pet_id": 3627,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "机王",
+   "canonical": "马尔修斯（攻防）",
+   "pet_id": 3393,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户指定 3393"
+  },
+  {
+   "nickname": "爬哈",
+   "canonical": "战龙哈莫",
+   "pet_id": 3046,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "常妈",
+   "canonical": "艾夏拉",
+   "pet_id": 3673,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "贝妹",
+   "canonical": "贝狄薇尔",
+   "pet_id": 4184,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "红牛",
+   "canonical": "撼地之力坎贝尔",
+   "pet_id": 4215,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "努恩",
+   "canonical": "浩渺之源·努恩",
+   "pet_id": 4239,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：4399图鉴漏了，DB 有——查证属实"
+  },
+  {
+   "nickname": "克丽娅",
+   "canonical": "愈灵·克丽娅",
+   "pet_id": 4135,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "DB 4135"
+  },
+  {
+   "nickname": "尤利米特",
+   "canonical": "尤莉米特",
+   "pet_id": 4364,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户写4623——DB 4623=裂岩·艾克特希，4364=尤莉米特，按 DB"
+  },
+  {
+   "nickname": "尤莉米特",
+   "canonical": "尤莉米特",
+   "pet_id": 4364,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "堕迹",
+   "canonical": "堕息·迹",
+   "pet_id": 4532,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "白莲花",
+   "canonical": "凌波清芙",
+   "pet_id": 3888,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：就是这两个芙"
+  },
+  {
+   "nickname": "黑莲花",
+   "canonical": "缥缈幽芙",
+   "pet_id": 4069,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：就是这两个芙"
+  },
+  {
+   "nickname": "锁",
+   "canonical": "混沌魔君索伦森",
+   "pet_id": 3414,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：与犀牛并列的圣莫拦截手=索伦森"
+  },
+  {
+   "nickname": "扎克斯",
+   "canonical": "湮灭之主·咤克斯",
+   "pet_id": 4762,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：就是湮灭之主·咤克斯"
+  },
+  {
+   "nickname": "东辉",
+   "canonical": "天奔流·东辉",
+   "pet_id": 4422,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "臭虫",
+   "canonical": "坦普瑞",
+   "pet_id": 4387,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": ""
+  },
+  {
+   "nickname": "王哈",
+   "canonical": "王之哈莫",
+   "pet_id": 3022,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：王之哈莫简称王哈"
+  },
+  {
+   "nickname": "龙哈",
+   "canonical": "龙神哈莫",
+   "pet_id": 3809,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：龙神哈莫则是龙哈"
+  },
+  {
+   "nickname": "孙十万",
+   "canonical": "小霸王·孙策",
+   "pet_id": 3823,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：好像是（弱确认）"
+  },
+  {
+   "nickname": "圣拳",
+   "canonical": "无极圣武",
+   "pet_id": 4800,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-27-md批注"
+   ],
+   "evidence": "用户：无极圣武前身叫永恒圣拳（25年国庆大R）"
+  },
+  {
+   "nickname": "嬴政",
+   "canonical": "始皇帝·嬴政",
+   "pet_id": 4468,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx25",
+    "corpus:idx27",
+    "corpus:idx28",
+    "corpus:idx51",
+    "corpus:idx60",
+    "corpus:idx61",
+    "corpus:idx149",
+    "corpus:idx157",
+    "corpus:idx164",
+    "corpus:idx180",
+    "corpus:idx183",
+    "corpus:idx225",
+    "corpus:idx246",
+    "corpus:idx393",
+    "corpus:idx401",
+    "corpus:idx443",
+    "corpus:idx451",
+    "corpus:idx459"
+   ],
+   "evidence": "那么嬴政的君命就无法影响到机盖的恢复体力，就会判定嬴政死亡"
+  },
+  {
+   "nickname": "帝君",
+   "canonical": "天启帝君",
+   "pet_id": 3550,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx33",
+    "corpus:idx57",
+    "corpus:idx69",
+    "corpus:idx73",
+    "corpus:idx94",
+    "corpus:idx98",
+    "corpus:idx129",
+    "corpus:idx148",
+    "corpus:idx149",
+    "corpus:idx165",
+    "corpus:idx166",
+    "corpus:idx186",
+    "corpus:idx193",
+    "corpus:idx296",
+    "corpus:idx316",
+    "corpus:idx334",
+    "corpus:idx410",
+    "corpus:idx432",
+    "corpus:idx438",
+    "corpus:idx451",
+    "corpus:idx465",
+    "corpus:idx467",
+    "corpus:idx473"
+   ],
+   "evidence": "击杀控的魂免精灵并不多(贞德，爬哈，启灵，青丘，龙尊超进化，蝶子，灵尊，机王和三个无条件免控圣普，帝君，战螳螂)"
+  },
+  {
+   "nickname": "灵神",
+   "canonical": "圣光灵神",
+   "pet_id": 3311,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx11",
+    "corpus:idx45",
+    "corpus:idx57",
+    "corpus:idx62",
+    "corpus:idx129",
+    "corpus:idx140",
+    "corpus:idx165",
+    "corpus:idx166",
+    "corpus:idx224",
+    "corpus:idx225",
+    "corpus:idx287",
+    "corpus:idx332",
+    "corpus:idx339",
+    "corpus:idx410",
+    "corpus:idx432",
+    "corpus:idx439",
+    "corpus:idx440",
+    "corpus:idx443",
+    "corpus:idx465",
+    "corpus:idx472"
+   ],
+   "evidence": "对于复活效果也带有死亡时或者死亡后复活不会受到影响，比如灵神等魂印免死精灵和技能免死"
+  },
+  {
+   "nickname": "重生",
+   "canonical": "重生之翼",
+   "pet_id": 2987,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx47",
+    "corpus:idx53",
+    "corpus:idx60",
+    "corpus:idx69",
+    "corpus:idx129",
+    "corpus:idx147",
+    "corpus:idx149",
+    "corpus:idx165",
+    "corpus:idx166",
+    "corpus:idx180",
+    "corpus:idx225",
+    "corpus:idx241",
+    "corpus:idx246",
+    "corpus:idx251",
+    "corpus:idx252",
+    "corpus:idx268",
+    "corpus:idx272",
+    "corpus:idx274",
+    "corpus:idx287",
+    "corpus:idx288",
+    "corpus:idx289",
+    "corpus:idx339",
+    "corpus:idx406",
+    "corpus:idx410",
+    "corpus:idx431",
+    "corpus:idx437",
+    "corpus:idx439",
+    "corpus:idx440",
+    "corpus:idx452",
+    "corpus:idx463",
+    "corpus:idx465",
+    "corpus:idx466",
+    "corpus:idx470"
+   ],
+   "evidence": "（目前重生、暗王、嬴政不能让女神获得狩杀之魂，后续将会修复）"
+  },
+  {
+   "nickname": "暗王",
+   "canonical": "混沌暗王霍德尔",
+   "pet_id": 3941,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx19",
+    "corpus:idx129",
+    "corpus:idx186",
+    "corpus:idx210",
+    "corpus:idx246",
+    "corpus:idx357",
+    "corpus:idx358",
+    "corpus:idx391",
+    "corpus:idx473"
+   ],
+   "evidence": "说白了就是能给暗王5根、水王8水、草王3芯、古王5晷、古龙5威、火电3痕、圣逼6霆、冰王3魄、混地4嶂、圣莫5律"
+  },
+  {
+   "nickname": "混地",
+   "canonical": "混沌地王莱茵哈特",
+   "pet_id": 3516,
+   "type": "short",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx19",
+    "corpus:idx68",
+    "corpus:idx77",
+    "corpus:idx113",
+    "corpus:idx116",
+    "corpus:idx149",
+    "corpus:idx183",
+    "corpus:idx189",
+    "corpus:idx190",
+    "corpus:idx192",
+    "corpus:idx219"
+   ],
+   "evidence": "如果不存在这些护盾，混地被破盾是不会触发后续的粉伤和次数减伤"
+  },
+  {
+   "nickname": "水王",
+   "canonical": "怒涛·沧岚",
+   "pet_id": 3740,
+   "type": "short",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx7",
+    "corpus:idx19",
+    "corpus:idx41",
+    "corpus:idx43",
+    "corpus:idx97",
+    "corpus:idx190",
+    "corpus:idx207",
+    "corpus:idx263",
+    "corpus:idx264",
+    "corpus:idx265",
+    "corpus:idx267",
+    "corpus:idx269",
+    "corpus:idx334",
+    "corpus:idx338",
+    "corpus:idx466"
+   ],
+   "evidence": "【机制解析—怒涛·沧岚（神谕）】这个神谕加强给了水王一个全新效果无视免疫攻击伤害效果"
+  },
+  {
+   "nickname": "冰王",
+   "canonical": "极度冰凌·阿克希亚",
+   "pet_id": 4942,
+   "type": "short",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx19",
+    "corpus:idx24",
+    "corpus:idx40",
+    "corpus:idx79",
+    "corpus:idx81",
+    "corpus:idx83",
+    "corpus:idx97",
+    "corpus:idx98",
+    "corpus:idx99",
+    "corpus:idx100",
+    "corpus:idx101",
+    "corpus:idx222",
+    "corpus:idx265",
+    "corpus:idx266",
+    "corpus:idx267"
+   ],
+   "evidence": "这周冰王修复BUG还修出另外一个问题，0魄冰王使用属性技能不能令对手"
+  },
+  {
+   "nickname": "虫母",
+   "canonical": "埃斯宾诺",
+   "pet_id": 4866,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx48",
+    "corpus:idx68"
+   ],
+   "evidence": "【机制解析—埃斯宾诺】涉及到双方pp总和都是默认指当前pp，虫母"
+  },
+  {
+   "nickname": "二姐",
+   "canonical": "萨芙凯特",
+   "pet_id": 4604,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx97",
+    "corpus:idx386"
+   ],
+   "evidence": "【机制解析—萨夫凯特】三姐妹，人称二姐。大姐的定位是辅助，二姐的定位是主力"
+  },
+  {
+   "nickname": "挚友",
+   "canonical": "玛洛迪斯",
+   "pet_id": 3739,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx134",
+    "corpus:idx136",
+    "corpus:idx137",
+    "corpus:idx138",
+    "corpus:idx139"
+   ],
+   "evidence": "【机制解析—玛洛迪斯&飞廉】印记会记录挚友获得的临时体力上限值"
+  },
+  {
+   "nickname": "表姐",
+   "canonical": "帝皇之御",
+   "pet_id": 3512,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx56",
+    "corpus:idx65",
+    "corpus:idx101",
+    "corpus:idx166",
+    "corpus:idx180",
+    "corpus:idx350",
+    "corpus:idx379",
+    "corpus:idx405",
+    "corpus:idx406",
+    "corpus:idx410",
+    "corpus:idx411",
+    "corpus:idx449",
+    "corpus:idx472",
+    "corpus:idx474"
+   ],
+   "evidence": "就举例多个表姐，苍星锁定“守御八方”，那么其余表姐也无法使用这个自爆技能"
+  },
+  {
+   "nickname": "机盖",
+   "canonical": "圣甲·盖亚",
+   "pet_id": 3056,
+   "type": "short",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx33",
+    "corpus:idx69",
+    "corpus:idx101",
+    "corpus:idx149",
+    "corpus:idx150",
+    "corpus:idx157",
+    "corpus:idx165",
+    "corpus:idx190",
+    "corpus:idx228",
+    "corpus:idx277",
+    "corpus:idx308",
+    "corpus:idx379",
+    "corpus:idx393",
+    "corpus:idx399",
+    "corpus:idx401",
+    "corpus:idx410",
+    "corpus:idx416",
+    "corpus:idx431",
+    "corpus:idx437",
+    "corpus:idx443",
+    "corpus:idx463",
+    "corpus:idx465",
+    "corpus:idx466",
+    "corpus:idx467"
+   ],
+   "evidence": "【机制解析—圣甲盖亚】具体讲一下机盖的弹伤时点就行了"
+  },
+  {
+   "nickname": "薇",
+   "canonical": "薇尔诗",
+   "pet_id": 4000,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx13",
+    "corpus:idx30",
+    "corpus:idx46",
+    "corpus:idx52",
+    "corpus:idx53",
+    "corpus:idx54",
+    "corpus:idx55",
+    "corpus:idx56",
+    "corpus:idx57",
+    "corpus:idx477"
+   ],
+   "evidence": "【机制解析—薇尔诗】“黄金万象”，薇死亡时给己方存活精灵附加"
+  },
+  {
+   "nickname": "坤坤",
+   "canonical": "灵·辰坤星魂",
+   "pet_id": 3983,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx19",
+    "corpus:idx97",
+    "corpus:idx101",
+    "corpus:idx126",
+    "corpus:idx141",
+    "corpus:idx147",
+    "corpus:idx233"
+   ],
+   "evidence": "【机制解析—灵·辰坤星魂（羁绊）】掉命后的坤坤减伤反而变高了"
+  },
+  {
+   "nickname": "天尊",
+   "canonical": "混元天尊",
+   "pet_id": 3788,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx21",
+    "corpus:idx33",
+    "corpus:idx69",
+    "corpus:idx73",
+    "corpus:idx117",
+    "corpus:idx124",
+    "corpus:idx127",
+    "corpus:idx129",
+    "corpus:idx165",
+    "corpus:idx166",
+    "corpus:idx190",
+    "corpus:idx293",
+    "corpus:idx295",
+    "corpus:idx322",
+    "corpus:idx416",
+    "corpus:idx438",
+    "corpus:idx450",
+    "corpus:idx465",
+    "corpus:idx466",
+    "corpus:idx467",
+    "corpus:idx468",
+    "corpus:idx470",
+    "corpus:idx471",
+    "corpus:idx472"
+   ],
+   "evidence": "辛将代替承受己方混元天尊所受非真实伤害的60%；天尊被击败时"
+  },
+  {
+   "nickname": "玄武",
+   "canonical": "万世北溟·玄武",
+   "pet_id": 3308,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx422",
+    "corpus:idx424"
+   ],
+   "evidence": "【机制解析—万世北溟·玄武】目前你赛的魂印即时插入结算的效果就三个：六界帝神，贞德，玄武"
+  },
+  {
+   "nickname": "女神",
+   "canonical": "阿尔忒弥斯",
+   "pet_id": 4745,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx246",
+    "corpus:idx248"
+   ],
+   "evidence": "目前可以享受到魂印击败类效果，部分魂印击败类细节将单独说明，女神可以获得狩杀之魂"
+  },
+  {
+   "nickname": "魔灵王",
+   "canonical": "魔灵王·斯摩亚蒂",
+   "pet_id": 3541,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx53",
+    "corpus:idx74",
+    "corpus:idx77",
+    "corpus:idx79",
+    "corpus:idx413",
+    "corpus:idx432",
+    "corpus:idx476"
+   ],
+   "evidence": "魔灵王目前被2个bug拉低强度，但实际上有这些bug的情况下强度依然还在"
+  },
+  {
+   "nickname": "克雷",
+   "canonical": "克雷弗德",
+   "pet_id": 4644,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx21",
+    "corpus:idx157",
+    "corpus:idx243",
+    "corpus:idx293"
+   ],
+   "evidence": "比如星皇和空元的二段就写明了需要使用技能，克雷写明需要选择技能"
+  },
+  {
+   "nickname": "老头",
+   "canonical": "无为觉者",
+   "pet_id": 4661,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx56",
+    "corpus:idx73",
+    "corpus:idx135",
+    "corpus:idx178",
+    "corpus:idx179",
+    "corpus:idx180",
+    "corpus:idx273",
+    "corpus:idx293",
+    "corpus:idx302"
+   ],
+   "evidence": "通过使用技能来触发自带的唱词效果，必须是依靠魂印触发，类似于老头的无为"
+  },
+  {
+   "nickname": "无为",
+   "canonical": "无为觉者",
+   "pet_id": 4661,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx60",
+    "corpus:idx68",
+    "corpus:idx129",
+    "corpus:idx135",
+    "corpus:idx178",
+    "corpus:idx257",
+    "corpus:idx312"
+   ],
+   "evidence": "6层重生击败清层是神耀印记、无为的万象乖离清层也是印记效果、嬴政的玉玺清层"
+  },
+  {
+   "nickname": "星皇",
+   "canonical": "瀚宇星皇",
+   "pet_id": 3291,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx21",
+    "corpus:idx55",
+    "corpus:idx57",
+    "corpus:idx58",
+    "corpus:idx64",
+    "corpus:idx69",
+    "corpus:idx73",
+    "corpus:idx99",
+    "corpus:idx113",
+    "corpus:idx117",
+    "corpus:idx127",
+    "corpus:idx129",
+    "corpus:idx131",
+    "corpus:idx132",
+    "corpus:idx138",
+    "corpus:idx165",
+    "corpus:idx166",
+    "corpus:idx190",
+    "corpus:idx225",
+    "corpus:idx241",
+    "corpus:idx242",
+    "corpus:idx243",
+    "corpus:idx244",
+    "corpus:idx250",
+    "corpus:idx269",
+    "corpus:idx299",
+    "corpus:idx303",
+    "corpus:idx314",
+    "corpus:idx315",
+    "corpus:idx319",
+    "corpus:idx329",
+    "corpus:idx341",
+    "corpus:idx364",
+    "corpus:idx369",
+    "corpus:idx381",
+    "corpus:idx382",
+    "corpus:idx389",
+    "corpus:idx399",
+    "corpus:idx401",
+    "corpus:idx403",
+    "corpus:idx410",
+    "corpus:idx416",
+    "corpus:idx428",
+    "corpus:idx438",
+    "corpus:idx439",
+    "corpus:idx444",
+    "corpus:idx450",
+    "corpus:idx451",
+    "corpus:idx456",
+    "corpus:idx465",
+    "corpus:idx466",
+    "corpus:idx467",
+    "corpus:idx469",
+    "corpus:idx470",
+    "corpus:idx471",
+    "corpus:idx472",
+    "corpus:idx473",
+    "corpus:idx474"
+   ],
+   "evidence": "新弹控直接让星皇、脱皮天尊和其他免弱精灵不敢随便中切混地了"
+  },
+  {
+   "nickname": "启灵",
+   "canonical": "启灵元神",
+   "pet_id": 3986,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx11",
+    "corpus:idx25",
+    "corpus:idx27",
+    "corpus:idx45",
+    "corpus:idx57",
+    "corpus:idx69",
+    "corpus:idx73",
+    "corpus:idx157",
+    "corpus:idx268",
+    "corpus:idx345",
+    "corpus:idx353",
+    "corpus:idx354",
+    "corpus:idx392",
+    "corpus:idx395",
+    "corpus:idx407",
+    "corpus:idx438",
+    "corpus:idx459",
+    "corpus:idx462",
+    "corpus:idx467"
+   ],
+   "evidence": "5.免炸背包效果，比如启灵、武心婵、娜诺"
+  },
+  {
+   "nickname": "乌拉",
+   "canonical": "乌拉诺斯",
+   "pet_id": 4126,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx25",
+    "corpus:idx27",
+    "corpus:idx57",
+    "corpus:idx94",
+    "corpus:idx126",
+    "corpus:idx129",
+    "corpus:idx132",
+    "corpus:idx179",
+    "corpus:idx190",
+    "corpus:idx192",
+    "corpus:idx270",
+    "corpus:idx467"
+   ],
+   "evidence": "启灵、乌拉、嬴政、梅赫威特、斯布林蒂、格斯塔斯、贝狄威尔"
+  },
+  {
+   "nickname": "帝皇侠",
+   "canonical": "帝皇铠甲",
+   "pet_id": 4930,
+   "type": "short",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx10",
+    "corpus:idx11",
+    "corpus:idx13",
+    "corpus:idx477",
+    "corpus:idx478"
+   ],
+   "evidence": "黑椰子能让诅咒控场变成100或者0%，完美的避开梅和帝皇侠的挂印记检测"
+  },
+  {
+   "nickname": "蓓",
+   "canonical": "蓓丽安特",
+   "pet_id": 4643,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx56",
+    "corpus:idx57",
+    "corpus:idx58",
+    "corpus:idx149",
+    "corpus:idx243",
+    "corpus:idx293"
+   ],
+   "evidence": "比如蓓的星执、涂蝶的慕、玛洛迪斯的树海"
+  },
+  {
+   "nickname": "奥菲",
+   "canonical": "奥菲利娅",
+   "pet_id": 4706,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx51",
+    "corpus:idx52",
+    "corpus:idx53",
+    "corpus:idx54",
+    "corpus:idx55",
+    "corpus:idx57",
+    "corpus:idx58",
+    "corpus:idx60",
+    "corpus:idx69",
+    "corpus:idx83",
+    "corpus:idx84",
+    "corpus:idx94",
+    "corpus:idx129",
+    "corpus:idx130",
+    "corpus:idx135",
+    "corpus:idx179",
+    "corpus:idx201",
+    "corpus:idx215",
+    "corpus:idx225",
+    "corpus:idx243",
+    "corpus:idx253",
+    "corpus:idx254",
+    "corpus:idx255",
+    "corpus:idx258",
+    "corpus:idx264",
+    "corpus:idx265",
+    "corpus:idx267",
+    "corpus:idx271",
+    "corpus:idx272",
+    "corpus:idx278",
+    "corpus:idx477"
+   ],
+   "evidence": "赫斯提亚（灼火）、梅赫维特（曝）、神罗（裂缝）、奥菲（支援）"
+  },
+  {
+   "nickname": "神罗",
+   "canonical": "弑序神罗",
+   "pet_id": 4169,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx129",
+    "corpus:idx132",
+    "corpus:idx149",
+    "corpus:idx188",
+    "corpus:idx234",
+    "corpus:idx235",
+    "corpus:idx327",
+    "corpus:idx346",
+    "corpus:idx347",
+    "corpus:idx432",
+    "corpus:idx450",
+    "corpus:idx462",
+    "corpus:idx465",
+    "corpus:idx466",
+    "corpus:idx467",
+    "corpus:idx471",
+    "corpus:idx472",
+    "corpus:idx473"
+   ],
+   "evidence": "赫斯提亚（灼火）、梅赫维特（曝）、神罗（裂缝）、奥菲（支援）"
+  },
+  {
+   "nickname": "苍星",
+   "canonical": "逐界苍星",
+   "pet_id": 4450,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx97",
+    "corpus:idx101",
+    "corpus:idx129",
+    "corpus:idx132",
+    "corpus:idx176",
+    "corpus:idx180",
+    "corpus:idx334",
+    "corpus:idx422",
+    "corpus:idx433"
+   ],
+   "evidence": "还有不包含“死亡下场”的效果和额外精灵（乔特鲁德的黑白龙），比如克罗、乌拉、苍星"
+  },
+  {
+   "nickname": "克罗",
+   "canonical": "万神寂灭·克罗诺斯",
+   "pet_id": 3443,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx54",
+    "corpus:idx57",
+    "corpus:idx129",
+    "corpus:idx132",
+    "corpus:idx165",
+    "corpus:idx234",
+    "corpus:idx383",
+    "corpus:idx423",
+    "corpus:idx425",
+    "corpus:idx426",
+    "corpus:idx467",
+    "corpus:idx472",
+    "corpus:idx473"
+   ],
+   "evidence": "说实话克罗的封属绑定谁，这个一直都是不确定的，我个人认为是绑定克罗自己的"
+  },
+  {
+   "nickname": "伽玛姥爷",
+   "canonical": "伽玛星魂",
+   "pet_id": 3896,
+   "type": "slang",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx228",
+    "corpus:idx235",
+    "corpus:idx236"
+   ],
+   "evidence": "伽玛姥爷说白了就是针对带有暴击效果的精灵"
+  },
+  {
+   "nickname": "帝佛",
+   "canonical": "帝天战佛",
+   "pet_id": 3033,
+   "type": "short",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx129",
+    "corpus:idx272",
+    "corpus:idx374",
+    "corpus:idx422",
+    "corpus:idx453",
+    "corpus:idx456",
+    "corpus:idx460",
+    "corpus:idx466",
+    "corpus:idx476"
+   ],
+   "evidence": "【机制解析—帝天战佛＆不动明王】帝佛的魂印触发必须满足第一条，不然会出现帝佛被跳的现象"
+  },
+  {
+   "nickname": "邪魇",
+   "canonical": "圣谕邪魇",
+   "pet_id": 4554,
+   "type": "abbrev",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx166",
+    "corpus:idx180",
+    "corpus:idx181",
+    "corpus:idx432"
+   ],
+   "evidence": "同样都是魂免效果，为什么邪魇不能免疫主动毒，但圣普可以呢"
+  },
+  {
+   "nickname": "圣普",
+   "canonical": "圣灵谱尼",
+   "pet_id": 5000,
+   "type": "short",
+   "confidence": "scan-strong",
+   "sources": [
+    "corpus:idx41",
+    "corpus:idx68",
+    "corpus:idx171",
+    "corpus:idx180",
+    "corpus:idx181",
+    "corpus:idx278",
+    "corpus:idx295",
+    "corpus:idx316",
+    "corpus:idx354",
+    "corpus:idx428",
+    "corpus:idx451",
+    "corpus:idx460",
+    "corpus:idx466",
+    "corpus:idx467",
+    "corpus:idx473"
+   ],
+   "evidence": "如果受到了回合开始之前，或者回合开始（看挑战方）的伤害效果，圣普触发轮回之后会把自己的体力值返回至0血"
+  },
+  {
+   "nickname": "无烬",
+   "canonical": "魂王·无烬梦",
+   "pet_id": 3830,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-28-md指认"
+   ],
+   "evidence": "用户指认 3830（序号大的规则实证：3374=无烬魂王为旧体）"
+  },
+  {
+   "nickname": "飞王",
+   "canonical": "擎空·凡尔斯",
+   "pet_id": 3697,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-28-md指认"
+   ],
+   "evidence": "用户规则示例"
+  },
+  {
+   "nickname": "小飞王",
+   "canonical": "凡尔斯",
+   "pet_id": 2988,
+   "confidence": "user-confirmed",
+   "sources": [
+    "user:2026-09-28-md指认"
+   ],
+   "evidence": "用户规则示例"
+  }
+ ]
+}

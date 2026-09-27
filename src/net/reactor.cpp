@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <mutex>
 #include <vector>
 
 #if !defined(_WIN32)

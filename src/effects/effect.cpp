@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iostream>
 #include <mutex>
+#include <shared_mutex>
 #include <unordered_set>
 
 #if defined(_WIN32) || defined(_WIN64)

@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <mutex>
+#include <shared_mutex>
 #include <vector>
 
 #include <plugin/core_api.h>

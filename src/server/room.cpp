@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <exception>
+#include <mutex>
 #include <string>
 
 namespace server {
