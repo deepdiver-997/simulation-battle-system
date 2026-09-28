@@ -19,6 +19,7 @@ Import Seer Unity decoded JSON into SQLite (official structure).
 from __future__ import annotations
 
 import json
+import re
 import os
 import sqlite3
 from pathlib import Path
@@ -462,16 +463,6 @@ CREATE TABLE IF NOT EXISTS title_stats (
     UNIQUE(name)
 );
 """
-
-SEED_TITLES = [
-    # 工作值样例（量级对标战队 15/30 与刻印 55-90 之间），全部待游戏内核准。
-    {"id": 1, "name": "巅峰王者", "hp": 30, "atk": 10, "sp_atk": 10, "def": 10,
-     "sp_def": 10, "spd": 10, "target_monster": 0, "memo": "工作值待校（巅峰之战赛季奖励类通用称号样例）"},
-    {"id": 2, "name": "星际旅行者", "hp": 20, "atk": 0, "sp_atk": 0, "def": 0,
-     "sp_def": 0, "spd": 15, "target_monster": 0, "memo": "工作值待校（探索类通用称号样例，部分项为 0）"},
-    {"id": 3, "name": "正义圣使", "hp": 40, "atk": 25, "sp_atk": 25, "def": 0,
-     "sp_def": 0, "spd": 0, "target_monster": 2987, "memo": "工作值待校（重生之翼 2987 专属称号，社区实锤存在专属称号机制）"},
-]
 
 
 def import_moves(conn: sqlite3.Connection) -> int:
@@ -1026,22 +1017,69 @@ def import_nature(conn: sqlite3.Connection) -> int:
     return n
 
 
+def parse_title_abtext(abtext: str):
+    """官方称号加成文本 → 引擎序六维 [攻,特攻,防,特防,速,体]。
+    形态："攻击+40，特攻+40，防御+20，特防+20" / "全属性+10" / "体力+10，速度+12"；
+    百分比项（如"暴击几率+10%"）非六维面板 → 忽略并记入 memo。"""
+    stats = [0] * 6
+    skipped = []
+    key_map = {"攻击": 0, "特攻": 1, "防御": 2, "特防": 3, "速度": 4, "体力": 5}
+    for part in abtext.replace("，", ",").replace("、", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r"^(全属性|攻击|特攻|防御|特防|速度|体力)\+(\d+)(%?)$", part)
+        if not m:
+            skipped.append(part)
+            continue
+        name, num, pct = m.group(1), int(m.group(2)), m.group(3)
+        if pct:
+            skipped.append(part)   # 百分比面板加成官方另算，暂不入平加
+            continue
+        if name == "全属性":
+            for i in range(6):
+                stats[i] += num
+        else:
+            stats[key_map[name]] += num
+    return stats, skipped
+
+
 def import_title_stats(conn: sqlite3.Connection) -> int:
-    # 手工表：无官方数据源，种子在 SEED_TITLES（与 custom_equip_stats 同性质）。
+    """称号表：官方 achievements.bytes 的 rule[].title（2026-09-29 接真数据源，
+    替换早期 SEED_TITLES 工作值）。598 条称号、91 条带数值（ability_title=1，
+    数值在 abtext 文本）。id = 全局递增（rule 无全局唯一 id）；spe_name_bonus
+    语义未定（几乎条条有值，非"专属精灵"）→ 存 memo 待核，不做专属校验。"""
+    data = load("achievements")
+    rules_root = data["achievement_rules"]["type"]
     cur = conn.cursor()
     n = 0
-    for it in SEED_TITLES:
-        cur.execute(
-            """INSERT INTO title_stats (id,name,hp,atk,sp_atk,def,sp_def,spd,target_monster,memo)
-               VALUES (?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET name=excluded.name, hp=excluded.hp,
-                 atk=excluded.atk, sp_atk=excluded.sp_atk, def=excluded.def,
-                 sp_def=excluded.sp_def, spd=excluded.spd,
-                 target_monster=excluded.target_monster, memo=excluded.memo""",
-            (it["id"], it["name"], it["hp"], it["atk"], it["sp_atk"], it["def"],
-             it["sp_def"], it["spd"], it["target_monster"], it["memo"]),
-        )
-        n += 1
+    tid = 0
+    for t in rules_root:
+        for br in t.get("branches", []):
+            for b in br.get("branch", []):
+                for r in b.get("rule", []):
+                    title = (r.get("title") or "").strip()
+                    if not title:
+                        continue
+                    tid += 1
+                    abtext = r.get("abtext") or ""
+                    stats, skipped = parse_title_abtext(abtext)
+                    memo = f"{r.get('ach_name', '')}｜{r.get('desc', '')}"
+                    if abtext:
+                        memo += f"｜原文: {abtext}"
+                    if skipped:
+                        memo += f"｜未入面板: {','.join(skipped)}"
+                    if r.get("spe_name_bonus"):
+                        memo += f"｜spe_name_bonus={r['spe_name_bonus']}（语义待核）"
+                    memo += f"｜title_color={r.get('title_color', '')}"
+                    cur.execute(
+                        """INSERT OR REPLACE INTO title_stats
+                           (id,name,hp,atk,sp_atk,def,sp_def,spd,target_monster,memo)
+                           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                        (tid, title, stats[5], stats[0], stats[1], stats[2], stats[3],
+                         stats[4], 0, memo),
+                    )
+                    n += 1
     return n
 
 
