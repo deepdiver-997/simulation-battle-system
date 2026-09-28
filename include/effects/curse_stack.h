@@ -35,6 +35,17 @@ constexpr int kCurseReducePctPerStack = 5;  // 受到攻击伤害 -5%/层（通�
 constexpr int kCurseFloorPctPerStack = 3;   // 攻击 3%/层概率保底"伤害不低于对手最大体力"
 constexpr int kCurseControlImmuneStacks = 10;  // ★ 10 层（非 5 层）：免**控制类**异常
 
+// ★ 10 层免控票的**档位与范围**（2026-09-28 官方实测定档 + 用户拍板）：
+//   总口径 = **只免疫"现代通道 × 控制类"异常**：
+//   · 档位 = **Modern 低级免控**（grant_immunity 默认档，两处授票都不传 tier）：
+//     官方实测 10 层咒怨**仍会被主动毒（古早通道）控制**——古早施加只查 Ancient 层票，
+//     本票对它不可见，正合实测。ImmunityTier"拿到实测翻"的第一个实锤样本（维持 Modern）。
+//   · 范围 = **控制类掩码**（control_anomaly_mask()，battle_effects.Efftype=0 一族），
+//     按官方文本"免疫控制类异常状态"字面执行——现代通道的**非控制类**异常
+//     （中毒/烧伤等）**不免疫**、照常落地（056 Z5 已把三侧行为锁死）。
+//   重授链路：票是 ON_STAGE（下场随 epoch 清）→ 再登场由 ⑤ 登场检测器重授
+//   （层数 pet 绑定下场保留，≥10 层登场即恢复免控，无需新咒怨入手；056 Z5-③ 锁该链路）。
+
 struct CurseState {
     int stacks = 0;
 };
@@ -47,6 +58,7 @@ namespace curse_stack_detail {
     constexpr int kFloorFlagBase = 990237810;   // +side
 
     // 控制类异常掩码（battle_effects.Efftype=0 一族，见 is_control_abnormal_status）。
+    // 免控票范围口径见 kCurseControlImmuneStacks 上方★注：只免控制类，非控制类不挡。
     inline uint64_t control_anomaly_mask() {
         uint64_t mask = 0;
         for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
@@ -99,6 +111,7 @@ inline void add_curse_stacks_slot(BattleContext* ctx, int side, int slot, int de
     const bool was_immune = cs.stacks >= kCurseControlImmuneStacks;
     cs.stacks += delta;
     if (!was_immune && cs.stacks >= kCurseControlImmuneStacks && ctx->on_stage[side] == slot) {
+        // 档位/范围口径见 kCurseControlImmuneStacks 上方★注：Modern 默认档 + 控制类掩码。
         ctx->grant_immunity(side, ImmunityType::ANOMALY, /*coverage=*/~0ULL,
                            curse_stack_detail::control_anomaly_mask(),
                            /*duration_rounds=*/0,
@@ -225,6 +238,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                 if (get_curse_stacks(wctx, ev.actor) < kCurseControlImmuneStacks) {
                     return;
                 }
+                // 档位/范围口径见 kCurseControlImmuneStacks 上方★注（控制类掩码）。
                 wctx->grant_immunity(ev.actor, ImmunityType::ANOMALY, /*coverage=*/~0ULL,
                                     curse_stack_detail::control_anomaly_mask(),
                                     /*duration_rounds=*/0,
