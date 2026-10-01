@@ -811,6 +811,11 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             // 顺序：摆在命中等级之后、`hit_chance` 之前；乘法链的 int 截断会有 ±1 差异，
             // 固定放在最末让结果可复现。
             if (!is_attribute) {
+                // 攻击技门控命中率修正（S1-P0 钩子，2026-10-01 接入）：1314/1576/1673/1843
+                // 族魂印"对手使用攻击技能命中率降低X%"的落点——hit_rate_mod 无类型维度。
+                if (ctx->ws.hit_rate_mod_attack[owner] != 1.0f) {
+                    accuracy = static_cast<int>(accuracy * ctx->ws.hit_rate_mod_attack[owner]);
+                }
                 if (ctx->has_active_abnormal_status(
                         owner, static_cast<int>(AbnormalStatusId::Confusion))) {
                     accuracy = accuracy * 20 / 100;

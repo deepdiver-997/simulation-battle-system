@@ -53,6 +53,9 @@
 
 ## 构建
 
+完整上手（数据管线 → 编译 → 运行 → 测试）见
+[docs/07-工具与测试/快速上手.md](docs/07-工具与测试/快速上手.md)。
+
 ```bash
 cmake -B build
 cmake --build build -j8
