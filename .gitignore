@@ -8,7 +8,9 @@ test/
 .DS_Store
 .git/
 !README.md
-scripts/
+# scripts/ 收窄（2026-10-01）：管线 .py 脚本入库，仅数据大件 data/ 不入库
+scripts/data/
+
 node_modules/
 .venv/
 # 游戏知识/参考资料（时点图、机制笔记、专栏数据、提示词），不追踪
