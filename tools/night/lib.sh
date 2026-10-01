@@ -7,7 +7,12 @@
 set -u
 
 NIGHT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HUB="${SBS_HUB:-/Users/zhuhongrui/code/c++/project/sbs-local}"
+# 仓根动态解析（兼容任意检出路径）；SBS_HUB 环境变量可覆盖。
+# 用 git-common-dir：hub 副本与 worktree 副本都指向主仓 .git。按 NIGHT_ROOT/../..
+# 上溯 show-toplevel 在 worktree 副本里会解析出 agents/agents 歪根（2026-09-30 R1 收官事故：
+# taskctl 锁/看板与 AGENTS_DIR 全部指偏）。
+HUB="${SBS_HUB:-$(d="$(git -C "$NIGHT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && [ -n "$d" ] && dirname "$d" || echo "")}"
+[ -d "$HUB" ] || { echo "[night] 无法定位仓根（在仓库外运行？设 SBS_HUB）" >&2; exit 64; }
 [ -f "$NIGHT_ROOT/night.conf" ] && . "$NIGHT_ROOT/night.conf"
 
 CORES="$(sysctl -n hw.ncpu)"
@@ -20,7 +25,9 @@ NIGHT_DIR="$HUB/build/night"
 SEM_DIR="$NIGHT_DIR/sem/build"
 HUB_LOCK="$NIGHT_DIR/hub.lock"
 STOP_FILE="$NIGHT_DIR/STOP"
-KANBAN_REL="docs_local/docs/05-任务清单/D组启动看板.md"
+# D 组已收官（看板移入 05-任务清单/已收官/）——活跃看板改为 E 组工单（2026-09-29）。
+# 通用入口仍可用 SBS_KANBAN 环境变量覆盖。
+KANBAN_REL="docs_local/docs/05-任务清单/E组批量效果工单.md"
 KANBAN="${SBS_KANBAN:-$HUB/$KANBAN_REL}"
 AGENTS_DIR="${SBS_AGENTS_DIR:-$(dirname "$HUB")/agents}"
 SCENARIO_ALLOC="$NIGHT_DIR/scenario.alloc"
@@ -108,6 +115,30 @@ git_commit_kanban() { # $1=提交说明；只提交看板文件，不动工作�
     ( cd "$HUB" && git commit -m "$1" -- "$KANBAN_REL" ) >/dev/null 2>&1 && return 0
     sleep 3
     ( cd "$HUB" && git commit -m "$1" -- "$KANBAN_REL" ) >/dev/null 2>&1
+}
+
+# ── v2（2026-09-29）：看板操作走 tools/taskctl.py（flock+CAS，看板对脚本只读）──
+# 夜跑默认打 F 板（E 组已收官；SBS_NIGHT_BOARD 可覆盖）。
+NIGHT_BOARD="${SBS_NIGHT_BOARD:-F}"
+taskctl() { python3 "$HUB/tools/taskctl.py" "$@"; }
+
+v2_pending() { # 最小序号的待领取任务 id（如 F1）；无则空
+    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '$2 ~ /待领取/ {print $1; exit}'
+}
+v2_pending_count() {
+    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '$2 ~ /待领取/ {n++} END {print n+0}'
+}
+v2_busy_count() {
+    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '$2 ~ /进行中/ {n++} END {print n+0}'
+}
+v2_claim() { # 领取（flock+CAS 在 taskctl 内部）；stdout 一行 JSON，失败非 0
+    taskctl claim --board "$NIGHT_BOARD"
+}
+v2_done() { # $1=id $2=分支 $3=sha $4=备注
+    taskctl done "$1" --board "$NIGHT_BOARD" --commit "${3:-?}" --summary "${2:-} ${4:-}"
+}
+v2_release() { # $1=id $2=原因
+    taskctl release "$1" --board "$NIGHT_BOARD" --summary "${2:-}"
 }
 
 # ── 场景编号段分配：每任务独占一段（防多会话撞号），锁外勿调 ──

@@ -4,6 +4,7 @@
 #include <array>
 #include <map>
 #include <set>
+#include <cstdio>
 #include <tuple>
 
 #include <db/official_data_repository.h>
@@ -69,6 +70,11 @@ void BattleContext::resolve_equipment(int side) {
                 continue;
             }
             if (row.target_monster != 0 && row.target_monster != pet_monster_id) {
+                continue;
+            }
+            // 生效维度（2026-09-28 三视角线）：本对局维度上行 pvp/pve=0 → 不生效
+            // （双 1 行恒生效；is_pvp_battle 在 ctor 体 resolve 之前已置）。
+            if ((is_pvp_battle ? row.pvp : row.pve) == 0) {
                 continue;
             }
             if (row.add_way == 0) {
@@ -151,6 +157,11 @@ void BattleContext::resolve_equipment(int side) {
     const auto accumulate_summary = [&](const std::vector<official_data::EquipStatRecord>& rows) {
         for (const official_data::EquipStatRecord& row : rows) {
             if (row.target_monster != 0 || row.stat_index < 0 || row.stat_index >= kEquipStatSlots) {
+                continue;
+            }
+            // 视图语义 = "本对局实际生效的全体加成合计"——与 merge_rows 同维度过滤
+            //（P6 用例教训：视图绕过过滤会让 pvp 对局仍显示 pve 行）。
+            if ((is_pvp_battle ? row.pvp : row.pve) == 0) {
                 continue;
             }
             if (row.add_way == 0) {

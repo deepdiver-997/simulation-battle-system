@@ -83,7 +83,8 @@ const TimedBucket& bucket_for(const BattleContext* ctx, EffectContainer containe
 
 } // namespace
 
-BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robots[])
+BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robots[],
+                             bool pvp_battle)
     : m_fsm(nullptr)
     , seerRobot{robots[0], robots[1]}
     , roundCount(0)
@@ -105,6 +106,7 @@ BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robot
     , resolvedDamage(ws.resolvedDamage)
     , resolvedPink(ws.resolvedPink)
 {
+    is_pvp_battle = pvp_battle;
     // 装备/套装静态数据：穿戴清单从机器人原样拷入，激活套装与数值加成在此一次算定
     // （战斗中只读）。空穿戴清单不触 DB（场景测试/旧协议零开销）。
     for (int side = 0; side < 2; ++side) {
@@ -759,8 +761,12 @@ bool BattleContext::need_input() const {
     if (!is_empty) return false;
     switch (currentState) {
         case State::CHOOSE_AFTER_DEATH:
-        if (seerRobot[0].elfPets[on_stage[0]].hp == 0
-            || seerRobot[1].elfPets[on_stage[1]].hp == 0
+        // 判据统一为 hp <= 0（与 BATTLE_AFTER_DEFEATED / needDeathSwitch JSON 同口径；
+        // 原先 == 0 漏掉负体力——死后选择入场判 hp<=0、这里判 hp==0 会两头不一致）。
+        // 若两边场上都活着（死亡被奶活/复活逆转），这里返回 false、
+        // handle_ChooseAfterDeath 的活锁守卫负责推进状态——两处判据必须一致。
+        if (seerRobot[0].elfPets[on_stage[0]].hp <= 0
+            || seerRobot[1].elfPets[on_stage[1]].hp <= 0
         ) return true;
         else return false;
         case State::OPERATION_CHOOSE_SKILL_MEDICAMENT:
@@ -788,6 +794,56 @@ void BattleContext::generateState() {
     }
 
     currentState = kLinearStateOrder[index + 1];
+}
+
+// 终局（D5 结束标志位模型）：立旗 + 跳 FINISHED + 单次回调。
+// 各检查点（漏斗完成评估 / ROUND_START 回合上限 / 死切入口）都收敛到这里；
+// 可重入 —— 旗已立时只保证 FINISHED 与回调幂等，不重复通知。
+void BattleContext::finish_battle() {
+    const bool first_time = !finish_flag;
+    finish_flag = true;
+    if (first_time) {
+        // 结算快照（D5）：立旗瞬间的存活数定档——晚到的亡语复活不翻盘
+        //（官方口径"己方压轴击杀对手压轴重生也算自己赢"）。
+        for (int side = 0; side < 2; ++side) {
+            int alive = 0;
+            for (int i = 0; i < 6; ++i) {
+                if (seerRobot[side].elfPets[i].hp > 0) {
+                    ++alive;
+                }
+            }
+            finish_alive_snapshot[side] = alive;
+        }
+    }
+    currentState = State::FINISHED;
+    if (first_time && on_finish) {
+        on_finish(*this);
+    }
+}
+
+int BattleContext::settlement_alive_count(int side) const {
+    if (side < 0 || side > 1) {
+        return 0;
+    }
+    int alive;
+    if (finish_alive_snapshot[side] >= 0) {
+        alive = finish_alive_snapshot[side];
+    } else {
+        alive = 0;
+        for (int i = 0; i < 6; ++i) {
+            if (seerRobot[side].elfPets[i].hp > 0) {
+                ++alive;
+            }
+        }
+    }
+    // "视为存活"加账（薇尔诗黄金万象，effect_des 523）：快照口径下已死、
+    // 但结算视为存活的槽——在汇报时点读取（晚于立旗，亡语侧的置位赶得上）。
+    for (int i = 0; i < 6; ++i) {
+        if (settlement_treated_alive[side][i] && seerRobot[side].elfPets[i].hp <= 0) {
+            ++alive;
+        }
+    }
+    return alive;
 }
 
 void BattleContext::back_to_last_state() {
@@ -1391,7 +1447,9 @@ std::string BattleContext::getFullStateJson() const {
         // Marks
         oss << ",\"marks\":[";
         for (size_t m = 0; m < pet.marks.size(); ++m) {
-            oss << "{\"name\":\"" << json_escape(pet.marks[m].name) << "\",\"count\":" << pet.marks[m].count << "}";
+            oss << "{\"id\":" << pet.marks[m].id
+                << ",\"name\":\"" << json_escape(pet.marks[m].name)
+                << "\",\"count\":" << pet.marks[m].count << "}";
             if (m + 1 < pet.marks.size()) oss << ",";
         }
         oss << "]";
@@ -1628,12 +1686,35 @@ std::string BattleContext::getFullStateJson() const {
                 size_t ei = 0;
                 for (const auto& [key, eff] : per_player[p]) {
                     (void)key;
+                    // Stage 2（开工文档 §三）：条目补审计维度——sourceId 供客户端按来源
+                    // 分组折叠（§2.2）；invalidated = ON_STAGE 且 epoch 不符（已被断回合/
+                    // 切换作废、等 cleanup 移除的条目，控制台可标灰）；数据面只出原始
+                    // 两维 duration/registeredRound，剩余回合客户端自算（§2.1）。
+                    const bool invalidated = eff->scope_ == EffectScope::ON_STAGE
+                        && eff->valid_id_ != round_effect_valid_id[p];
                     oss << "{"
                         << "\"effectId\":" << eff->getEffectId() << ","
                         << "\"owner\":" << eff->owner() << ","
+                        << "\"sourceId\":" << eff->source_id_ << ","
+                        << "\"scope\":" << (eff->scope_ == EffectScope::TEAM ? 1 : 0) << ","
                         << "\"isExpired\":" << (eff->isExpired(roundCount) ? "true" : "false") << ","
                         << "\"isRoundEffect\":" << (eff->isRoundEffect() ? "true" : "false") << ","
+                        << "\"once\":" << (eff->once_ ? "true" : "false") << ","
+                        << "\"actionOneShot\":" << (eff->isActionOneShot() ? "true" : "false") << ","
+                        << "\"invalidated\":" << (invalidated ? "true" : "false") << ","
+                        << "\"duration\":" << eff->getDurationRounds() << ","
                         << "\"registeredRound\":" << eff->getRegisteredRound();
+                    // Stage 2 数据面补全（开工文档 §2.1）：桶条目带 args 整数组，
+                    // 客户端按 effect_info 模板 {n} 代入；魂印程序节点的 args 含
+                    // 运行时绑定（owner/host_slot），渲染时以 tips 文本为主。
+                    if (const Effect* e = eff->getEffect(); e && e->args.int_count > 0) {
+                        oss << ",\"args\":[";
+                        for (int ai = 0; ai < e->args.int_count; ++ai) {
+                            if (ai) oss << ",";
+                            oss << e->args.int_args[ai];
+                        }
+                        oss << "]";
+                    }
                     oss << "}";
                     if (ei + 1 < per_player[p].size()) oss << ",";
                     ++ei;
@@ -1648,7 +1729,66 @@ std::string BattleContext::getFullStateJson() const {
     append_effect_table(oss, skills_effects);
     oss << ",\"soulMarkEffects\":";
     append_effect_table(oss, soul_mark_effects);
+    oss << ",\"suitEffects\":";
+    append_effect_table(oss, suit_effects);
+    oss << ",\"updaterEffects\":";
+    append_effect_table(oss, updater_effects);
     oss << ",";  // 上一版漏了这个逗号：soulMarkEffects 直接怼上 "operationLog"，全量状态 JSON 一直非法
+
+    // ── RuleCenter 票（Stage 2 只读序列化，开工文档 §三 Stage 2）──────────────
+    // 免疫/盔威封属/③层失效/穿透凭证/概率闸门……全部规则票面以 id+数值导出（§2.1）：
+    //   · category/subtype 的名字由客户端按 registry dump 的 ruleCategories/
+    //     immunityTypes/sealKinds/chanceTags 固定表解析（引擎固定枚举 → 引擎侧给表）；
+    //   · 效果模板名按 sourceEffectId 走 effect_info（同桶条目渠道）；
+    //   · 回调载荷（条件盔/池改写/条件免疫）不可序列化，只出"有无"布尔。
+    oss << "\"ruleTickets\":[";
+    {
+        bool first_ticket = true;
+        for (const RuleTicket& t : rule_center_.entries()) {
+            if (!first_ticket) oss << ",";
+            first_ticket = false;
+            oss << "{"
+                << "\"category\":" << static_cast<int>(t.category) << ","
+                << "\"subtype\":" << t.subtype << ","
+                << "\"sourceOwner\":" << t.source_owner << ","
+                << "\"sourceSlot\":" << t.source_slot << ","
+                << "\"sourceEffectId\":" << t.source_effect_id << ","
+                << "\"target\":" << t.target << ","
+                << "\"scope\":" << (t.scope == EffectScope::TEAM ? 1 : 0) << ","
+                << "\"grantId\":" << t.source_id << ","
+                << "\"counts\":" << t.remaining_counts << ","
+                << "\"rounds\":" << t.remaining_rounds << ","
+                << "\"registerRound\":" << t.register_round << ","
+                << "\"expired\":" << (rule_center_.is_expired(t, roundCount) ? "true" : "false") << ","
+                << "\"soul\":" << (t.soul ? "true" : "false") << ","
+                << "\"tier\":" << t.tier;
+            // 类别专属载荷（客户端按 category 取用，其余忽略）
+            if (t.category == RuleCategory::IMMUNE) {
+                oss << ",\"coverage\":" << t.coverage
+                    << ",\"anomalyMask\":" << t.anomaly_mask
+                    << ",\"conditional\":" << (t.anomaly_condition ? "true" : "false");
+            } else if (t.category == RuleCategory::SEAL) {
+                oss << ",\"penetrable\":" << (t.penetrable ? "true" : "false")
+                    << ",\"consumedWhenPierced\":" << (t.consumed_when_pierced ? "true" : "false")
+                    << ",\"conditional\":" << (t.condition ? "true" : "false");
+            } else if (is_penetrate_category(t.category)) {
+                oss << ",\"penLevel\":" << t.pen_level
+                    << ",\"ignoreAttackImmunity\":" << (t.pen_ignore_attack_immunity ? "true" : "false")
+                    << ",\"ignoreDamageLimit\":" << (t.pen_ignore_damage_limit ? "true" : "false");
+            } else if (t.category == RuleCategory::CHANCE_GATE) {
+                oss << ",\"thresholdPct\":" << t.chance_threshold_pct
+                    << ",\"belowResult\":" << t.chance_below_result
+                    << ",\"aboveResult\":" << t.chance_above_result
+                    << ",\"sourceMask\":" << t.chance_source_mask;
+            } else if (t.category == RuleCategory::ATTACH_BAN) {
+                oss << ",\"coverage\":" << t.coverage;
+            } else if (t.category == RuleCategory::ANOMALY_POOL_MOD) {
+                oss << ",\"poolMod\":" << (t.pool_mod ? "true" : "false");
+            }
+            oss << "}";
+        }
+    }
+    oss << "],";
 
     // Operation log
     oss << "\"operationLog\":\"" << json_escape(operation_log_) << "\",";

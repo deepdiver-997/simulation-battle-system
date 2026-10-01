@@ -689,7 +689,7 @@ std::vector<EquipStatRecord> OfficialDataRepository::load_equip_stats(int item_i
     Statement stmt(
         db_,
         "SELECT item_id, stat_index, amount, COALESCE(add_way, 0), COALESCE(scope, 'per_piece'), "
-        "COALESCE(target_monster, 0) "
+        "COALESCE(target_monster, 0), COALESCE(pvp, 1), COALESCE(pve, 1) "
         "FROM custom_equip_stats WHERE item_id = ?1"
     );
     if (!stmt || !bind_int(stmt.get(), 1, item_id)) {
@@ -703,6 +703,8 @@ std::vector<EquipStatRecord> OfficialDataRepository::load_equip_stats(int item_i
         row.add_way = sqlite3_column_int(stmt.get(), 3);
         row.scope = column_text(stmt.get(), 4);
         row.target_monster = sqlite3_column_int(stmt.get(), 5);
+        row.pvp = sqlite3_column_int(stmt.get(), 6);
+        row.pve = sqlite3_column_int(stmt.get(), 7);
         rows.push_back(std::move(row));
     }
     return rows;
@@ -737,6 +739,37 @@ std::optional<NatureRecord> OfficialDataRepository::load_nature(int nature_id) c
     return record;
 }
 
+std::optional<TitleRecord> OfficialDataRepository::load_title(int title_id) const {
+    if (!db_ || title_id <= 0) {
+        return std::nullopt;
+    }
+    Statement stmt(
+        db_,
+        "SELECT id, COALESCE(name, ''), COALESCE(atk, 0), COALESCE(sp_atk, 0), "
+        "COALESCE(def, 0), COALESCE(sp_def, 0), COALESCE(spd, 0), COALESCE(hp, 0), "
+        "COALESCE(target_monster, 0), COALESCE(memo, '') "
+        "FROM title_stats WHERE id = ?1"
+    );
+    if (!stmt || !bind_int(stmt.get(), 1, title_id)) {
+        return std::nullopt;   // title_stats 表可能尚未建（旧库）——视为无称号
+    }
+    if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+        return std::nullopt;
+    }
+    TitleRecord record;
+    record.id = sqlite3_column_int(stmt.get(), 0);
+    record.name = column_text(stmt.get(), 1);
+    record.stats[0] = sqlite3_column_int(stmt.get(), 2);   // 攻
+    record.stats[1] = sqlite3_column_int(stmt.get(), 3);   // 特攻
+    record.stats[2] = sqlite3_column_int(stmt.get(), 4);   // 防
+    record.stats[3] = sqlite3_column_int(stmt.get(), 5);   // 特防
+    record.stats[4] = sqlite3_column_int(stmt.get(), 6);   // 速
+    record.stats[5] = sqlite3_column_int(stmt.get(), 7);   // 体
+    record.target_monster = sqlite3_column_int(stmt.get(), 8);
+    record.memo = column_text(stmt.get(), 9);
+    return record;
+}
+
 std::optional<MintmarkRecord> OfficialDataRepository::load_mintmark(int item_id) const {
     if (!db_ || item_id <= 0) {
         return std::nullopt;
@@ -747,7 +780,7 @@ std::optional<MintmarkRecord> OfficialDataRepository::load_mintmark(int item_id)
         "SELECT id, COALESCE(name, ''), COALESCE(effect_des, ''), COALESCE(type, 0), "
         "COALESCE(grade, 0), COALESCE(quality, 0), COALESCE(class_id, 0), "
         "COALESCE(arg_json, '[]'), COALESCE(base_json, '[]'), COALESCE(max_json, '[]'), "
-        "COALESCE(monster_ids, '[]'), COALESCE(hide, 0) "
+        "COALESCE(monster_ids, '[]'), COALESCE(hide, 0), COALESCE(extra_json, '[]') "
         "FROM mintmark WHERE id = ?1"
     );
     if (!stmt || !bind_int(stmt.get(), 1, item_id)) {
@@ -775,10 +808,19 @@ std::optional<MintmarkRecord> OfficialDataRepository::load_mintmark(int item_id)
     // "攻击/防御/特防/速度/体力"五项 ↔ max=[55,25,0,25,35,90]——防在 index1、特攻恒 0
     // 在 index2；圣·元素 max=[55,30,0,30,30,85] 同构印证）。⚠️ 与引擎 NumericalPropertyIndex
     // 序 [攻,特攻,防,特防,速,体] 不同，此处重排，调用方拿到的统一是引擎序。
-    std::array<int, 6> raw_arg{}, raw_base{}, raw_max{};
+    // extra_json = 官方 2026 改版新增的"附加属性"（全库 342 件 type3 有值）：强化满的
+    // 实际面板 = max + extra。口径对账钉死（2026-09-28 官方面板）：圣战之锋α
+    // max=[55,25,0,25,30,80] + extra=[5,3,0,3,2,2] = [60,28,0,28,32,82]——与游戏内
+    // 刻印加成（攻击 2×60+65=185 等）及 seerinfo 刻印库逐一吻合；漏算 extra 会让
+    // 面板系统性偏低（圣战之锋系列攻 −10、防 −6、体 −4/件）。旧库无此列时 COALESCE 为空。
+    std::array<int, 6> raw_arg{}, raw_base{}, raw_max{}, raw_extra{};
     read6(7, raw_arg);
     read6(8, raw_base);
     read6(9, raw_max);
+    read6(12, raw_extra);
+    for (int i = 0; i < 6; ++i) {
+        raw_max[i] += raw_extra[i];
+    }
     const auto to_engine_order = [](const std::array<int, 6>& raw) {
         return std::array<int, 6>{raw[0], raw[2], raw[1], raw[3], raw[4], raw[5]};
     };

@@ -238,6 +238,28 @@ enum class RuleCategory {
     // cleanup 清理）。"下场不保留"用 scope=ON_STAGE 天然表达（引擎换宠即清）。
     // 多票按**授予顺序折叠**（前一张的输出是后一张的输入）——与 ANOMALY_POOL_MOD 同款。
     CHANCE_GATE,
+    // **载体票**（2026-09-28，龙神哈莫 3809「召唤龙神」双 BUFF 引入）：回合类 buff /
+    // 印记状态的**真源票**——票在 = 效果在。与咒怨（pet.soulmark_storage 层数计数器、
+    // 插件层自管真源）相对的另一种真源形态：**单写者、固定时长、可被断回合**的限时
+    // 窗口状态，生命周期交给 RuleCenter 统一表达（覆盖键刷新 / 绝对窗口 / 换宠清 /
+    // 断回合作废），消费者 = **战斗级读者**（管线段 / 监视器，逐次调 has_carrier 查票）
+    // ——读者查票的结构意义：管线 epoch 与回合 epoch 分离、"断回合不清管线条目"是
+    // battleContext.h 明示的口径未定区，捕获式窗口守卫的管线段会在断回合后苟活到期满；
+    // 查票式读者让断回合（清票）**结构性**地整组失效，不需要动管线 epoch 口径。
+    //   · 授予：grant_carrier——覆盖键 (source_owner, source_effect_id) 刷新不追加
+    //     （同一 buff 重复 arm 自然续窗）；source_valid_id 传授予时
+    //     round_effect_valid_id[owner] 快照 → 断回合 / 切换 epoch 作废；
+    //   · 查询：has_carrier(owner, source_effect_id, current_round)——**含起算门**
+    //     （current_round < register_round = "下N回合"还没到 → 不在；grant 传
+    //     NextRounds 起点即表达"下N回合获得"，绝对窗口模型表达不了"起点前不生效"，
+    //     由查询侧补上）；
+    //   · 生命周期同 SWITCH_LOCK：纯查询不消费（绝对窗口免 tick，cleanup 按绝对过期）、
+    //     **不在免断表**（就是挂在持有者身上的回合类效果——断回合 / 切换都拆得掉）、
+    //     计入 has_round_type（只有 buff 在身、没有别的回合类效果时也可被断）。
+    //   ⚠️ 票**不含数值载荷**：子效果数值（先制+3、增伤幅度等）由读者自带，票只回答
+    //     "在不在"。持有者无关：谁被授予谁受益（技能被复制 / 偷走 → 新施放者 arm 自己
+    //     的票），读者**不做精灵 ID 判定**（官方实现路径待实测，2026-09-28 记档）。
+    CARRIER,
 };
 
 // "纯查询"规则类别：**绝对窗口模型**（免 tick 递减、cleanup 按绝对回合过期）、
@@ -250,7 +272,7 @@ inline bool is_pure_query_category(RuleCategory c) {
     return c == RuleCategory::IMMUNE || c == RuleCategory::SKILL_BAN
         || c == RuleCategory::ATTACH_BAN || c == RuleCategory::SWITCH_LOCK
         || c == RuleCategory::POTION_BACKLASH || c == RuleCategory::ARMOR_SUPPRESS
-        || c == RuleCategory::CHANCE_GATE;
+        || c == RuleCategory::CHANCE_GATE || c == RuleCategory::CARRIER;
 }
 
 // "免断回合"类别：**不可被 clear_round_type / invalidate_stale(epoch) 作废**。
@@ -1236,6 +1258,62 @@ public:
         return false;
     }
 
+    // ── 载体票（CARRIER）：授予 / 查询 ─────────────────────────
+    // 见 RuleCategory::CARRIER 注。覆盖键 (source_owner, source_effect_id, category)
+    // 刷新不追加 → 同一 buff 重复 arm 自然续窗（register_round / rounds 以最新为准）。
+    // source_valid_id 传**授予时**的 round_effect_valid_id[owner] 快照（>0 = 随断回合 /
+    // 切换 epoch 作废；0 = 永不作废，由 cleanup 按绝对过期清——纯查询族惯例）。
+    int grant_carrier(int owner, int source_effect_id, int rounds, int register_round,
+                      EffectScope scope = EffectScope::ON_STAGE, int source_valid_id = 0) {
+        if (owner < 0 || owner > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::CARRIER
+                && t.source_owner == owner && t.source_effect_id == source_effect_id) {
+                t.target = owner;
+                t.scope = scope;
+                t.remaining_rounds = rounds;
+                t.register_round = register_round;
+                t.source_valid_id = source_valid_id;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = owner;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.target = owner;   // 挂在持有者身上（绑定方 = source_owner = target，换宠/被断都拆）
+        t.category = RuleCategory::CARRIER;
+        t.remaining_rounds = rounds;
+        t.register_round = register_round;
+        t.source_valid_id = source_valid_id;
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // 持有者当前是否带有未过期的载体票（**含起算门**：current_round < register_round
+    // = "下N回合"还没到 → 不在——绝对窗口模型表达不了"起点前不生效"，查询侧补上）。
+    // 纯查询不消费：战斗级读者（管线段/监视器）逐次调用，断回合/换宠清票后自然哑火。
+    bool has_carrier(int owner, int source_effect_id, int current_round) const {
+        if (owner < 0 || owner > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::CARRIER || t.target != owner
+                || t.source_effect_id != source_effect_id) {
+                continue;
+            }
+            if (current_round < t.register_round || window_expired(t, current_round)) {
+                continue;   // 未起算 / 窗口已过
+            }
+            return true;
+        }
+        return false;
+    }
+
     // ── 药剂反噬票（POTION_BACKLASH）：授予 / 查询 ─────────────────
     // 见 RuleCategory::POTION_BACKLASH 注（预留位，当前无注册者）。覆盖键
     // (source_owner, source_effect_id, category) 刷新不追加；rounds>0 = 窗口期，
@@ -1646,6 +1724,11 @@ public:
     }
     std::size_t size() const { return all_.size(); }
     const std::vector<RuleTicket>& entries() const { return all_; }
+    // 序列化/审计只读出口：票的绝对窗口在 current_round 是否已过期
+    // （复用唯一判定式 window_expired，勿在容器外复制判定逻辑）。
+    bool is_expired(const RuleTicket& t, int current_round) const {
+        return window_expired(t, current_round);
+    }
 
 private:
     // 绝对窗口是否已过期（**唯一判定式**，2026-09-21 从 10 处复制粘贴中抽取）：

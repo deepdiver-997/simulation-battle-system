@@ -14,9 +14,11 @@
 
 #include <abnormal-system/abnormal-types.h>
 #include <entities/pet_factory.h>
+#include <entities/skills.h>
 #include <entities/soul_mark_manager.h>
 #include <entities/suit_manager.h>
 #include <effects/effect.h>
+#include <effects/rule_center.h>
 #include <fsm/state.h>
 #include <net/poller.h>
 #include <server/output_json.h>
@@ -42,64 +44,20 @@ int g_signal_pipe[2] = {-1, -1};
 // id 升序。网关拿注册表和数据库引用的 effect id 做差集（"未实现"徽标），
 // 拿 states/anomalies 给前端当断点下拉与事件带中文化的对照表。
 bool dump_registry_json(const std::string& path) {
-    const std::vector<int> moves = EffectFactory::getInstance().registered_effect_ids();
-    const std::vector<int> soul = SoulMarkManager::getInstance().registered_soulmark_ids();
-    const std::vector<int> suit = SuitManager::getInstance().registered_suit_ids();
-
-    auto join_ids = [](const std::vector<int>& ids) {
-        std::string out;
-        for (std::size_t i = 0; i < ids.size(); ++i) {
-            if (i > 0) {
-                out += ',';
-            }
-            out += std::to_string(ids[i]);
-        }
-        return out;
-    };
-
-    // 时点：State 枚举 -1..40 全量（kLinearStateOrder 在匿名命名空间拿不到，
-    // 而且它不含 FINISHED——对照表按枚举区间遍历最稳，state_name_cn 全覆盖）。
-    auto escape = [](const char* text) {
-        return server::json_escape(std::string(text == nullptr ? "" : text));
-    };
-    auto join_states = [&escape]() {
-        std::string out;
-        for (int id = -1; id <= 40; ++id) {
-            if (id > -1) {
-                out += ',';
-            }
-            out += "{\"id\":" + std::to_string(id) + ",\"name\":\"" +
-                   escape(state_name_cn(static_cast<State>(id))) + "\"}";
-        }
-        return out;
-    };
-
-    // 异常状态：官方 id 0..kOfficialAbnormalStatusMaxId，附中文名。
-    auto join_anomalies = [&escape]() {
-        std::string out;
-        for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
-            if (id > 0) {
-                out += ',';
-            }
-            out += "{\"id\":" + std::to_string(id) + ",\"name\":\"" +
-                   escape(abnormal_status_name_cn(static_cast<AbnormalStatusId>(id))) + "\"}";
-        }
-        return out;
-    };
-
+    // 组装逻辑 2026-10-01 起收敛到 output_json.cpp 的 build_registry_dump()——
+    // 与 HELLO 版本指纹消费同一份字符串，registry.json 和握手指纹永不漂移。
+    const server::RegistryDump dump = server::build_registry_dump();
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file) {
         return false;
     }
-    file << "{\"moves\":[" << join_ids(moves) << "],\"soul\":[" << join_ids(soul)
-         << "],\"suit\":[" << join_ids(suit) << "],\"states\":[" << join_states()
-         << "],\"anomalies\":[" << join_anomalies() << "]}";
+    file << dump.json;
     file.close();
     if (!file) {
         return false;
     }
     std::printf("[INFO] [server] 注册表已导出 %s（moves=%zu soul=%zu suit=%zu）\n",
-                path.c_str(), moves.size(), soul.size(), suit.size());
+                path.c_str(), dump.moves, dump.soul, dump.suit);
     std::fflush(stdout);
     return true;
 }

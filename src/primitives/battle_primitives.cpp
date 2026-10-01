@@ -41,6 +41,43 @@ void emit_anomaly_events(BattleContext* ctx, int target, int anomaly_id, int act
     }
 }
 
+// 预死亡信号（2026-09-30 死亡模型，用户定稿）：伤害管线落血后**体力≤0**即广播。
+// 消费方：反应型免死（②范围即时检测族——回调里写血，随后的死亡漏斗见 hp>0 走 NOT_DOWN
+// 即自然否决）、内核"同归标志"（此处顺手计数）。
+// ⚠️ 只在伤害通道发：体力修正通道（自爆 HP_CONSUME/斩杀印记——免死不可见的前提）与
+//    秒杀通道（EVENT_HP_TO_ZERO 自己就是信号面）不发本信号。
+// 同归标志 = 本回合第一个把对手"在场"体力打到 ≤0 的一方，先到先得（后续伤害不覆盖、
+// ws 每回合 reset 清）；瞬杀/体力修正把人打到 0 不计数（口径待实测）。
+void emit_hp_exhausted(BattleContext* ctx, int actor, int target, DamageKind kind) {
+    if (!ctx || target < 0 || target > 1) {
+        return;
+    }
+    if (ctx->seerRobot[target].elfPets[ctx->on_stage[target]].hp > 0) {
+        return;   // 没死：非预死亡（护盾/护罩吃掉、掉血未致死）
+    }
+    BattleEvent ev{EventType::EVENT_HP_EXHAUSTED, actor, target,
+                   0, static_cast<int>(ctx->currentState)};
+    ev.damage_kind = static_cast<int>(kind);
+    ctx->event_center_.emit(ev);
+    // **emit 后立即 drain**（2026-09-30 哈莫链复刻定稿）：免死信号是"伪死亡通知"——
+    // 回调（②族拉血）必须在任何死亡裁决读到体力**之前**完成。事件中心默认
+    // "入队+晚 drain"会让回调落到死亡漏斗之后（场景 876 实测：skip 日志先于回调）。
+    // 与 EVENT_BEFORE_SKILL_HIT 锚点同一先例；drain 会连带投递队列中既有事件
+    // （与锚点先例同性质，accept）。
+    ctx->event_center_.drain(ctx, ctx->roundCount);
+}
+
+// 同归标志落点（与信号分离）：**必须在 EVENT_TAKE_DAMAGE emit 之前**写——
+// 受击 watcher（弹伤族）是同步执行的，会在本段伤害的信号发出去之前就把对手打到 ≤0，
+// 抢先污染"谁先造成致命伤"。落血记榜当场写，先到先得。
+void mark_first_exhaust_flag(BattleContext* ctx, int actor, int target) {
+    if (!ctx || ctx->ws.first_to_exhaust_foe >= 0 || actor < 0 || actor > 1
+        || actor == target || target < 0 || target > 1) {
+        return;
+    }
+    ctx->ws.first_to_exhaust_foe = actor;
+}
+
 // 能力等级写入的**唯一落点**（2026-09-18，混沌魔君索伦森 1011 落地时收口）。
 //
 // 三件事绑在一起，缺一不可：
@@ -934,6 +971,7 @@ static void run_pink_damage(BattleContext* ctx, int target, int amount,
     // 落血记录（弹伤族数据源）：粉伤档位照实记，读方按 kind 排除（粉伤斩杀不弹）。
     ctx->last_landed_hit[target][ctx->on_stage[target]] = {actor, actual_damage,
                                                            static_cast<int>(kind), true};
+    mark_first_exhaust_flag(ctx, actor, target);
 
     // 粉伤事件：**只有真的结算到本体（体力下降）才发**。
     // 经过护罩抵消后没有剩余 → 上面就 return 了，这里根本到不了。
@@ -943,11 +981,14 @@ static void run_pink_damage(BattleContext* ctx, int target, int amount,
     //    免得 watcher 靠 `ev.state` 反推这是不是粉伤时点。
     ctx->event_center_.emit(BattleEvent{EventType::EVENT_TAKE_PINK_DAMAGE, actor, target,
                                         actual_damage, static_cast<int>(ctx->currentState)});
+    emit_hp_exhausted(ctx, actor, target, kind);
     // 受到伤害事件（第三方"受到攻击伤害后/受高伤/受低伤"监听），amount = 实际扣血。
     // 带上 emit 当时的 FSM 时点：watcher 在 drain 时才跑，那时 currentState 已经推进，
     // 靠 ctx->currentState 判不出"是攻击伤害还是粉伤"（见 BattleEvent::state）。
-    ctx->event_center_.emit(BattleEvent{EventType::EVENT_TAKE_DAMAGE, actor, target,
-                                        actual_damage, static_cast<int>(ctx->currentState)});
+    BattleEvent take_damage_ev{EventType::EVENT_TAKE_DAMAGE, actor, target,
+                               actual_damage, static_cast<int>(ctx->currentState)};
+    take_damage_ev.damage_kind = static_cast<int>(kind);
+    ctx->event_center_.emit(take_damage_ev);
 }
 
 // ----------------------------------------------------------------
@@ -984,6 +1025,11 @@ void deal_damage(BattleContext* ctx, int target, int amount,
     }
     ElfPet& pet = ctx->getPet(target);
     if (pet.hp <= 0) {
+        // 已倒地目标被伤害结算命中：**0 血状态检测**（2026-09-30 死亡模型，②范围即时
+        // 免死的检测面——"范围内检测到 0 血就消耗免死"）。发预死亡信号让信号回调型
+        // 免死（如帝皇之御）有机会拉起；随后本段伤害不落地（early return 保持）。
+        // ⚠️ 同归标志不计数（mark_first_exhaust_flag 只在真实落血处写）。
+        emit_hp_exhausted(ctx, actor, target, kind);
         return;  // 目标已死亡
     }
 
@@ -1031,6 +1077,7 @@ void deal_damage(BattleContext* ctx, int target, int amount,
         // 体力截断——记 remaining（护盾后全额伤害，过量击杀不缩水）。
         ctx->last_landed_hit[target][ctx->on_stage[target]] = {actor, remaining,
                                                                static_cast<int>(kind), true};
+        mark_first_exhaust_flag(ctx, actor, target);
     }
 
     // 砥砺(37)「处于该状态的精灵**受到真实伤害后**，若**本回合未执行过附加异常状态的效果**，
@@ -1056,8 +1103,11 @@ void deal_damage(BattleContext* ctx, int target, int amount,
         }
     }
 
-    ctx->event_center_.emit(BattleEvent{EventType::EVENT_TAKE_DAMAGE, actor, target,
-                                        actual_damage, static_cast<int>(ctx->currentState)});
+    BattleEvent take_damage_ev{EventType::EVENT_TAKE_DAMAGE, actor, target,
+                               actual_damage, static_cast<int>(ctx->currentState)};
+    take_damage_ev.damage_kind = static_cast<int>(kind);
+    ctx->event_center_.emit(take_damage_ev);
+    emit_hp_exhausted(ctx, actor, target, kind);
 }
 
 // 真实伤害入口（插件可调）：走 deal_damage(TRUE)，返回"发生了什么"。
@@ -1369,6 +1419,16 @@ static int heal_impl(BattleContext* ctx, int target, int heal_amount) {
         ctx->ws.last_heal_amount[target] = 0;
         return 0;
     }
+    // ★ 死亡裁决封闭（2026-10-01 死切/终局改造 D2）：死亡漏斗已登记的**在场**宠，
+    //   治疗 no-op —— 登记即裁决成立，"奶活"不可逆转死亡（fuzz seed 11263 活锁的
+    //   根修半边：等待死切期间死亡被治疗翻转 → need_input 前提消失）。
+    //   复活走 revive_pet 原语（登记复位后再可治疗）；免死/真2命拦截发生在登记
+    //   **之前**，不受影响。嗑药不经本函数（"药是玩家操作"口径）。
+    const int t_slot = ctx->on_stage[target];
+    if (t_slot >= 0 && t_slot < 6 && ctx->pet_death_notified[target][t_slot]) {
+        ctx->ws.last_heal_amount[target] = 0;
+        return 0;
+    }
     if (heal_amount <= 0) {
         ctx->ws.last_heal_amount[target] = 0;
         return 0;
@@ -1470,6 +1530,12 @@ int clear_stat_boosts(BattleContext* ctx, int target) {
             write_ability_level(ctx, target, i, 0);
             ++cleared;
         }
+    }
+    // E13：提升被消除成功 → 广播（573"若能力强化状态被消除则…"的消费点）。
+    if (cleared > 0) {
+        BattleEvent lost_ev{EventType::EVENT_STAT_BOOSTS_LOST, /*actor=*/-1, target, cleared};
+        lost_ev.stat_loss_kind = 0;   // 消除
+        ctx->event_center_.emit(lost_ev);
     }
     return cleared;  // 0 = 目标本无提升（消强未成功）
 }
@@ -1595,6 +1661,12 @@ int transfer_stat_boosts(BattleContext* ctx, int from, int to) {
         }
         write_ability_level(ctx, to, i, gained);
         ++moved;
+    }
+    // E13：提升被吸取成功 → 广播（573"被消除**或吸取**"的另一半消费点）。
+    if (moved > 0) {
+        BattleEvent lost_ev{EventType::EVENT_STAT_BOOSTS_LOST, /*actor=*/to, from, moved};
+        lost_ev.stat_loss_kind = 1;   // 被吸取
+        ctx->event_center_.emit(lost_ev);
     }
     return moved;
 }
@@ -1724,6 +1796,9 @@ FixedDamageResult fixed_damage(BattleContext* ctx, int target, int amount) {
     }
     ElfPet& pet = ctx->getPet(target);
     if (pet.hp <= 0) {
+        // 已倒地目标被固伤结算命中：0 血状态检测（②范围即时免死检测面，与
+        // deal_damage 尸体分支同口径，2026-09-30 哈莫链复刻）。
+        emit_hp_exhausted(ctx, -1, target, DamageKind::FIXED);
         return FixedDamageResult::TARGET_DEFEATED;
     }
     deal_damage(ctx, target, amount, DamageKind::FIXED, -1);

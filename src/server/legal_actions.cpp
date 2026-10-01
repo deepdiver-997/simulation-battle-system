@@ -100,6 +100,9 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
     out.prospective = prospective;
     out.reason = prospective ? "prospective" : "";
     out.must_choose_pet = !prospective && (ctx.currentState == State::CHOOSE_AFTER_DEATH);
+    // D1（2026-10-01 死切改造）：死切期合法操作 = 仅 CHOOSE_PET —— 跳过不出现在
+    // 合法集合里（FSM 对 NONE 回 "Error: must choose pet"，这里从源头不给这个选项）。
+    out.can_skip = !out.must_choose_pet;
 
     // 技能：两个门槛都要过 —— FSM 的 operation() 先用 skill_usable 做第一道闸，
     // 通过后再用 query_selectable 做"PP/锁定"第二道（不过会回"请重选"）。

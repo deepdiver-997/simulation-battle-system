@@ -34,6 +34,9 @@ struct CultivateConfig {
     std::array<int, 3> inscriptions{};   // 刻印 item_id，0 = 空槽；专属/隐藏件组装层拒收
     bool hp_cap20 = true;                // 体力上限 +20（拟真默认开，实际对局通常全队点亮）
     bool guild_boost = true;             // 战队加成六维（工作值 30/15×4/10，待游戏内最终校）
+    bool annual_bonus = false;           // 年费通用加成：六维+10 平加，不吃性格（2026-09-28 用户拍板）
+    int title_id = 0;                    // 称号（title_stats 表；0=无）。六维平加进括号，
+                                         // pvp/pve 双有效（用户拍板"另类的刻印"）；专属校验同刻印
     ResistConfig resist;                 // 抗性训练（不进面板，落 ElfPet 抗性字段）
 };
 
@@ -73,6 +76,9 @@ struct BattleCreateRequest {
     // boss 挑战对局（2026-09-26 "boss 有效"线；可选，缺省 false）：
     // JSON 顶层 "bossChallenge": true → 魂印程序里 boss_invalid 节点不注册不执行。
     bool boss_challenge = false;
+    // 对局维度（2026-09-28 三视角线；可选，缺省 false=PVE）：JSON 顶层 "pvp": true
+    // → custom_equip_stats 的 pve-only 行不生效（反之亦然）。
+    bool pvp_battle = false;
     // 药剂库存（2026-09-24；可选）：item_id → 数量，per-side（嗑药线，battle_items 表驱动）。
     // 空 = 无药剂可嗑。下标 0=side1（房主）/ 1=side2。room 传给 SeerRobotFactory。
     std::array<MedicineStock, 2> medicines{};

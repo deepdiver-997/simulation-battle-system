@@ -261,6 +261,13 @@ bool parse_pet(const nlohmann::json& node, BattlePetMessage& out, std::string& e
             }
             cfg.nature_id = c["natureId"].get<int>();
         }
+        if (c.contains("titleId")) {
+            if (!c["titleId"].is_number_integer()) {
+                err = "cultivate.titleId must be an integer";
+                return false;
+            }
+            cfg.title_id = c["titleId"].get<int>();
+        }
         if (c.contains("inscriptions")) {
             const auto& arr = c["inscriptions"];
             if (!arr.is_array() || arr.size() > 3) {
@@ -289,6 +296,20 @@ bool parse_pet(const nlohmann::json& node, BattlePetMessage& out, std::string& e
                 return false;
             }
             cfg.guild_boost = c["guild"].get<bool>();
+        }
+        if (c.contains("title")) {
+            if (!c["title"].is_number_integer()) {
+                err = "cultivate.title must be an integer (title_stats.id, 0=none)";
+                return false;
+            }
+            cfg.title_id = c["title"].get<int>();
+        }
+        if (c.contains("annual")) {
+            if (!c["annual"].is_boolean()) {
+                err = "cultivate.annual must be a boolean";
+                return false;
+            }
+            cfg.annual_bonus = c["annual"].get<bool>();
         }
         if (c.contains("resist")) {
             if (!parse_resist(c["resist"], cfg.resist, err)) {
@@ -484,7 +505,14 @@ bool decode_lineup_json(const std::string& text, BattleCreateRequest& out, std::
             return false;
         }
         out.boss_challenge = doc["bossChallenge"].get<bool>();
-        out.boss_challenge = doc["bossChallenge"].get<bool>();
+    }
+
+    if (doc.contains("pvp")) {
+        if (!doc["pvp"].is_boolean()) {
+            err = "\"pvp\" must be a boolean";
+            return false;
+        }
+        out.pvp_battle = doc["pvp"].get<bool>();
     }
 
     if (has_def) {

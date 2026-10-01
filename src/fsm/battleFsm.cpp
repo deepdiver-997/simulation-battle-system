@@ -51,6 +51,9 @@ bool field_has_on_stage_death(const BattleContext* ctx) {
         || ctx->seerRobot[1].elfPets[ctx->on_stage[1]].hp <= 0;
 }
 
+// 终局评估（D4/D5 结束标志位模型）——定义在漏斗下方；漏斗尾部先调用。
+void evaluate_battle_end(BattleContext* ctx);
+
 // 死亡漏斗（defeat_pet）的调用点：把"体力已归零的在场精灵"登记为阵亡，
 // 期间逐个询问死亡拦截器（残留体力免死 / 真2命复活），拦下则不死、回合照常继续。
 //
@@ -74,6 +77,28 @@ void funnel_on_stage_deaths(BattleContext* ctx, DefeatCause cause) {
     if (!ctx) {
         return;
     }
+    // ── 同归保护（2026-09-30 死亡模型，用户定稿，内核层）─────────────────────
+    // 进入死亡时点时**双方在场都 ≤0** → 本回合先把对手打到 ≤0 的一方（ws.first_to_exhaust_foe，
+    // 预死亡信号计数）**直写保留 1 点体力**。这是流程保护不是恢复：直写、不走 heal_amount，
+    // 封回血不适用（官方时点表"残留 1 点体力防止对战流程卡死"的通用化）。
+    // ⚠️ 边界：① 无标志（双方都倒在瞬杀/体力修正等非管线通道）不救，维持原判；
+    // ② 任一方已被登记（机盖式拦截器同步子判定的同归，如希拓/机盖）不经此分支——
+    //    那条路由盖亚 path B（解禁重判 + 反同归拉 1）处理；③ 幸存者自身随后照常被
+    //    defeat_pet 问询，hp>0 自然 NOT_DOWN，其拦截器不再被问（无事可拦）。
+    if (cause == DefeatCause::DAMAGE
+        && (ctx->ws.first_to_exhaust_foe == 0 || ctx->ws.first_to_exhaust_foe == 1)) {
+        const int survivor = ctx->ws.first_to_exhaust_foe;
+        const int victim = 1 - survivor;
+        const int s_slot = ctx->on_stage[survivor];
+        const int v_slot = ctx->on_stage[victim];
+        if (s_slot >= 0 && s_slot < 6 && v_slot >= 0 && v_slot < 6
+            && ctx->seerRobot[survivor].elfPets[s_slot].hp <= 0
+            && ctx->seerRobot[victim].elfPets[v_slot].hp <= 0
+            && !ctx->pet_death_notified[survivor][s_slot]
+            && !ctx->pet_death_notified[victim][v_slot]) {
+            ctx->seerRobot[survivor].elfPets[s_slot].hp = 1;
+        }
+    }
     for (int pass = 0; pass < 8; ++pass) {
         bool asked = false;
         for (int side = 0; side < 2; ++side) {
@@ -93,6 +118,44 @@ void funnel_on_stage_deaths(BattleContext* ctx, DefeatCause cause) {
         }
         if (!asked) {
             break;
+        }
+    }
+    // ★ 终局评估（2026-10-01 死切/终局改造 D4/D5）：漏斗完成即判全灭 ——
+    //   "死亡登记 + 全队无存活"立结束标志，回合流程见旗即走 FINISHED；
+    //   其后亡语/复活 watcher 在本时点的 drain 里照常结算（重生之翼实测口径：
+    //   动画计数跳动了一瞬），但终局不回滚。原先这条路不通：全灭后 FSM 停在
+    //   CHOOSE_AFTER_DEATH 等换宠，服务端只能靠 no_legal_action 兜底收场。
+    evaluate_battle_end(ctx);
+}
+
+// 终局评估（D4/D5 结束标志位模型）。判定基准 = **死亡登记名单**：
+// 某方在场宠死亡已登记（或被消逝——消逝死不发 EVENT_DEATH，但同样是"不可再用"）
+// 且该方 6 槽再无 hp>0 → 全灭成立，finish_battle()（立旗 + 跳 FINISHED + 单次回调）。
+// 幂等：旗已立直接返回。调用点：死亡漏斗尾部（每轮死亡结算后）+
+// BATTLE_AFTER_DEFEATED 的对账网之后（场下直写死亡在这里补登记后才可见）。
+void evaluate_battle_end(BattleContext* ctx) {
+    if (!ctx || ctx->finish_flag) {
+        return;
+    }
+    for (int side = 0; side < 2; ++side) {
+        const int slot = ctx->on_stage[side];
+        if (slot < 0 || slot >= 6) {
+            continue;
+        }
+        const bool down = ctx->pet_death_notified[side][slot] || ctx->is_vanished(side, slot);
+        if (!down) {
+            continue;   // 在场宠还没被裁决死亡：谈不上全灭
+        }
+        bool has_alive = false;
+        for (int i = 0; i < 6; ++i) {
+            if (ctx->seerRobot[side].elfPets[i].hp > 0) {
+                has_alive = true;
+                break;
+            }
+        }
+        if (!has_alive) {
+            ctx->finish_battle();
+            return;
         }
     }
 }
@@ -1153,6 +1216,13 @@ void BattleFsm::run(BattleContext* battleContext) {
 }
 
 bool BattleFsm::runInternal(BattleContext* battleContext) {
+    // ★ D5 检查点（2026-10-01 终局改造）：结束标志已立 → 下一个时点不再进入。
+    //   当前时点桶内已投递的亡语/复活 watcher 照常结算完（drain 在 handler 之后），
+    //   这里拦的只是"后续时点"——对应官方"死亡效果结算了一瞬、状态机随即终止"。
+    if (battleContext->finish_flag
+        && battleContext->currentState != State::FINISHED) {
+        battleContext->finish_battle();   // 幂等：只补跳转，回调不会重发
+    }
     if (battleContext->need_input()) {
         // 需要等待输入，调用控制块的 wait_for_input
         // 控制块会在数据到达时再次调用 run
@@ -1174,6 +1244,11 @@ bool BattleFsm::runInternal(BattleContext* battleContext) {
         // 事件投递点：State 桶执行完后、推进下一个 State 前统一 drain。
         // 原语成功路径末尾只 emit 入队，由这里投递给 watcher。
         battleContext->event_center_.drain(battleContext, battleContext->roundCount);
+        // 效果参数解包错误检查点（2026-09-28）：时点跳转处把登记的错误写报告；
+        // fail_fast（场景 harness 开）时对局在此终止——解包失效=假绿，宁可真红。
+        if (battleContext->effect_arg_faulted) {
+            battleContext->drain_effect_arg_faults();
+        }
         // 时点采样必须在 **drain 之后**：这样这条采样带上的是本时点投递的全部事件
         // （事件中心的抄送钩子在投递处写入，见 event_center.h 的 set_delivery_sink）。
         record_tape_sample(battleContext, before_state);
@@ -1553,6 +1628,17 @@ void BattleFsm::handle_OperationEnterStage(BattleContext* battleContext) {
 }
 
 void BattleFsm::handle_BattleRoundStart(BattleContext* battleContext) {
+    // ★ D3 回合上限内建（2026-10-01 终局改造）：进入新回合先查上限（0 = 无限）。
+    //   位置在 workspace 重置/时点桶之前——终局回合不执行任何回合效果。
+    //   回合计数语义：round N 的 ROUND_START 时 roundCount == N-1（advanceRound 在
+    //   ROUND_COMPLETION）→ 本判据在第 max_rounds+1 回合入口触发，恰好打满 N 回合。
+    if (battleContext->max_rounds > 0
+        && battleContext->roundCount >= battleContext->max_rounds) {
+        log("Battle round cap reached (round " + std::to_string(battleContext->roundCount + 1)
+            + " > max_rounds " + std::to_string(battleContext->max_rounds) + ") → finish.");
+        battleContext->finish_battle();
+        return;
+    }
     log("Battle round start.");
     int preserved_round_choice[2][2];
     std::memcpy(preserved_round_choice, battleContext->roundChoice, sizeof(preserved_round_choice));
@@ -1816,6 +1902,9 @@ void BattleFsm::handle_BattleFirstAfterActionEnd(BattleContext* battleContext) {
     log("Battle: First After Action End.");
     const int first_mover_id = resolve_first_mover_id(battleContext);
     battleContext->execute_registered_actions(first_mover_id, State::BATTLE_FIRST_AFTER_ACTION_END);
+    // E11 无视强化旗标是"本次命中"语义（SKILL_EFFECT 写 → ATTACK_DAMAGE 消费），
+    // 行动结束即清——不清会跨行动泄漏到对手/额外行动的下一次攻击。
+    battleContext->ws.boost_pierced[0] = battleContext->ws.boost_pierced[1] = false;
     battleContext->generateState();
 }
 
@@ -1955,6 +2044,8 @@ void BattleFsm::handle_BattleSecondAfterActionEnd(BattleContext* battleContext) 
     log("Battle: Second After Action End.");
     const int second_mover_id = resolve_second_mover_id(battleContext);
     battleContext->execute_registered_actions(second_mover_id, State::BATTLE_SECOND_AFTER_ACTION_END);
+    // 同 First：无视强化旗标行动末清（E11）。
+    battleContext->ws.boost_pierced[0] = battleContext->ws.boost_pierced[1] = false;
     battleContext->generateState();
 }
 
@@ -2086,6 +2177,14 @@ void BattleFsm::handle_BattleAfterDefeated(BattleContext* battleContext) {
     // ⚠️ 消逝**不在此列**：消逝不是死亡，不发 EVENT_DEATH（见 vanish_spirit）。
     sync_pending_deaths(battleContext);
 
+    // ★ D4 死切入口终局检查（2026-10-01）：对账网补登记之后、"发起死切输入"之前——
+    //   某方全灭（在场宠已裁决死亡 + 6 槽无存活）→ FINISH + on_finish，不再要求换宠。
+    //   原先全灭会停在 CHOOSE_AFTER_DEATH 永久等输入，服务端只能 no_legal_action 兜底。
+    evaluate_battle_end(battleContext);
+    if (battleContext->currentState == State::FINISHED) {
+        return;
+    }
+
     if (!dead0 && !dead1) {
         battleContext->currentState = State::BATTLE_AFTER_DEFEATING_OPPONENT;
         return;
@@ -2097,6 +2196,23 @@ void BattleFsm::handle_BattleAfterDefeated(BattleContext* battleContext) {
 
 void BattleFsm::handle_ChooseAfterDeath(BattleContext* battleContext) {
     log("Battle: Choose After Death.");
+    // ★ 安全网（fuzz seed 11263 首曝，2026-09-30）：本状态的前提是"某方场上精灵已死"
+    //   （BATTLE_AFTER_DEFEATED 据此 set_current_player 后跳入）。若等待期间死亡被效果
+    //   逆转（登记后复活原语——D5 明文允许亡语复活结算），前提消失——need_input() 返回
+    //   false，而本 handler 对空 buffer 只会早退、状态永不推进 → 单次 run() 内无限自旋。
+    //   两边场上都活着 → 推进状态（AFTER_DEFEATING_OPPONENT → ROUND_COMPLETION →
+    //   下回合选择期），对局正常继续。
+    //   ⚠️ D2 根修（heal 封闭）+ D5 终局旗已把全灭/治疗两类逆转堵死；本守卫现在只在
+    //   "非终局死亡被复活取消补位"这一正当路径可达——它就是该情形的正确续跑，不是活锁。
+    //   判据必须与 need_input() / BATTLE_AFTER_DEFEATED 同口径（hp <= 0）。
+    const bool dead0 = battleContext->seerRobot[0].elfPets[battleContext->on_stage[0]].hp <= 0;
+    const bool dead1 = battleContext->seerRobot[1].elfPets[battleContext->on_stage[1]].hp <= 0;
+    if (!dead0 && !dead1) {
+        log("Death switch cancelled: both on-stage pets alive again (revival reversed a "
+            "pending switch). Advancing.");
+        battleContext->generateState();
+        return;
+    }
     if (battleContext->m_buffer.size() <= 3 * sizeof(int)) {
         battleContext->control_block_->async_write(
             battleContext->current_player_id_,
@@ -2125,6 +2241,28 @@ void BattleFsm::handle_ChooseAfterDeath(BattleContext* battleContext) {
     operation(battleContext, buf[0], static_cast<ActionType>(buf[1]), buf[2], /*is_forced=*/true);
     // 死亡换宠：死宠离场 → 实际执行换宠（清死宠公共状态 → 新宠登场激活）
     perform_switch(battleContext, buf[0], buf[2]);
+    // ★ 双方同回合倒下（2026-10-01 D4 配套）：先倒的一方补位后，另一方在场宠仍倒着
+    //   → 原地轮转继续等它补位（原先只问 set_current_player 选中的一方，另一方会拖着
+    //   尸体进下一回合）。另一方无存活替补 → 全灭终局（AFTER_DEFEATED 的评估已拦过
+    //   常规时序，这里是补位动作本身改变场面后的再确认，收敛到同一出口）。
+    const int other_side = 1 - buf[0];
+    const int other_slot = battleContext->on_stage[other_side];
+    if (other_slot >= 0 && other_slot < 6
+        && battleContext->seerRobot[other_side].elfPets[other_slot].hp <= 0) {
+        bool other_has_alive = false;
+        for (int i = 0; i < 6; ++i) {
+            if (battleContext->seerRobot[other_side].elfPets[i].hp > 0) {
+                other_has_alive = true;
+                break;
+            }
+        }
+        if (other_has_alive) {
+            battleContext->set_current_player(other_side);
+            return;   // 留在 CHOOSE_AFTER_DEATH：need_input 对另一方成立，继续等它
+        }
+        battleContext->finish_battle();
+        return;
+    }
     battleContext->generateState();
 }
 

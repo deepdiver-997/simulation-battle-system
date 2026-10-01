@@ -11,27 +11,23 @@ SESSION="${1:-night-x}"
 WAIT=0; [ "${2:-}" = "--wait" ] && WAIT=1
 
 claim_one() { # rc: 0=已领取 1=队列空 9=锁失败 8=worktree 失败 7=提交失败
-    hub_lock || return 9
-    local dn row alloc note wt br
-    dn="$(kanban_pending)"
-    if [ -z "$dn" ]; then hub_unlock; return 1; fi
-    alloc="$(scenario_alloc)"
-    row="$(kanban_row "$dn")"
-    note="worktree $AGENTS_DIR/d-${dn}，分支 feat/d-${dn}（$SESSION 领取于 $(date +%H:%M)，场景编号 ${alloc% *}-${alloc#* }）"
-    kanban_set "$dn" "🔄 进行中" "$note"
-    if ! git_commit_kanban "chore(看板): $dn 领取（${SESSION}，场景编号 ${alloc% *}-${alloc#* }）"; then
-        ( cd "$HUB" && git checkout -- "$KANBAN_REL" )   # 回滚看板，登记失败不占号
-        hub_unlock; log "看板提交失败（回滚，稍后重试）"; return 7
+    # v2：领取 = taskctl claim（内部 flock+CAS+提交，看板行即登记）。
+    local out dn wt br row
+    if ! out="$(v2_claim)"; then
+        log "taskctl claim 失败（被抢/无任务）"; return 1
     fi
-    # worktree（锁内建，防 git 元数据竞态）：目录在→复用；分支在（上次残留）→挂回；否则 -b 新建
-    wt="$AGENTS_DIR/d-$dn"; br="feat/d-$dn"
+    dn="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+    wt="$AGENTS_DIR/$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"].lower())')"
+    br="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["branch"])')"
+    row="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["row"])')"
+    # worktree（taskctl 已登记，这里建实体）：目录在→复用；分支在→挂回；否则 -b 新建
     if [ -e "$wt/.git" ]; then
         log "worktree 已存在，复用：$wt"
     elif ! git -C "$HUB" worktree add -b "$br" "$wt" main-local >/dev/null 2>&1 \
        && ! git -C "$HUB" worktree add "$wt" "$br" >/dev/null 2>&1; then
-        hub_unlock; log "worktree 创建失败：$wt"; return 8
+        v2_release "$dn" "worktree 创建失败，自动退回"
+        log "worktree 创建失败：$wt"; return 8
     fi
-    hub_unlock
     # 数据软链（同提示词模板；scripts/ 不入库，worktree 需自建）
     mkdir -p "$wt/scripts"
     ln -sfn "$HUB/scripts/data" "$wt/scripts/data"
@@ -56,7 +52,7 @@ while :; do
     if [ "$rc" -eq 0 ]; then exit 0; fi
     if [ "$rc" -ge 7 ]; then sleep 60; continue; fi   # 基础设施故障：歇一会重试
     # rc=1 队列空
-    if [ "$(kanban_pending_count)" -eq 0 ] && [ "$(kanban_busy_count)" -eq 0 ]; then
+    if [ "$(v2_pending_count)" -eq 0 ] && [ "$(v2_busy_count)" -eq 0 ]; then
         echo "ALL_DONE 看板已无待领取且无进行中任务——全部完成"
         exit 0
     fi
@@ -72,7 +68,7 @@ while :; do
         if [ "$(kanban_pending_count)" -eq 0 ] && [ "$(kanban_busy_count)" -eq 0 ]; then
             echo "ALL_DONE 看板已清空——全部完成"; exit 0
         fi
-        [ -n "$(kanban_pending)" ] && break
+        [ -n "$(v2_pending)" ] && break
     done
     # 超时自然回到外层再试一轮（每轮 WAIT_TIMEOUT 才醒来一次，开销极小）
 done

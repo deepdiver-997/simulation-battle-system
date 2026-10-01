@@ -3,20 +3,10 @@
 set -u
 . "$(dirname "$0")/lib.sh"
 
-echo "═══ 看板战况 ═══"
-awk -F'|' '/^\| D[0-9]/ {
-    st=$4; gsub(/ /,"",st);
-    k=$2; gsub(/ /,"",k);
-    cnt[st]++
-    if (st=="✅完成" || st=="⛔阻塞" || st=="🔄进行中") {
-        note=$5; gsub(/^ +| +$/,"",note);
-        printf "%-4s %-8s %s\n", k, st, note
-    }
-} END {
-    printf "\n待领取 %d ｜ 进行中 %d ｜ 完成 %d ｜ 阻塞 %d\n", cnt["待领取"]+0, cnt["🔄进行中"]+0, cnt["✅完成"]+0, cnt["⛔阻塞"]+0
-}' "$KANBAN"
+echo "═══ 看板战况（taskctl list）═══"
+taskctl() { python3 "$HUB/tools/taskctl.py" "$@"; }
+taskctl list --board "${SBS_NIGHT_BOARD:-F}"
 
-echo
 echo "═══ 领取/完工流水（最近 10 条）═══"
 git -C "$HUB" log --oneline -10 -- "$KANBAN_REL" 2>/dev/null || true
 

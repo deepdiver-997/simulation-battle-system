@@ -143,6 +143,29 @@ if(BUILD_TRAINING_CLI)
     target_link_libraries(sim_training_cli PRIVATE sim_net Threads::Threads)
 endif()
 
+# ── 对战 fuzz（test/fuzz，本地维护目录 → EXISTS 守卫同 test/ 段）────────────
+# 用法见 test/fuzz/README.md。⚠️ SBS_FUZZ_SANITIZERS 必须用在独立 build 目录：
+# 插件 deploy 会把带 sanitizer 的 lib_1 拷进源码树 resources/*_lib/，普通 build
+# 运行时会加载它 → 混用必崩（恢复方法见 README）。
+option(SBS_FUZZ_SANITIZERS "Fuzz 构建变体：本目录所有目标加 ASan+UBSan" OFF)
+if(SBS_FUZZ_SANITIZERS)
+    # -fno-sanitize-recover：UBSan 报错即 abort —— fuzz 的 oracle 只认"崩"。
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined
+                        -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/fuzz/fuzz_battle.cpp)
+    add_executable(sim_fuzz_battle
+        test/fuzz/fuzz_battle.cpp
+        src/server/legal_actions.cpp   # compute_legal_actions —— fuzz 驱动的合法动作源
+    )
+    target_include_directories(sim_fuzz_battle PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(sim_fuzz_battle PRIVATE sim_core)
+endif()
+
 # ── 插件段：源码为**本地维护**（.gitignore 排除，见 docs_local/多agent协作工作流.md），
 #    公开检出里不存在 → **必须用 EXISTS 守卫**，否则 `add_library` 会因为源文件缺失在
 #    configure 阶段直接失败（CLAUDE.md 的口径是"公开检出不影响构建"；上面 test/ 段同款）。

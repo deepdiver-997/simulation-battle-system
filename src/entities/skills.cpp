@@ -218,6 +218,8 @@ SkillExecResult default_branch_for_effect(int effect_id) {
         case 2126:  // 烬灭神咒剑：技能无效时消除对手回合类/能力提升 + 焚烬
         case 136:   // 灵魂之歌：若Miss则自己恢复1/4体力
         case 2418:  // 大赤殓：技能无效时获得对手最大体力1/3的护盾、护罩
+        case 2175:  // 混色神·虚之彩：技能无效时随机附加2种非限制类异常（D27 涂蝶 4861，
+                    // 实现 moves_lib/d5_D27.cpp；池 = 全池⊖限制类）
             return SkillExecResult::SKILL_INVALID;
         case 2086:  // 空元之诗·渍：「**若技能无效**，则消除对手回合类效果、能力提升效果…」
                     // 它的整个条件就是"技能无效"→ 必须挂在 SKILL_INVALID 分支上，
@@ -294,6 +296,9 @@ void materialize_attack_credential(BattleContext* ctx, int owner, const Skills& 
     cred.must_hit = skill.must_hit                  // ① 官方 moves.must_hit 固有必中
                  || ctx->ws.must_hit_grant[owner]   // ② 本回合效果授予的条件必中
                  || cred.force_execute;             // ③ 强制执行隐含必定命中
+    // 基础命中率修正 100%（守御八方 1275 传承，见 ws.accuracy_fix_grant 注释）——
+    // 与 must_hit 分离：它不打必中标记（弱化仍可 Miss），只改 roll 起点 + 跳过必闪减避。
+    cred.accuracy_fix_100 = ctx->ws.accuracy_fix_grant[owner];
     cred.valid = cred.ignore_attack_immunity || cred.ignore_damage_limit || cred.force_execute;
 }
 
@@ -320,6 +325,12 @@ EffectResult effect_run_parsed_unit_unconditional(BattleContext* ctx, const Effe
 }
 
 } // namespace
+
+// 全局记账出口（供 registry dump 并集；见 include/entities/skills.h 尾注）。
+const std::vector<int>& kernel_penetration_effect_ids() {
+    static const std::vector<int> ids = {697, 699};
+    return ids;
+}
 
 Skills::Skills(int id, const official_data::MonsterRecord& monster,
                std::vector<EffectParamOverride> arg_overrides,
@@ -757,6 +768,12 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             // 技能初始命中率上（90×1.1=99 / 90×0.9=81），且**都作用于属性技能**。
             // ⚠️ 只有确实带该特性才改写（无特性者零行为、零 rand 消耗）。
             int accuracy = this->accuracy;
+            // 基础命中率修正 100%（accuracy_fix_100）：把 roll 起点钉在 100，**先于**精准/回避
+            // 与命中等级档位——弱化（命中负档 85/70/…）照样把它乘下去（用户 2026-09-30 实测：
+            // 守御八方传承下弱化仍可能 Miss），而必定闪避词条（dodge_rate）在下方被跳过。
+            if (cred.accuracy_fix_100) {
+                accuracy = 100;
+            }
             if (const std::optional<EffectiveTrait> p =
                     ctx->effective_common_trait(owner, TraitKind::Precision)) {
                 accuracy = accuracy * (100 + p->args[0]) / 100;
@@ -804,7 +821,10 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
                 }
             }
             const float dodge_chance = ctx->ws.dodge_rate[1 - owner];
-            const int hit_chance = accuracy - static_cast<int>(dodge_chance * 100);
+            // accuracy_fix_100 跳过必闪减避（"必定闪避词条都无法生效"，2026-09-30 实测口径）。
+            const int hit_chance = cred.accuracy_fix_100
+                ? accuracy
+                : accuracy - static_cast<int>(dodge_chance * 100);
             // 通用特性·虚无：**有概率闪避对手攻击技能**（必修6：本质是闪避、不是挡伤）——
             // 只对攻击技能生效；命中失败照走 miss 出口（含"miss 也消费次数类盔"的既有约定）。
             bool void_miss = false;
@@ -1107,6 +1127,15 @@ std::pair<SkillExecResult, SkillResolutionFlags> Skills::execute(BattleContext* 
     (void)trigger_state;
     if (!ctx || owner < 0 || owner > 1) {
         return {SkillExecResult::SKILL_INVALID, resolution_flags_for(SkillExecResult::SKILL_INVALID)};
+    }
+
+    // E13"使用即触发"锚点（2026-09-29）：技能被**选择使用**就发——miss/被封属/打盔
+    // 也算"使用"（469"若对手使用属性技能"字面；与 EVENT_HIT 的"命中才发"正交）。
+    // target = 对方；used_attribute 标记属性技（消费方：神离之始 469 一族）。
+    {
+        BattleEvent used_ev{EventType::EVENT_SKILL_USED, owner, ctx->opponent(owner)};
+        used_ev.used_attribute = (type == SkillType::Attribute);
+        ctx->event_center_.emit(used_ev);
     }
 
     // 执行期可用性判定（统一走 query_usage：miss + 封属性/封攻击/命中失效）
