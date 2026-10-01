@@ -20,6 +20,18 @@ if ! cmake --build build -j"$JOBS" > build/night-build.log 2>&1; then
 fi
 log "构建通过，跑全量场景回归…"
 
+# 孤儿二进制清理（2026-10-01）：源码已删（改号/撤探针）后 build/ 里残留旧产物——
+# 它们内嵌旧内核布局却加载当前 dylib，字段偏移错位直接 SIGSEGV（假回归）。
+# 判定 = build/sim_scenario_X 没有对应 test/scenario/scenario_X.cpp。
+for bin in build/sim_scenario_*; do
+    base="$(basename "$bin")"
+    src="test/scenario/${base#sim_}.cpp"
+    if [ ! -f "$src" ]; then
+        rm -f "$bin"
+        log "清除孤儿二进制：${base}（源码已不存在）"
+    fi
+done
+
 fails=0; total=0
 : > build/night-regression-fails.txt
 for bin in build/sim_scenario_*; do

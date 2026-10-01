@@ -138,6 +138,7 @@ struct BattleWorkspace {
         // 恢复非零默认（语义同旧实现；部分字段与 NSDMI 重复，留着做显式口径）。
         for (int i = 0; i < 2; i++) {
             hit_rate_mod[i] = 1.0f;
+            hit_rate_mod_attack[i] = 1.0f;
             crit_rate_mod[i] = 1.0f;
             must_crit[i] = false;
             attribute_must_miss[i] = false;
@@ -241,6 +242,12 @@ public:
     // handle_Battle*AfterActionEnd 清——不放 reset()（那是每回合口径，会跨行动泄漏）。
     bool boost_pierced[2]{};
     float hit_rate_mod[2] = {1.0f, 1.0f};   // 命中率修正倍率
+    // **攻击技门控命中率修正倍率**（2026-10-01，S1-P0 命中/闪避钩子收尾）：
+    // "对手使用攻击技能命中率降低35%"（1314/1576/1673/1843 族魂印）——hit_rate_mod
+    // 无技能类型维度（H5 记档：78 物理限定曾被迫特判），本槽只在 !is_attribute 分段
+    // 消费（乘算链：hit_rate_mod 之后、异常修正之前）。魂印 ROUND_START 每回合重写
+    // （同 476 写 hit_rate_mod 套路）。
+    float hit_rate_mod_attack[2] = {1.0f, 1.0f};
     float crit_rate_mod[2] = {1.0f, 1.0f};  // 暴击率修正（乘算；效果"下N回合暴击率提升"每回合写它）
     // **暴击率加算**（百分点）："{0}回合攻击击中对象要害概率增加1/16"（effect 32 蓄气族）——
     // +1/16 = +6.25 个百分点，是**加法**不是乘算（crit_rate_mod 表达不了"加 1/16"）。

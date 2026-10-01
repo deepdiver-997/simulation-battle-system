@@ -1575,9 +1575,15 @@ int clear_stat_drops(BattleContext* ctx, int target) {
     if (!ctx || target < 0 || target > 1) {
         return 0;
     }
-    // ⚠️ 与 clear_stat_boosts 不对称：**故意不查任何免疫**。
+    // ⚠️ 与 clear_stat_boosts 不对称：**故意不查任何"有利"免疫**。
     //   清弱化对目标有利——免弱(STAT_DROP) 挡"施加弱化"、免消除强化(STAT_CLEAR) 护"提升"，
     //   都不该挡"把弱化拿掉"（用户 2026-09-13 口径："清理弱化什么都不用查"）。
+    // ⚠️ 唯一例外 = **能力下降锁定**（STAT_DROP_LOCK，1684 心朽魂凋 28808，2026-10-01
+    //   补查询点——rule_center.h 早已承诺"解除命中返 0"，落地时漏接成死票）：
+    //   对手给它上的锁是敌意效果，护的正是"它的下降不被拿走"，必须拦。
+    if (ctx->is_immune(target, ImmunityType::STAT_DROP_LOCK, ctx->currentState)) {
+        return 0;
+    }
     int* levels = ctx->ability_levels[target];
     int cleared = 0;
     for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
@@ -1720,8 +1726,11 @@ StatReversalResult stat_reversal(BattleContext* ctx, int target) {
     if (!ctx || target < 0 || target > 1) {
         return StatReversalResult::NOTHING;
     }
-    // TODO（禁止反转，用户约定）：若 target 身上存在"禁止反转下降"的回合类规则
-    //   （RuleCenter 回合类查询效果命中），应返回 BLOCKED 使反转失败。当前未接入，留作未来查询。
+    // 禁止反转（STAT_DROP_LOCK 通道，1684 心朽魂凋 28808，2026-10-01 落地——
+    // 原 TODO 现接：rule_center.h 承诺的第二个查询点，"反转"命中返 BLOCKED）。
+    if (ctx->is_immune(target, ImmunityType::STAT_DROP_LOCK, ctx->currentState)) {
+        return StatReversalResult::BLOCKED;
+    }
     int* levels = ctx->ability_levels[target];
     bool any_reversed = false;
     for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
