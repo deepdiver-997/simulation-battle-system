@@ -19,6 +19,11 @@ namespace proto {
 
 constexpr std::size_t kHeaderSize = 10;
 
+// 线协议版本（2026-10-01 引入，随 HELLO 命令下发）。只在**破坏性变更**（改既有
+// 帧语义/删命令）时手动加一——加命令/加字段不 bump（指纹会自动暴露变化，
+// 见 output_json 的 version_fingerprint：姿势对齐 core_api.h 的 verify_plugin_abi）。
+constexpr std::uint16_t kProtocolVersion = 1;
+
 enum class Command : std::uint16_t {
     INVALID = 0,
 
@@ -55,6 +60,10 @@ enum class Command : std::uint16_t {
     ROOM_INFO = 34,
     // 战斗结束：payload 是 JSON（winner + 最终快照）。
     BATTLE_OVER = 35,
+    // 版本握手（2026-10-01）：C→S payload 忽略；S→C 回 JSON 指纹
+    // {"protoVersion","registryHash","stateSchemaHash"}。网关/前端连接即核对，
+    // 内核加了字段/新枚举而显示面没跟上时**响亮报警**而不是静默漏显。
+    HELLO = 36,
 };
 
 inline const char* command_name(Command cmd) {
@@ -78,6 +87,7 @@ inline const char* command_name(Command cmd) {
         case Command::ERROR: return "ERROR";
         case Command::ROOM_INFO: return "ROOM_INFO";
         case Command::BATTLE_OVER: return "BATTLE_OVER";
+        case Command::HELLO: return "HELLO";
         default: return "UNKNOWN";
     }
 }

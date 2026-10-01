@@ -213,6 +213,11 @@ public:
     // REDUCE_FLAT 阶段先扣点数，REDUCE_PCT 阶段再算百分比（加算求和钳 ±100 + 乘算连乘）。
     int damage_reduce_flat[2][4]{};   // **点数**减伤（4槽位，求和后从 final 扣，不为负）
     int damage_reduce_add[2][4]{};    // 加算减伤百分比(4槽位)
+    // **同归标志**（2026-09-30 死亡模型，用户定稿）：本回合第一个把**对手在场**体力打到
+    // ≤0 的一方（-1=无）。只在预死亡信号（EVENT_HP_EXHAUSTED，伤害管线通道）处写、
+    // 先到先得；死亡漏斗据此实现"双方同归→先造成致命伤者保留 1 点体力"。瞬杀/体力修正
+    // 通道不计数（口径待实测）。ws 每回合 reset 自动清。
+    int first_to_exhaust_foe = -1;
     int damage_reduce_mul[2][4]{};    // 乘算减伤百分比(4槽位)
 
     //========== 临时属性修正 ==========
@@ -228,6 +233,13 @@ public:
     // 套装 ROUND_START 节点写入（恒定条款），伤害公式（Calculation::calculateDamage）
     // 消费：Defense × (100 − defense_ignore_pct[defender]) / 100。
     int defense_ignore_pct[2]{};
+    // **无视强化视图旗标**（E11，2026-09-29）："无视对手能力提升状态"（195 双防 /
+    // 494 全提升 / 486 下N回合窗口）——[该方] = 该方的能力提升在**被攻击**时视作
+    // 0 级（弱化保留：官方字面只无视"提升"）。getTempAbilityValue 的 pierce_boost
+    // 参数消费（min(0, level)），伤害公式的防御/特防取值点传入；
+    // ⚠️ 语义是**本次命中**：SKILL_EFFECT 桶写入、ATTACK_DAMAGE 消费、
+    // handle_Battle*AfterActionEnd 清——不放 reset()（那是每回合口径，会跨行动泄漏）。
+    bool boost_pierced[2]{};
     float hit_rate_mod[2] = {1.0f, 1.0f};   // 命中率修正倍率
     float crit_rate_mod[2] = {1.0f, 1.0f};  // 暴击率修正（乘算；效果"下N回合暴击率提升"每回合写它）
     // **暴击率加算**（百分点）："{0}回合攻击击中对象要害概率增加1/16"（effect 32 蓄气族）——
@@ -263,6 +275,12 @@ public:
     //    （那场仗之后该技能永远必中）；而写在 on_selected 又会被 ROUND_START 的 ws reset 冲掉
     //    —— MOVE_RIGHT 是"reset 之后、出手之前"的唯一正确窗口。
     bool must_hit_grant[2]{};
+    // **基础命中率修正为 100%** 通道（守御八方 1275 自爆传承，2026-09-30 用户实测定档）：
+    // "下 2 次出手命中率修正 100%"≠ 必中凭证——实测弱化（命中等级负档）仍可能 Miss、
+    // 必定闪避词条无效、失明按必中 55 开。落点：①(c) 常规 roll 里把 `accuracy` 起点钉 100
+    // （命中等级档位**仍然**乘算 → 弱化可 Miss），并跳过 dodge_rate 减避（必闪词条无效）。
+    // 与 must_hit_grant 同一个 MOVE_RIGHT 写入窗口；凭证 `accuracy_fix_100` 由它物化。
+    bool accuracy_fix_grant[2]{};
     //========== 增伤两通道（官方 L352：**通用增伤加法、非通用增伤乘法**）==========
     // 判据是措辞：「造成攻击伤害提升X%」= 通用 → 加法槽；「造成的攻击伤害**额外**提升X%」
     // = 非通用 → 乘法槽。两者落在不同阶段（AMP / AMP_EXTRA），所以 693 排在通用增伤之后。
@@ -345,6 +363,9 @@ public:
         // ⚠️ 判"是否必中"一律读这个凭证，**不要**只读 skill 里写死的字段——
         //    条件必中类效果是靠 ② 在出手前授予的（用户 2026-09-13 口径）。
         bool must_hit = false;
+        // 基础命中率修正 100%（`ws.accuracy_fix_grant` 物化，见该字段注释）：不是必中——
+        // 只钉 roll 起点、跳过必闪减避；命中等级负档/混乱/易燃等数值通道照常作用。
+        bool accuracy_fix_100 = false;
         int  level = 0;                      // 穿透等级：0=无, 1=可穿盔（等级比较留 SkillInvalidCenter）
     };
     AttackCredential attack_credential[2];   // 按攻击方索引
@@ -499,7 +520,11 @@ public:
     // 取"本回合视角"的属性值（含能力等级修正）。**只用于 battle_attrs 的 6 项属性**
     // （攻击/特攻/防御/特防/速度/体力），不是"能力等级"的读取口——等级槽 5 是**命中**
     // 而属性槽 5 是**体力**，两套索引只在 0..4 重合（见 battleContext.h 的长注释）。
-    int getTempAbilityValue(int owner, NumericalPropertyIndex i) const {
+    // pierce_boost（E11 无视强化，2026-09-29）：true 时正等级视作 0（"无视对手能力
+    // 提升状态"——弱化保留，官方字面只无视提升）；默认 false，仅伤害公式的防御/特防
+    // 取值点传入（速度比较/攻击方取值不受影响）。
+    int getTempAbilityValue(int owner, NumericalPropertyIndex i,
+                            bool pierce_boost = false) const {
         if (owner < 0 || owner >= 2) {
             throw std::out_of_range("Owner index out of range");
         }
@@ -508,6 +533,7 @@ public:
         if (index < 0 || index >= 6) {
             throw std::out_of_range("Index out of range");
         }
+        const int level_eff = (pierce_boost && level[index] > 0) ? 0 : level[index];
         // ⚠️ **体力（HP）没有能力等级**：官方能力提升状态只有 6 种（双攻双防速命中），
         //    不含体力。原实现在这里读 `view_levels[owner][5]`，而槽 5 是**命中** →
         //    等价于"体力值被命中等级缩放"，是纯粹的口径错误。
@@ -519,8 +545,8 @@ public:
         if (level[index] < -6 || level[index] > 6) {
             throw std::out_of_range("Level out of range");
         }
-        if (level[index] >= 0) {
-            return static_cast<int>(battle_attrs[owner][i] * ((level[index] + 2) / 2.0));
+        if (level_eff >= 0) {
+            return static_cast<int>(battle_attrs[owner][i] * ((level_eff + 2) / 2.0));
         }
         // 负等级：官方 2/(2-|level|)，展开即 2/(2-level)。
         // ⚠️ 原写法是 2/(2+level)：-1 会算成 ×2（应当 ×0.67，方向还反了），
@@ -528,7 +554,7 @@ public:
         // ⚠️ 原先这里还有一段 `if (index == 5 && level[index] < 0)` 返回 85/70/55/45/35/25 的
         //    "命中等级为负时的特殊处理"——那是**命中率档位表**，误放在了按属性索引取值的函数里。
         //    2026-09-18 已搬到 abnormal-types.h 的 `hit_level_accuracy_pct()`（精度公式用它）。
-        return static_cast<int>(battle_attrs[owner][i] * (2.0 / (2 - level[index])));
+        return static_cast<int>(battle_attrs[owner][i] * (2.0 / (2 - level_eff)));
     }
 };
 

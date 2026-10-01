@@ -192,6 +192,11 @@ struct EquipStatRecord {
     int add_way = 0;
     std::string scope;
     int target_monster = 0;
+    // 生效维度（2026-09-28 三视角线）：官方套装存在 pvp/pve 限定词（"仅限赛尔与赛尔间
+    // 对战"/"赛尔与赛尔间对战无效"等）。1=该维度生效；三视角：base=两维都 1 的行、
+    // pvp=base+pvp 行、pve=base+pve 行。
+    int pvp = 1;
+    int pve = 1;
 };
 
 // 性格（nature 表，nature.bytes 导入，培养线 2026-09-26）。官方 25 种（id 0-24），
@@ -203,6 +208,17 @@ struct NatureRecord {
     double mult[5] = {1.0, 1.0, 1.0, 1.0, 1.0};
 };
 
+// 称号加成（title_stats 手工表，培养线 2026-09-28）。官方 Unity/H5 配置均无称号
+// 属性表（configs 全目录仅 TitleBg 背景图）→ 手工表 + 工作值，游戏内核准后改表。
+// 六维列即引擎序（nature 同款约定，无重排问题）；target_monster>0 = 专属称号。
+struct TitleRecord {
+    int id = 0;
+    std::string name;
+    int stats[6] = {0, 0, 0, 0, 0, 0};   // 引擎序：攻 特攻 防 特防 速 体
+    int target_monster = 0;              // 0 = 通用；>0 = 仅该精灵可佩戴
+    std::string memo;
+};
+
 // 刻印（mintmark 表，mintmark.bytes 导入，培养线 2026-09-26）。
 // ⚠️ 官方六维序 = [攻,防,特攻,特防,速,体]（圣·虚无 effect_des 实测钉死），与引擎
 // NumericalPropertyIndex 序 [攻,特攻,防,特防,速,体] 不同——load_mintmark 已重排，
@@ -210,6 +226,9 @@ struct NatureRecord {
 // type：0=属性刻印（stat_arg 固定加成）/ 1=技能刻印（绑定 move_ids，绝版）/
 //       3=系列成长刻印（stat_base → stat_max）/ 4=碎片素材。
 // 面板合成取 stat_max（强化满口径——竞技环境默认满强化，与天赋恒 31 同理）。
+// ⚠️ stat_max 已并入官方"附加属性"extra_json（2026-09-28 对账修正）：强化满的实际
+//    面板 = max + extra（圣战之锋α [55,25,0,25,30,80]+[5,3,0,3,2,2]=[60,28,0,28,32,82]，
+//    与游戏内刻印加成及 seerinfo 刻印库逐一吻合）；全库 342 件 type3 有 extra。
 struct MintmarkRecord {
     int id = 0;
     std::string name;
@@ -300,6 +319,7 @@ public:
     // （数据完整透出），"未放出不可装"由组装层判定。
     std::optional<NatureRecord> load_nature(int nature_id) const;
     std::optional<MintmarkRecord> load_mintmark(int item_id) const;
+    std::optional<TitleRecord> load_title(int title_id) const;
 
     // ── 战斗内物品（battle_items 表，药剂线）──────────────────────────
     // 嗑药结算（SeerRobot::use_medicine）按 item_id 查效果；不在表中的 id（下架/

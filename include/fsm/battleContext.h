@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <cstdio>
 #include <vector>
 #include <any>
 #include <functional>
@@ -133,6 +134,88 @@ public:
     // 掷点结果）。key 由插件自约定；clearAllEffects 清空。pet 级状态请用
     // ElfPet::soulmark_storage（下场保留）/ on_stage_storage（本场上场）。
     std::map<int, std::any> plugin_storage;
+
+    //--- 效果参数解包错误登记（**通用机制**，2026-09-28 用户定稿）---
+    // 插件 handler 的 args 解包不满足预期（数量不足/下标越界/布局不符）时**不得静默
+    // return**——调 report_effect_arg_fault 登记（追加式，同时点多次出错各自成条，
+    // 不覆盖）并置粘性标志（effect_arg_faulted 本局不复位）。FSM 在**时点跳转**处
+    // 设检查点：把自上次检查点以来的登记格式化写 stderr（含参数内存排布快照）；
+    // effect_arg_fail_fast=true（场景 harness 默认开）时检查点再把对局置 FINISHED
+    // ——解包失效=假绿，fail-fast 才是真红。clearAllEffects 清空登记、标志复位。
+    struct EffectArgFault {
+        int effect_id = 0;          // 出错的效果 id
+        int state = 0;              // 登记时的 FSM 时点（State 枚举值）
+        int round = 0;              // 回合
+        std::vector<int> int_args;  // 参数内存排布快照（原样，含前置占位）
+        std::string note;           // 插件侧一句话（预期布局/缺什么）
+    };
+    std::vector<EffectArgFault> effect_arg_faults;
+    bool effect_arg_faulted = false;   // 粘性：置位后本局不清（检查点依据）
+    bool effect_arg_fail_fast = false; // 场景 harness 置 true：检查点处终止对局
+    std::size_t effect_arg_reported_ = 0;   // 检查点上报游标（drain 用；下划线尾=内部）
+    // 上限保护（性能护栏）：buggy 效果每次调用都登记时，vector/日志会被批量训练放大。
+    // 超过上限不再追加条目，只累计省略数（粘性标志照置）——登记成本封顶 O(cap)。
+    // 热路径本身零开销：guard 条件即原有静默分支；检查点 = 每时点跳转一次 bool 判断。
+    static constexpr std::size_t kEffectArgFaultCap = 200;
+    std::size_t effect_arg_faults_suppressed = 0;   // 超上限后被省略的登记数（累计）
+    void report_effect_arg_fault(int effect_id, const int* args, int count,
+                                 std::string note) {
+        effect_arg_faulted = true;
+        if (effect_arg_faults.size() >= kEffectArgFaultCap) {
+            ++effect_arg_faults_suppressed;
+            return;
+        }
+        EffectArgFault f;
+        f.effect_id = effect_id;
+        f.state = static_cast<int>(currentState);
+        f.round = roundCount;
+        if (args != nullptr && count > 0) {
+            f.int_args.assign(args, args + count);
+        }
+        f.note = std::move(note);
+        effect_arg_faults.push_back(std::move(f));
+    }
+    // FSM 检查点：把未上报的登记写 stderr（返回本次上报条数；0 = 无新错误）。
+    // fail_fast 且有新错误 → 对局置 FINISHED（报告写完再置，日志顺序确定）。
+    int drain_effect_arg_faults() {
+        const std::size_t reported = effect_arg_reported_;
+        if (effect_arg_faults.size() <= reported) {
+            return 0;
+        }
+        for (std::size_t i = reported; i < effect_arg_faults.size(); ++i) {
+            const EffectArgFault& f = effect_arg_faults[i];
+            std::fprintf(stderr,
+                         "[EFFECT-ARG-FAULT] effect=%d state=%d(round %d) int_count=%zu"
+                         " args=[%s] note: %s\n",
+                         f.effect_id, f.state, f.round, f.int_args.size(),
+                         [&] {
+                             std::string s;
+                             for (std::size_t k = 0; k < f.int_args.size(); ++k) {
+                                 s += std::to_string(f.int_args[k]);
+                                 if (k + 1 < f.int_args.size()) s += ',';
+                             }
+                             return s;
+                         }().c_str(),
+                         f.note.c_str());
+        }
+        const int fresh = static_cast<int>(effect_arg_faults.size() - reported);
+        effect_arg_reported_ = effect_arg_faults.size();
+        if (effect_arg_faults_suppressed > 0) {
+            std::fprintf(stderr,
+                         "[EFFECT-ARG-FAULT] …另有 %zu 条登记因超过上限 %zu 条被省略"
+                         "（粘性标志已置，效果在本局继续静默跳过）\n",
+                         effect_arg_faults_suppressed, kEffectArgFaultCap);
+        }
+        if (effect_arg_fail_fast) {
+            std::fprintf(stderr,
+                         "[EFFECT-ARG-FAULT] fail_fast: 对局在时点跳转检查点终止"
+                         "（state=%d round=%d，累计 %zu 条）\n",
+                         static_cast<int>(currentState), roundCount, effect_arg_faults.size());
+            currentState = State::FINISHED;
+        }
+        return fresh;
+    }
+
 
     //--- 无效技能出口的通用结算钩子（**通用机制**）---
     // 打盔/龙威/miss 使 SKILL_INVALID 时，攻击伤害处理器默认零伤害早退；但存在
@@ -411,6 +494,9 @@ public:
     // 节点不注册不执行（子句级 boss 无效）；技能效果侧经 disabledEffects 预填（见
     // effect_param.h）。对局创建时由 Room 从 BattleCreateRequest 写入，战斗中只读。
     bool is_boss_challenge = false;
+    // 对局维度（2026-09-28 三视角线）：pvp=true 时 custom_equip_stats 里 pve-only
+    // 行不生效，反之亦然（双 1 行恒生效）。缺省 false = PVE（图鉴/Boss 主语境）。
+    bool is_pvp_battle = false;
     bool standby_initialized = false;
     std::array<int, 6> standby_pet_ids[2]{};
     std::array<bool, 6> standby_is_spirit_king[2]{};   // 待命位：技能全集含效果 760
@@ -543,7 +629,8 @@ public:
     PinkDamageResolved& resolvedPink;
 
     //--- 构造函数 ---
-    BattleContext(IControlBlock* control_block, const SeerRobot robots[]);
+    BattleContext(IControlBlock* control_block, const SeerRobot robots[],
+                  bool pvp_battle = false);
     BattleContext() = delete;
     BattleContext(const BattleContext&) = delete;
     ~BattleContext();
@@ -555,6 +642,35 @@ public:
     bool need_input() const;
     void generateState();
     void back_to_last_state();
+
+    //--- 终局（2026-10-01 死切/终局改造，工单《终局与死切状态机改造单》D1-D5）───
+    // 回合上限（0 = 无限）：ROUND_START 入口查 roundCount，到顶 → finish_battle()。
+    // 正式对局/场景默认 0；fuzz 由驱动设置（对局必然可终结，不靠决策点上界兜底）。
+    int max_rounds = 0;
+    // 结束标志位（D5）：死亡漏斗完成即评估终局（某方在场宠死亡已登记且 6 槽无存活
+    // → 旗立）。其后亡语/复活 watcher 允许在**当前时点**结算完（与官方"动画计数
+    // 跳动"一致），但回合流程各检查点见旗即走 FINISHED，**不因亡语复活回滚终局**。
+    bool finish_flag = false;
+    // 终局存活数快照（D5 结算口径，2026-10-01）：finish_battle 立旗瞬间按 hp>0
+    // 清点。其后亡语复活**不改变本快照**——官方口径"己方压轴击杀对手压轴重生也算
+    // 自己赢"（胜负在终局瞬间定档，晚到复活只结算、不改判）。-1 = 未立旗。
+    int finish_alive_snapshot[2] = {-1, -1};
+    // 胜负结算"视为存活"加账（薇尔诗 4000 黄金万象，effect_des 523：
+    // "己方的薇尔诗在胜负结算中视为存活"）：按槽置位，settlement_alive_count 在
+    // 快照之上加回"快照时已死但结算视为存活"的槽。由 2513 子句②实现方维护。
+    // ⚠️ 口径定稿（2026-10-01 用户游戏口径）：①前提 = 黄金万象**未被消耗**——
+    //    持有者登场消耗 token 时清位；②视为存活的宠**不可继续出战**——终局直接
+    //    结算，本表只改结算存活数/胜负，不拦终局判定（evaluate_battle_end 不读）。
+    //    消逝例外不变：薇本体被消逝则不算存活（档案 §三'）。
+    bool settlement_treated_alive[2][6]{};
+    // 终局收尾回调：finish_battle() 单次调用（正式对局控制块用它发终局帧；fuzz 计数）。
+    std::function<void(BattleContext&)> on_finish;
+    // 立旗 + 快照 + 跳 FINISHED + 单次回调。可重入：重复调用只跳转、回调只发一次。
+    void finish_battle();
+    // 胜负结算口径的存活数（battle_over 汇报与测试共用，2026-10-01 D5）：
+    // 基准 = finish_alive_snapshot（未立旗时现场清点 hp>0），再加回
+    // settlement_treated_alive 中"已死但结算视为存活"的槽（不重复计活着的）。
+    int settlement_alive_count(int side) const;
 
     //--- Workspace ---
     void resetWorkspace() { ws.reset(); }
@@ -1011,6 +1127,10 @@ public:
         skill_use_seq[0] = skill_use_seq[1] = 0;
         anomaly_duration_cap[0] = anomaly_duration_cap[1] = 0;   // 异常持续上限随对局清（476 套装线）
         plugin_storage.clear();
+        effect_arg_faults.clear();   // 解包错误登记随局清；粘性标志一并复位
+        effect_arg_faulted = false;
+        effect_arg_reported_ = 0;
+        effect_arg_faults_suppressed = 0;
         invalid_skill_damage_hooks.clear();
         sync_on_stage_trait(0);
         sync_on_stage_trait(1);

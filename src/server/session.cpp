@@ -83,6 +83,14 @@ void Session::on_close() {
 
 void Session::dispatch(proto::Command cmd, std::uint32_t uuid, const std::string& payload) {
     switch (cmd) {
+        case proto::Command::HELLO:
+            // 版本握手（2026-10-01）：回引擎自描述指纹，网关/前端连接即核对。
+            // payload 忽略（预留客户端自报版本）；uuid 也忽略——单连接单对局。
+            (void)uuid;
+            (void)payload;
+            send_payload(proto::Command::HELLO, version_fingerprint_json());
+            return;
+
         case proto::Command::INIT_BATTLE:
             handle_init_battle(uuid, payload, /*json_form=*/false);
             return;

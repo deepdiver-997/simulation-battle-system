@@ -24,7 +24,11 @@ class Calculation {
         // 防御在进公式前按 ws.defense_ignore_pct[defender] 折减（物理走防御、特殊走特防，
         // 同一槽位字段按本技能的攻防项取值）。忽略的是**能力视图值**（含等级修正后的），
         // 与官方"忽略防御值"口径一致；先手权速度比较/属性伤害不受影响。
-        double Defense = ws.getTempAbilityValue(defender, static_cast<NumericalPropertyIndex>(eff_type + 2));
+        // E11 无视强化（2026-09-29）：ws.boost_pierced[defender] 由"无视对手能力提升
+        // 状态"族（195/494/486）的 SKILL_EFFECT 写入——防御/特防正等级视作 0
+        // （min(0, level)，弱化保留）；行动结束由 FSM 清（本次命中语义）。
+        double Defense = ws.getTempAbilityValue(defender, static_cast<NumericalPropertyIndex>(eff_type + 2),
+                                                ws.boost_pierced[defender]);
         if (ws.defense_ignore_pct[defender] > 0) {
             Defense = Defense * (100 - ws.defense_ignore_pct[defender]) / 100.0;
         }

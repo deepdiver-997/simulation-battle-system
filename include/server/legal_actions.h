@@ -62,6 +62,11 @@ struct LegalActions {
     // 前端据此切界面 —— 这两种状态下合法动作集完全不同。
     bool must_choose_pet = false;
 
+    // 是否提供"空操作/跳过"选项（D1，2026-10-01 死切改造）：死切期**不提供**——
+    // FSM 只收 CHOOSE_PET，给跳过等于邀请客户端发一个注定被拒的动作。
+    // 前端据 canSkip==false 隐藏跳过按钮（缺省视为 true，向后兼容旧服务端）。
+    bool can_skip = true;
+
     std::vector<LegalSkill> skills;
     std::vector<LegalPet> pets;
     std::vector<LegalMedicine> medicines;

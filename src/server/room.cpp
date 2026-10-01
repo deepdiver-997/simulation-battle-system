@@ -133,7 +133,7 @@ bool Room::try_start_battle(std::string& err) {
             SeerRobotFactory::create_robot(lineup_.side2, lineup_.medicines[1],
                                            lineup_.equip_item_ids[1]),
         };
-        fresh.reset(new BattleContext(this, robots));
+        fresh.reset(new BattleContext(this, robots, lineup_.pvp_battle));
         // boss 挑战对局（2026-09-26 "boss 有效"线）：开关注入 context，
         // 魂印程序注册口按节点 boss_invalid 标签过滤。
         fresh->is_boss_challenge = lineup_.boss_challenge;
@@ -291,6 +291,9 @@ void Room::post_run() {
     auto self = shared_from_this();
     battle_pool_->post([self] {
         if (self->context_ != nullptr && self->fsm_ != nullptr) {
+            // 同房间推进串行化：重叠的推进任务在锁上排队（FSM 需要输入时 run 会
+            // 快速返回，阻塞代价可忽略）；跨房间不受影响（每房一把锁）。
+            std::lock_guard<std::mutex> lk(self->run_mutex_);
             self->fsm_->run(self->context_.get());
         }
     });
@@ -385,6 +388,9 @@ void Room::async_write(int player_id, const std::string& data, BattleContext* ct
     auto self = shared_from_this();
     battle_pool_->post([self] {
         if (self->context_ != nullptr && self->fsm_ != nullptr) {
+            // 同房间推进串行化：重叠的推进任务在锁上排队（FSM 需要输入时 run 会
+            // 快速返回，阻塞代价可忽略）；跨房间不受影响（每房一把锁）。
+            std::lock_guard<std::mutex> lk(self->run_mutex_);
             self->fsm_->run(self->context_.get());
         }
     });
@@ -477,13 +483,11 @@ void Room::on_fsm_paused(BattleContext* ctx) {
 
     // ⚠️ 引擎死路兜底：正在等输入，但该玩家一个合法动作都没有。
     //
-    // 已知触发场景（实测复现）：一方 6 只精灵全灭后，FSM 仍停在"死后选择"要求换宠，
-    // 而没有任何可换的精灵 —— 它的 need_input() 只看"场上精灵是否倒下"，不看
-    // "还有没有活着的精灵可换"；kLinearStateOrder 里也没有 FINISHED，
-    // 败北结算依赖"被击败方换宠后继续推进"，于是对局永久卡住。
-    //
-    // 这是**引擎缺口**，正确修法是改败北判定（属于领域语义，需要口径确认），
-    // 不在这里私改。但服务端不能因此把玩家挂死：兜底结束 + 打 ERROR 让缺口可见。
+    // 历史触发场景：一方 6 只精灵全灭后，FSM 停在"死后选择"要求换宠，而没有任何
+    // 可换的精灵 —— 永久卡住。**根因已修**（2026-10-01 死切/终局改造 D4/D5）：
+    // 死亡漏斗完成即评估终局（evaluate_battle_end），全灭直达 FINISHED，
+    // 不再进入死切等待。本兜底保留为安全网：未知形态的死路仍按"引擎缺口"响铃收场，
+    // 不把玩家挂死。
     const LegalActions legal = compute_legal_actions(*ctx, waiting_player);
     if (!has_any_legal_action(legal)) {
         log_room("ERROR", match_id_,

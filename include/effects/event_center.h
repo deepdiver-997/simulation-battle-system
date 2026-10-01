@@ -28,6 +28,13 @@ enum class EventType {
     EVENT_SWAP,              // 换宠
     EVENT_OPPONENT_DEFEATED, // 击败对手
     EVENT_SKILL_INVALID,     // 技能无效/未命中（Skills::execute 中 emit，target = 对方）
+    // E13 状态窗口族（2026-09-29）：
+    EVENT_SKILL_USED,        // 技能**使用**即发（Skills::execute 起点 emit，miss/被封也算
+                             // "使用"——469"若对手使用属性技能"字面；actor=使用方，
+                             // used_attribute 标记是否属性技）
+    EVENT_STAT_BOOSTS_LOST,  // 能力提升被消除/吸取**成功**时发（clear_stat_boosts /
+                             // transfer_stat_boosts 成功路径 emit，target = 失去方，
+                             // amount = 项数，stat_loss_kind = 0 消除 / 1 被吸取）
     EVENT_ATTACK_BLOCKED,    // 攻击被拦下/归零（apply_resolved_damage 中 final<=0 时 emit）
     // 盔/威/封属**被结算**（真正生效 或 被穿）——RuleCenter::notify 每结算一条拦截条目就 emit。
     // actor = 挂载方(source_owner)，target = 被拦方(user)，amount = 该条目的 source_effect_id，
@@ -44,6 +51,13 @@ enum class EventType {
     // ⚠️ **多段粉每段各发一次**（每次 deal_pink_damage 一段）——阈值类检测（箫澈 2099「受到粉伤
     //    ≥300」）因此天然是"逐段判定"，不需要任何段计数逻辑。
     EVENT_TAKE_PINK_DAMAGE,
+    // **预死亡信号**（2026-09-30 死亡模型，用户定稿）：伤害管线（deal_damage 红/真/属、
+    // run_pink_damage 粉）落血后**体力≤0**即广播——actor=伤害来源方、target=被打方、
+    // damage_kind=本段伤害档位。反应型免死（②范围即时检测族）在回调里写血即自然否决
+    // （随后的 defeat_pet 见 hp>0 走 NOT_DOWN）；内核"同归标志"也由它计数。
+    // ⚠️ **体力修正通道不发本信号**：自爆 HP_CONSUME/斩杀印记（免死不可见的前提）、
+    //    秒杀通道（EVENT_HP_TO_ZERO 自己就是信号面）。
+    EVENT_HP_EXHAUSTED,
     // **体力归零原语**（force_hp_to_zero）触发：target = 被归零方、actor = 来源方、
     // amount = 归零前体力。秒杀族（通用特性·瞬杀 1-5 星、技能/魂印秒杀）的统一检测点——
     // 它**不是伤害**（护盾/护罩/减伤不参与），所以不走 EVENT_TAKE_DAMAGE。
@@ -155,6 +169,13 @@ struct BattleEvent {
     // 死亡发生的**槽位**（0..5）。用途：薇尔诗 2513「相邻/隔位精灵死亡」类效果要判
     //   "死的是哪一槽"——只给 side 判不出。非死亡事件为 -1。
     int slot = -1;
+    // **伤害分型**（E12 反伤族，2026-09-29，追加在末尾——遵守本 struct 的追加纪律）：
+    // EVENT_TAKE_DAMAGE 专用——static_cast<int>(DamageKind)（NORMAL 红伤 / FIXED /
+    // PERCENT / PERCENT_VALUE / TRUE / ATTRIBUTE），-1 = 未填。以前三档伤害共用
+    // EVENT_TAKE_DAMAGE，事件里分不出"挨的是不是攻击伤害"（砥砺 37 只能就地判
+    // kind）；反伤族"受**攻击**时"的过滤只认 NORMAL。两处 emit 点
+    // （deal_pink_damage 粉伤路径 / deal_damage 红伤路径）均已带上。
+    int damage_kind = -1;
     // 本次倒下的**成因**（DefeatCause 的整数值）。用途：拦截器按成因过滤
     //   （官方 idx=339：消耗全部体力穿所有残留免死、但不穿复活）。非死亡事件为 0。
     int cause = 0;
@@ -162,6 +183,11 @@ struct BattleEvent {
     int stat_index = -1;   // 能力下标（0=攻击 1=特攻 2=防御 3=特防 4=速度 5=体力）；非该族为 -1
     int level_after = 0;   // 变化**之后**的等级（检测方通常只关心"是不是正等级"）
     int level_delta = 0;   // 本次变化量（正=提升、负=下降）；便于"只认提升"的检测方早退
+    // ── E13 状态窗口族（2026-09-29，追加在末尾）──
+    // EVENT_SKILL_USED 专用：本次使用的技能是否属性技。
+    bool used_attribute = false;
+    // EVENT_STAT_BOOSTS_LOST 专用：0 = 被消除 / 1 = 被吸取；-1 = 未填。
+    int stat_loss_kind = -1;
     static constexpr int kNoEventState = -999;
 };
 

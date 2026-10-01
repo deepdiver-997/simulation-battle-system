@@ -125,6 +125,11 @@ private:
     std::shared_ptr<BattleFsm> fsm_;
 
     mutable std::mutex mu_;
+    // **同一房间的 FSM 推进串行化**（2026-09-30 崩溃修复）：post_run 投给共享线程池，
+    // 无按房间串行化时两次快速提交会被不同 worker 并发执行 fsm_->run(context_)——
+    // BattleContext（RuleCenter 票池等）被多线程同时读写 → 堆损坏 → 死亡选择期 abort
+    // （ASAN 实证：container-overflow，T3 写 T4 分配的票池）。每次推进持锁全程。
+    mutable std::mutex run_mutex_;
     std::array<SessionPtr, 2> seats_;
     // 按玩家排队：FSM 正在跑时到达的输入先排着，等 wait_for_input 时派发。
     std::array<std::deque<std::string>, 2> pending_inputs_;

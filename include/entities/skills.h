@@ -371,3 +371,11 @@ public:
 };
 
 #endif // SKILLS_H
+
+// ── 内核记账效果清单（2026-09-29）────────────────────────────────────────
+// 697/699（穿透凭证族）由 penetration_flags_for_effect 在技能加载期并入
+// penetration_flags，**不注册 SKILL_EFFECT**（穿透在 query_usage 门判定消费，
+// 注册 HIT 分支时机太晚）——功能完整但 registry dump 里缺席，控制台覆盖率
+// 徽标误报"未实现"（697×85 / 699×99 技能引用，假阳性黑洞）。dump 端用本清单
+// 并集补账；新增内核硬编码效果时同步维护此表。
+const std::vector<int>& kernel_penetration_effect_ids();

@@ -91,7 +91,11 @@ public:
     bool isActionOneShot() const { return duration_rounds_ == 1 && effect_.left_round == 0; }
     int getEffectCategory() const { return effect_.logic ? effect_.id : -1; }
     Effect* getEffect() { return &effect_; }
+    const Effect* getEffect() const { return &effect_; }
     int getRegisteredRound() const { return registered_round_; }
+    // 序列化/审计用（fullstate 桶条目）：剩余回合由客户端用 duration-已过回合自算，
+    // 引擎只出原始两维（数据面原则，开工文档 §2.1）。
+    int getDurationRounds() const { return duration_rounds_; }
 
     // 断回合用：把回合类条目立即置为过期（isExpired 在 currentRound 起为 true）。
     // 常驻条目（duration<=0）不可被断回合终结，调用方应先用 isRoundEffect 过滤。

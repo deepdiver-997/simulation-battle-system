@@ -623,30 +623,61 @@ numerical_properties PetFactory::create_numerical_base(
 
     // ④ 账号级固定加成（工作值，待游戏内最终校——改这两处常量即收口，见调查 §2.4）：
     //    体力上限 +20（逐精灵开关）与战队加成六维 30/15×4/10（逐精灵开关）。
+    //    年费通用加成六维+10（2026-09-28 用户拍板）：官方"年费加成"实测不吃性格，
+    //    与战队/刻印同层平加——对账依据：无刻印配置两侧一致，有刻印侧差值全部由
+    //    extra/年费解释（docs_local/docs/03-数据与数据库/培养数值构成调查.md）。
+    // ④' 称号（2026-09-28）：六维平加进括号（与刻印/年费同层，pvp/pve 双有效）。
+    //     专属校验对齐刻印口径：target_monster>0 且非本精灵 → 直接报错。
+    int title_flat[6] = {0, 0, 0, 0, 0, 0};
+    if (cultivate.title_id > 0) {
+        const std::optional<official_data::TitleRecord> title =
+            repo.load_title(cultivate.title_id);
+        if (!title) {
+            throw std::runtime_error("cultivate mode: unknown title id " +
+                                     std::to_string(cultivate.title_id));
+        }
+        if (title->target_monster > 0 && title->target_monster != monster.id) {
+            throw std::runtime_error("cultivate mode: title " + title->name +
+                                     " is exclusive to pet " +
+                                     std::to_string(title->target_monster));
+        }
+        for (int i = 0; i < 6; ++i) {
+            title_flat[i] = title->stats[i];
+        }
+    }
+
     static constexpr int kHpCapBonus = 20;
     static constexpr int kGuildBoost[6] = {15, 15, 15, 15, 10, 30};  // 攻特攻防特防速体
+    static constexpr int kAnnualBonus = 10;
     const int guild = cultivate.guild_boost ? 1 : 0;
     const int hp_cap = cultivate.hp_cap20 ? kHpCapBonus : 0;
+    const int annual = cultivate.annual_bonus ? kAnnualBonus : 0;
 
     // 种族值序 [攻,特攻,防,特防,速,体]（monsters 列序 = NumericalPropertyIndex 序）。
     const int race[6] = {monster.atk, monster.sp_atk, monster.def, monster.sp_def, monster.spd, monster.hp};
-    const int ev_quarter[6] = {
-        cultivate.ev[0] / 4, cultivate.ev[1] / 4, cultivate.ev[2] / 4,
-        cultivate.ev[3] / 4, cultivate.ev[4] / 4, cultivate.ev[5] / 4,
+    // 学习力 ÷4 不预先取整（浮点贯通）：官方口径裁定（2026-09-28，双源一致）——
+    //   ① 官方面板对账：ev=253 攻击 389.25×1.1 = 428.175 → floor 428（若先整除得
+    //      389×1.1 = 427.9 → 427，与官方 428 差 1）；
+    //   ② B 站官方向培养指南案例："少刷 4 点学习力面板少 2 点（性格 1.1 倍作用）"
+    //      ——该现象只在 floor 下出现（乘积小数 <0.1 跨界），round 不可能。
+    //   社区公式（4399 计算解析）：[(种族×2+学习力÷4+个体)×1+5]×性格，HP +110。
+    const double ev_quarter[6] = {
+        cultivate.ev[0] / 4.0, cultivate.ev[1] / 4.0, cultivate.ev[2] / 4.0,
+        cultivate.ev[3] / 4.0, cultivate.ev[4] / 4.0, cultivate.ev[5] / 4.0,
     };
 
     numerical_properties base;
     for (int i = 0; i < 5; ++i) {
-        // 非体力项：(种族×2 + ev÷4 + 31 + 5) × 性格修正（整段乘完再向下取整）。
-        const long long raw = (static_cast<long long>(race[i]) * 2 + ev_quarter[i] + 31 + 5);
+        // 非体力项：(种族×2 + ev÷4(浮点) + 31 + 5) × 性格修正，整段乘完一次性 floor。
+        const double raw = (race[i] * 2.0 + ev_quarter[i] + 31 + 5);
         const int natured = static_cast<int>(raw * nature_mult[i]);   // mult>0，向零截断=floor
         const auto idx = static_cast<NumericalPropertyIndex>(i);
-        base[idx] = natured + keryin_flat[i] + kGuildBoost[i] * guild;
+        base[idx] = natured + keryin_flat[i] + title_flat[i] + kGuildBoost[i] * guild + annual;
     }
-    // 体力：种族×2 + ev÷4 + 31 + 110（性格不作用于体力）→ 刻印 → 体力上限 → 战队。
-    const long long hp_raw = static_cast<long long>(race[5]) * 2 + ev_quarter[5] + 31 + 110;
+    // 体力：种族×2 + ev÷4(浮点) + 31 + 110（性格不作用于体力）→ 刻印 → 体力上限 → 战队 → 年费。
+    const double hp_raw = race[5] * 2.0 + ev_quarter[5] + 31 + 110;
     base[NumericalPropertyIndex::HP] = static_cast<int>(hp_raw) + keryin_flat[5] +
-        hp_cap + kGuildBoost[5] * guild;
+        title_flat[5] + hp_cap + kGuildBoost[5] * guild + annual;
     return base;
 }
 
