@@ -5,6 +5,7 @@
 #include <deque>
 #include <functional>
 #include <iostream>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -140,6 +141,22 @@ enum class EventType {
     //    两轴都对不上。老槽保持不动（既有监听方语义不漂移）。
     EVENT_STAT_REMOVED,
 
+    // **异常被转化**（apply_anomaly [6] 转化层命中且施加落地，T5a 2026-10-21）：
+    // target = 被转化方、actor = 施加方、amount = **原始入参**异常 id、
+    // converted_to = 转化后异常 id（BattleEvent 尾字段）。
+    // ⚠️ 只认 [6] 转化层（anomaly_conversion 表把入参改写）：抗性路径 21→Y 的转化
+    //    走 EVENT_ANOMALY_RESISTED（各自语义互斥）；免疫/反弹不发（那是 IMMUNED）。
+    // 典型用途：4829 卡布达「异常每被免疫/转化 1 次→吸取效果+10%」的"转化"半边
+    //（"免疫"半边已有 EVENT_ANOMALY_IMMUNED）。
+    EVENT_ANOMALY_CONVERTED,
+    // **伤害类免疫票挡下**（红伤 BLOCK 相 / 粉伤 IMMUNE 相，consume_immune 之后，
+    // T5b 2026-10-21）：actor = 伤害来源、target = 承伤方、amount = 挡下前的 final、
+    // damage_kind = 档位（NORMAL 红 / FIXED·PERCENT·PERCENT_VALUE 粉）。
+    // 与 EVENT_ATTACK_BLOCKED 的分工：那条是**结算面**（final≤0 都发，分不出是谁
+    // 挡的）；本条只在**免疫票命中**时发——4830 鲨鱼辣椒「对手免疫固定伤害则消除
+    // 回合类」的检测点。注意次数型票挡一段只发一次；窗口/永久票每段都发。
+    EVENT_DAMAGE_IMMUNED,
+
 };
 
 /**
@@ -188,6 +205,14 @@ struct BattleEvent {
     bool used_attribute = false;
     // EVENT_STAT_BOOSTS_LOST 专用：0 = 被消除 / 1 = 被吸取；-1 = 未填。
     int stat_loss_kind = -1;
+    // ── 转化事件（T5a 2026-10-21，追加在末尾——遵守本 struct 的追加纪律）──
+    // EVENT_ANOMALY_CONVERTED 专用：转化**后**的异常状态 id；其余事件 -1。
+    int converted_to = -1;
+    // ── 显示面扩展（2026-10-04 事件带可读性线，追加在末尾）──
+    // EVENT_SKILL_USED 专用：本次使用的技能 id/名（emit 点在 Skill 实例成员作用域，直接可得）。
+    // 用途：前端事件带"谁使用了哪个技能"与命中动画的技能名标注。非该族事件为 -1/空。
+    int skill_id = -1;
+    std::string skill_name;
     static constexpr int kNoEventState = -999;
 };
 

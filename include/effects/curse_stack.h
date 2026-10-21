@@ -28,6 +28,7 @@
 
 #include <abnormal-system/abnormal-types.h>
 #include <fsm/battleContext.h>
+#include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
 
 // 每层数值（图鉴口径）。
 constexpr int kCurseAmpPctPerStack = 5;     // 造成攻击伤害 +5%/层（通用增伤·加法）
@@ -163,7 +164,8 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                 }
                 const int n = get_curse_stacks(c, bucket_owner);
                 if (n > 0) {
-                    d.final = d.final * (100 + n * kCurseAmpPctPerStack) / 100;
+                    d.final = checked_pct_mul(d.final, n * kCurseAmpPctPerStack,
+                                              "curse 诅咒层增伤");
                 }
             });
         ctx->register_default_damage_effect(

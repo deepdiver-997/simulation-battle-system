@@ -2,8 +2,29 @@
 #define CALCULATION_H
 
 #include <cstdlib>
+#include <limits>
+#include <stdexcept>
+#include <string>
 #include <entities/elf-pet.h>
 #include <fsm/battleWorkspace.h>
+
+// 响亮报错版百分比乘区（2026-10-21 用户口径，heal_impl 同款）：value×(100±pct)/100
+// 的中间积超 int 即 throw。实际对局红伤/面板不可能触到（面板与种族均 int、伤害公式
+// 无此量级）——触到 = 场景为"不被打死"无脑堆了超大 HP → 报错逼场景改 ≤2000 万量级
+// 的合理值（这本质是场景写得不严谨，不是引擎硬错误；旧实现 int 乘法溢出变负静默穿透，
+// K332 实证 24M 恢复整笔归零同族）。全库 int 乘区统一走本入口（效果实现套路目录·乘区条）。
+inline int checked_pct_mul(int value, int pct_delta, const char* site) {
+    const int64_t product = static_cast<int64_t>(value) * (100 + pct_delta);
+    if (product > std::numeric_limits<int>::max() ||
+        product < std::numeric_limits<int>::min()) {
+        throw std::runtime_error(
+            std::string(site) + "：百分比乘区溢出 —— " + std::to_string(value) +
+            " ×(100" + (pct_delta >= 0 ? "+" : "") + std::to_string(pct_delta) +
+            ")/100 中间积 " + std::to_string(product) + " 超 int 范围。"
+            "实际对局不可能出现；多为场景堆了超大 HP，请改用 ≤2000 万量级的合理数值");
+    }
+    return static_cast<int>(product / 100);
+}
 
 class Calculation {
     public:

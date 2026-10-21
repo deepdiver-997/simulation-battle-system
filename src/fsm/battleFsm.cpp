@@ -687,7 +687,7 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
             boost_sum += g.pct;
         }
         if (boost_sum > 0) {
-            snapshot.base = snapshot.base * (100 + boost_sum) / 100;
+            snapshot.base = checked_pct_mul(snapshot.base, boost_sum, "battleFsm 增益重算");
         }
     }
     // 暴击：**只消费** query_usage 已掷好的结果（`ctx->crit_happened`），这里不再重掷。
@@ -717,6 +717,17 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
     //   ⚠️ 乘在 `base` 上（而不是单独挂一个字段）是刻意的：下游 deal_damage／伤害管线／日志
     //   全都只消费 final → 增伤/减伤/护盾/**次数型免伤**自动作用于**总数**，
     //   这正是"一次公式 ×N"的官方语义（"免疫下1次攻击伤害"该吞掉整段，而不是只挡第一段）。
+    // ★ 动态连击次数解析（484/612/1685 族，2026-10-03 连击面）：效果在 SKILL_EFFECT 挂的
+    //   解析器在**第一次公式**读 combo_view 之前咨询一次、materialize 写回（不打变威力
+    //   标记），用后即焚（本函数可能因变威力重算跑两遍，第二遍读到的是已解析值）。
+    //   ⚠️ 解析值=1 时不置 rewritten → 不触发重算 → 与普通单击完全等价
+    //   （暴击破防不可见：第一次公式在破防之前算完，这正是普通攻击的官方语义；
+    //   伤害浮动也不重掷）。N>1 时与静态连击同路：第一次（破防前）→ 破防 → 重算×N。
+    if (ctx->ws.combo_count_resolver[attacker_id]) {
+        const int resolved = std::max(1, ctx->ws.combo_count_resolver[attacker_id](ctx));
+        ctx->ws.combo_view[attacker_id].materialize(resolved);
+        ctx->ws.combo_count_resolver[attacker_id] = nullptr;
+    }
     const int combo_count = std::max(1, static_cast<int>(ctx->ws.combo_view[attacker_id]));
     if (combo_count > 1) {
         snapshot.base = snapshot.base * combo_count;
@@ -892,6 +903,19 @@ void finish_attack_damage(BattleContext* ctx, int attacker_id) {
         ctx->resolvedDamage.final = 0;
     }
     apply_resolved_damage(ctx);
+    // ★ 逐段钩子（1454/1172 族，2026-10-03 连击面）：红伤落地后按 hitCount 循环调用
+    //   （效果函数自带概率），挡伤作用于整段 → final<=0（被挡/归零）无命中不触发。
+    //   用后即焚（一次攻击一批）。
+    if (ctx->ws.combo_hit_hook[attacker_id]) {
+        const int hits = std::max(1, ctx->resolvedDamage.hitCount);
+        if (ctx->resolvedDamage.final > 0 && ctx->resolvedDamage.defenderId >= 0
+            && ctx->resolvedDamage.defenderId <= 1) {
+            for (int hit_index = 1; hit_index <= hits; ++hit_index) {
+                ctx->ws.combo_hit_hook[attacker_id](ctx, hit_index);
+            }
+        }
+        ctx->ws.combo_hit_hook[attacker_id] = nullptr;
+    }
     // 雷解(42)「该状态下自身**造成攻击伤害后**，附加伤害值60%的真实伤害」（官方 effect_des 42；
     // 2026-09-18 扩表后接入）。
     // ⚠️ 取"**伤害值**"用的是**裸伤台账**（`ws.raw_attack_damage`）——与本引擎既有的
@@ -1271,22 +1295,32 @@ void BattleFsm::record_tape_sample(BattleContext* ctx, State state) {
     }
 
     // on_stage 在很前的时点可能还没定下来，越界时记 -1，而不是读越界内存。
-    auto take = [ctx](int side, int& hp, int& max_hp) {
+    auto take = [ctx](int side, int& hp, int& max_hp, int& pet_id, std::string& pet_name,
+                      int& pet_slot) {
         const int slot = ctx->on_stage[side];
         if (slot < 0 || slot >= 6) {
             hp = -1;
             max_hp = -1;
+            pet_id = -1;
+            pet_name.clear();
+            pet_slot = -1;
             return;
         }
         const ElfPet& pet = ctx->seerRobot[side].elfPets[slot];
         hp = pet.hp;
         max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
+        pet_id = pet.id;
+        pet_name = pet.name;
+        pet_slot = slot;
     };
 
     int hp[2] = {0, 0};
     int max_hp[2] = {0, 0};
-    take(0, hp[0], max_hp[0]);
-    take(1, hp[1], max_hp[1]);
+    int pet_id[2] = {-1, -1};
+    std::string pet_name[2];
+    int pet_slot[2] = {-1, -1};
+    take(0, hp[0], max_hp[0], pet_id[0], pet_name[0], pet_slot[0]);
+    take(1, hp[1], max_hp[1], pet_id[1], pet_name[1], pet_slot[1]);
 
     int levels[2][kSampleLevelSlots] = {};
     for (int side = 0; side < 2; ++side) {
@@ -1296,7 +1330,8 @@ void BattleFsm::record_tape_sample(BattleContext* ctx, State state) {
     }
 
     ctx->tape_.record(static_cast<int>(state), ctx->roundCount, ctx->current_player_id_, hp, max_hp,
-                      levels, ctx->ws.pendingDamage.final, ctx->ws.resolvedDamage.final);
+                      levels, ctx->ws.pendingDamage.final, ctx->ws.resolvedDamage.final,
+                      pet_id, pet_name, pet_slot);
 }
 
 void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType actionType, int index,
@@ -1643,6 +1678,10 @@ void BattleFsm::handle_BattleRoundStart(BattleContext* battleContext) {
     int preserved_round_choice[2][2];
     std::memcpy(preserved_round_choice, battleContext->roundChoice, sizeof(preserved_round_choice));
     battleContext->resetWorkspace();
+    // 技能使用基线（判据统一 2026-10-03）：回合初快照，供 executed_skill_this_round 判
+    // "本回合是否成功执行过技能"（skill_use_seq 只增不清，被控回合不动 → 增量=成功使用）。
+    battleContext->ws.skill_use_seq_round_start[0] = battleContext->skill_use_seq[0];
+    battleContext->ws.skill_use_seq_round_start[1] = battleContext->skill_use_seq[1];
     std::memcpy(battleContext->roundChoice, preserved_round_choice, sizeof(preserved_round_choice));
     for (int i = 0; i < 2; ++i) {
         if (!battleContext->operation_collected[i]) {
@@ -2273,6 +2312,9 @@ void BattleFsm::handle_BattleAfterDefeatingOpponent(BattleContext* battleContext
 }
 
 void BattleFsm::handle_BattleRoundCompletion(BattleContext* battleContext) {
+    // T2（K4.3）：快照刚结束回合的先手权——RC 桶内与下一回合读到的都是"上回合先手权"
+    //（下回合 FMR 入口会把 preemptive_right 清零，本快照不受影响）。
+    battleContext->prev_round_preemptive_right = battleContext->preemptive_right;
     // effect 39 族"当回合无法行动"只覆盖当回合：回合完成即清
     battleContext->cannot_act_round[0] = false;
     battleContext->cannot_act_round[1] = false;

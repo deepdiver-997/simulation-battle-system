@@ -257,6 +257,17 @@ void BattleContext::install_default_pink_mitigation() {
                     return;
                 }
                 ctx->consume_immune(r.target, ImmunityType::PINK_DAMAGE, ctx->currentState);
+                // 伤害类免疫成功事件（T5b 2026-10-21）：只在免疫票命中时发——
+                // 4830 鲨鱼辣椒「对手免疫固定伤害则消除回合类」的检测点。
+                //（红伤侧同款见 BLOCK 相；与 EVENT_ATTACK_BLOCKED 的分工见事件注释。）
+                {
+                    BattleEvent ev{EventType::EVENT_DAMAGE_IMMUNED, r.actor, r.target,
+                                   r.final, static_cast<int>(ctx->currentState)};
+                    ev.damage_kind = r.tier == PinkDamageTier::PERCENT
+                                         ? static_cast<int>(DamageKind::PERCENT)
+                                         : static_cast<int>(DamageKind::FIXED);
+                    ctx->event_center_.emit(ev);
+                }
                 r.final = 0;
             }
         );
@@ -463,7 +474,7 @@ void BattleContext::install_default_damage_amp_extra() {
                     if (v == 0) {
                         continue;
                     }
-                    damage.final = damage.final * (100 + v) / 100;
+                    damage.final = checked_pct_mul(damage.final, v, "battleContext 通用增伤乘区");
                 }
                 if (damage.final < 0) {
                     damage.final = 0;
@@ -520,7 +531,7 @@ void BattleContext::install_default_abnormal_mods() {
                     return;   // 无异常 → 零行为（不碰 ws.damage_add_pct 那条既有通道）
                 }
                 d.addPct += pct;
-                d.final = d.final * (100 + pct) / 100;
+                d.final = checked_pct_mul(d.final, pct, "battleContext 异常增伤");
             });
 
         // ② AMP_EXTRA·攻击方：虚弱诅咒（造成的攻击伤害额外降低50%）
@@ -567,7 +578,7 @@ void BattleContext::install_default_abnormal_mods() {
                                         - ctx->roundCount;
                     static constexpr int kWeaknessPct[5] = {25, 50, 100, 250, 500};
                     int idx = remaining < 1 ? 0 : (remaining > 5 ? 4 : remaining - 1);
-                    d.final = d.final * (100 + kWeaknessPct[idx]) / 100;
+                    d.final = checked_pct_mul(d.final, kWeaknessPct[idx], "battleContext 虚弱增幅");
                 }
             });
 
@@ -708,6 +719,14 @@ void BattleContext::install_default_damage_block() {
                     return;
                 }
                 ctx->consume_immune(defender, ImmunityType::DAMAGE, ctx->currentState);
+                // 伤害类免疫成功事件（T5b 2026-10-21，红伤侧）：amount = 挡下前 final。
+                {
+                    BattleEvent ev{EventType::EVENT_DAMAGE_IMMUNED, damage.attackerId,
+                                   defender, damage.final,
+                                   static_cast<int>(ctx->currentState)};
+                    ev.damage_kind = static_cast<int>(DamageKind::NORMAL);
+                    ctx->event_center_.emit(ev);
+                }
                 // 完全挡下：整段快照归零（不只 final——下游若读 base 不应看到幻影伤害）。
                 damage.base = 0;
                 damage.afterAdd = 0;
@@ -748,7 +767,7 @@ void BattleContext::install_default_damage_amp() {
                     return;
                 }
                 damage.addPct += pct;   // 记进快照，供调试/下游读取
-                damage.final = damage.final * (100 + pct) / 100 + flat;
+                damage.final = checked_pct_mul(damage.final, pct, "battleContext 增伤乘加平顶") + flat;
                 if (damage.final < 0) {
                     damage.final = 0;
                 }

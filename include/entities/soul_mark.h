@@ -1,6 +1,7 @@
 #ifndef SOUL_MARK_H
 #define SOUL_MARK_H
 
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -54,6 +55,10 @@ public:
     int monster_id = 0;
     // 魂印级钩子（登场/离场额外动作）。默认全空 = 只走引擎的节点注册 + epoch 作废。
     SoulMarkHooks hooks_;
+    // T6 窗界锚点账本（2026-10-21）：node_idx → 该窗节点**本次上场首次注册**的回合数。
+    // 更新器重注册按 anchor + duration - now 算剩余（过期跳过）；deactivate 清空 →
+    // 再上场重开窗。duration_rounds=0 的节点不进账本（零开销，语义不变）。
+    std::map<int, int> window_anchor_round_;
 
     // 是否有需要"出战背包存活即注册"的常驻节点（scope == ROSTER）。
     bool has_roster_nodes() const {

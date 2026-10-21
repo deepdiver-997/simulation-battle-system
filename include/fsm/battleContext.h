@@ -135,6 +135,13 @@ public:
     // ElfPet::soulmark_storage（下场保留）/ on_stage_storage（本场上场）。
     std::map<int, std::any> plugin_storage;
 
+    //--- 上一回合先手权（T2，2026-10-05 决策清单 K4.3 用户裁定）---
+    // preemptive_right 是 ws 字段、每回合 FMR 入口清零（handle_BattleFirstMoveRight），
+    // "上回合谁先手"类判据此前只能各效果自记（K12 310：FMR 读当回合值+RC 收口进
+    // plugin_storage）。本字段由 handle_BattleRoundCompletion 在回合完成时点快照
+    // （早于下回合 FMR 的清零），跨回合稳定可读；RC 桶内读到的是"刚结束回合"的值。
+    PreemptiveRight prev_round_preemptive_right = PreemptiveRight::NONE;
+
     //--- 效果参数解包错误登记（**通用机制**，2026-09-28 用户定稿）---
     // 插件 handler 的 args 解包不满足预期（数量不足/下标越界/布局不符）时**不得静默
     // return**——调 report_effect_arg_fault 登记（追加式，同时点多次出错各自成条，
@@ -466,6 +473,15 @@ public:
     //   - sync_pending_deaths：扫到 hp>0（已复活）时复位；
     //   - 消逝：置位（消逝蕴含阵亡，但**不发** EVENT_DEATH——见 defeat_pet/vanish_spirit）。
     bool pet_death_notified[2][6]{};
+
+    // 统一查询：死亡裁定（defeat_pet / vanish）是否已登记本槽本次死亡。
+    // 门控语义（2026-10-02 用户定稿）：死亡时点绝对权威——已裁定死亡的槽位，
+    // 一切 HP 提升操作必须拒绝；唯一合法出口是 revive_pet（复位登记 + 写 HP）。
+    // 免死/真2命走预死亡信号（death_interceptors，在裁决成立前拉起体力），
+    // 不经过本标记。消费方：heal_impl（D2）、use_medicine、fuzz oracle。
+    bool is_death_registered(int side, int slot) const {
+        return side >= 0 && side <= 1 && slot >= 0 && slot < 6 && pet_death_notified[side][slot];
+    }
 
     //--- 死亡拦截器（免死 / 真2命复活）---
     // defeat_pet 在判定死亡成立**之前**按序询问；返回 true 且目标 hp 已写回 > 0 → 不死。

@@ -147,6 +147,16 @@ bool parse_pet(const nlohmann::json& node, BattlePetMessage& out, std::string& e
         out.oracle_on = node["oracle"].get<bool>();
     }
 
+    // 官方回放口径（官方验证线）：可选布尔，缺省 false = 技能归属校验照旧。
+    // true = 信任官方实测技能栏（battle_replay 回放 2503 栏位用）。
+    if (node.contains("trustBar")) {
+        if (!node["trustBar"].is_boolean()) {
+            err = "trustBar must be a boolean";
+            return false;
+        }
+        out.trust_bar = node["trustBar"].get<bool>();
+    }
+
     // 词条参数覆盖（调试台"词条编辑"线，2026-09-26；可选）：
     // "effectParams": [{"skill": 技能id, "effect": 效果id, "index": 模板{n}下标, "value": 新值}]
     // 装配期生效（Skills::loadSkills 先改记录后建效果），index 越界补 0、效果不存在报错。

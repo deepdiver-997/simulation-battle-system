@@ -1,5 +1,10 @@
 #include <effects/common_trait_effects.h>
 
+#include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
+
+#include <limits>
+#include <stdexcept>
+
 #include <effects/trait_state.h>
 #include <entities/skills.h>
 #include <fsm/battleContext.h>
@@ -65,7 +70,7 @@ void install_hardness(BattleContext* ctx, int owner) {
             if (pct <= 0) {
                 return;
             }
-            damage.final = damage.final * (100 - pct) / 100;   // 乘法（非通用减伤区）
+            damage.final = checked_pct_mul(damage.final, -pct, "common_trait 坚硬");   // 乘法（非通用减伤区）
         }
     );
 }
@@ -104,7 +109,7 @@ void install_spirit(BattleContext* ctx, int owner) {
             if (trait->args[1] == 0) {
                 return;
             }
-            damage.final = damage.final * (100 + trait->args[1]) / 100;
+            damage.final = checked_pct_mul(damage.final, trait->args[1], "common_trait 精神/强袭");
         }
     );
 }
@@ -139,7 +144,7 @@ void install_single_element_amp(BattleContext* ctx, int owner) {
             if (c->ws.skill_element_view[bucket_owner][1] != 0) {
                 return;   // 双属性技能无效（必修6）
             }
-            damage.final = damage.final * (100 + trait->args[1]) / 100;   // 乘法（非通用增伤）
+            damage.final = checked_pct_mul(damage.final, trait->args[1], "common_trait 单属性增伤");   // 乘法（非通用增伤）
         }
     );
 }

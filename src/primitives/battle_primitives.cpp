@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
+#include <stdexcept>
 
 namespace {
 
@@ -344,6 +346,19 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
                              : anomaly_id;
     const bool converted = (channel == AnomalyChannel::Modern && resolved != anomaly_id);
 
+    // 转化事件（T5a 2026-10-21）：[6] 转化层命中且施加落地时发（下面三个出口前调）。
+    // amount = 原始入参 id、converted_to = 转化后 id。抗性路径 21→Y 不走这里
+    //（RESISTED 语义互斥）、免疫/反弹不发（IMMUNED 另管）。
+    const auto emit_converted = [&]() {
+        if (!converted) {
+            return;
+        }
+        BattleEvent ev{EventType::EVENT_ANOMALY_CONVERTED, actor, target, anomaly_id,
+                       static_cast<int>(ctx->currentState)};
+        ev.converted_to = resolved;
+        ctx->event_center_.emit(ev);
+    };
+
     // [7] 同种异常 — 回合覆盖
     bool already_has_same = ctx->has_active_abnormal_status(target, resolved);
     if (already_has_same) {
@@ -353,10 +368,12 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
             ctx->set_abnormal_status_end_round(target, resolved,
                                                ctx->roundCount + duration_rounds);
             emit_anomaly_events(ctx, target, resolved, actor);
+            emit_converted();
             return converted ? ApplyAnomalyResult::CONVERTED
                              : ApplyAnomalyResult::DURATION_EXTENDED;
         }
         // 新回合数不更长，不覆盖，但也不算失败——异常已经存在
+        emit_converted();
         return converted ? ApplyAnomalyResult::CONVERTED : ApplyAnomalyResult::SUCCESS;
     }
 
@@ -384,6 +401,7 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     }
     // 成功路径 emit：异常状态实际改变才通知第三方（控场额外发 EVENT_CONTROLLED）
     emit_anomaly_events(ctx, target, resolved, actor);
+    emit_converted();
 
 #ifdef BATTLE_FSM_VERBOSE_DEFAULT
     std::cout << "[apply_anomaly] target=" << target
@@ -1451,10 +1469,20 @@ static int heal_impl(BattleContext* ctx, int target, int heal_amount) {
             static_cast<int>(AbnormalStatusId::StarRedemption))) {
         heal_mod += 30;
     }
-    heal_amount = heal_amount * (100 + heal_mod) / 100;
-    if (heal_amount < 0) {
-        heal_amount = 0;
+    // 溢出响亮报错（2026-10-21 用户口径）：恢复量×(100+修正%) 超出 int 范围即 throw，
+    // 不做静默钳制/归零。实际对局不可能触到（max_hp 本身是 int，恢复最多全额）——
+    // 触到 = 场景为"不被红伤轻易打死"无脑堆了超大 HP，报错逼场景改用 ≤2000 万的
+    // 合理量级（旧实现这里 int 乘法溢出变负、再被 <0 守卫整笔归零，K332 实证：
+    // 20,000,000 放行 / 24,000,000 归零，阈值 INT_MAX/100）。
+    const int64_t scaled = static_cast<int64_t>(heal_amount) * (100 + heal_mod) / 100;
+    if (scaled > std::numeric_limits<int>::max()) {
+        throw std::runtime_error(
+            "heal_impl: 恢复量溢出 —— " + std::to_string(heal_amount) +
+            " ×(100+" + std::to_string(heal_mod) + ")/100 = " +
+            std::to_string(scaled) + " 超 int 上限。实际对局不可能出现；"
+            "多为场景堆了超大 HP，请改用 ≤2000 万量级的合理数值");
     }
+    heal_amount = scaled < 0 ? 0 : static_cast<int>(scaled);
     const int max_hp = pet.numericalBase[NumericalPropertyIndex::HP];
     const int hp_before = pet.hp;
     pet.hp = std::min(max_hp, pet.hp + heal_amount);
