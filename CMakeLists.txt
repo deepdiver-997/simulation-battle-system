@@ -146,6 +146,28 @@ if(BUILD_SMOKE_TEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/test.cpp)
     endforeach()
 endif()
 
+# ── 公开示例包（examples/public，**随公开仓发布**）────────────────────────
+# 目的：让第一次接触本引擎的人**不装官方数据库也能跑通一个完整闭环**——
+# 手工装配精灵 → 挂自制魂印 → 驱动一回合 → 断言。示例不含任何官方机制实现，
+# 也不依赖插件动态库（魂印程序用公开 API 直接注册）。
+# 与上面 test/ 段不同：**无 EXISTS 守卫**，公开检出照编照跑。
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/examples/public/demo_scenario.cpp)
+    file(GLOB PUBLIC_EXAMPLE_SOURCES CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/public/*.cpp)
+    list(SORT PUBLIC_EXAMPLE_SOURCES)
+    foreach(example_src IN LISTS PUBLIC_EXAMPLE_SOURCES)
+        get_filename_component(example_name "${example_src}" NAME_WE)
+        add_executable(sim_${example_name} "${example_src}")
+        target_include_directories(sim_${example_name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/public
+            ${NLOHMANN_INCLUDE_DIR}
+        )
+        target_link_libraries(sim_${example_name} PRIVATE sim_core)
+    endforeach()
+    message(STATUS "公开示例包：${PUBLIC_EXAMPLE_SOURCES}")
+endif()
+
 if(BUILD_TRAINING_CLI)
     # 命令行联调客户端：原生阻塞 socket，不再依赖 Boost。
     add_executable(sim_training_cli tools/training_cli.cpp)
