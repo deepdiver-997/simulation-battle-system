@@ -61,6 +61,11 @@ struct BattlePetMessage {
     // JSON 阵容 per-pet "cultivate": {ev, natureId, inscriptions, hpCap20, guild, resist}；
     // 阵容级 "resistDefault": "off"(缺省)/"opened"/"maxed_damage" 作 per-pet resist 缺省。
     CultivateConfig cultivate_cfg;
+    // 官方回放口径（官方验证线，2026-10-21；可选，缺省 false = 校验照旧）：
+    // true = 技能栏按 ground truth 信任——DB learnable/hide 归属校验放行
+    //（技能仍须存在于 moves 表，否则 Skills::loadSkills 抛错）。
+    // 用途：battle_replay 回放官方 2503 实测栏（本地库学习表滞后于官方新宠）。
+    bool trust_bar = false;
 };
 
 struct BattleCreateRequest {
@@ -108,7 +113,8 @@ private:
         const std::array<int, 5>& chosen_skill_ids,
         bool oracle_on,
         const std::vector<EffectParamOverride>& effect_params = {},
-        const DisabledEffects& disabled = {}
+        const DisabledEffects& disabled = {},
+        bool trust_bar = false
     );
     static SoulMark create_soul_mark_for_pet(const official_data::MonsterRecord& monster,
                                              bool oracle_on,

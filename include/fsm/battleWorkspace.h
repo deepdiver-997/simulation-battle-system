@@ -1,13 +1,14 @@
 #ifndef BATTLE_WORKSPACE_H
 #define BATTLE_WORKSPACE_H
 
+#include <functional>
 #include <ostream>
 #include <effects/effect.h>
 #include <effects/pink_damage_pipeline.h>
 #include <entities/numerical-properties.h>
 
 // Forward declare instead of include to break circular dependency
-// class BattleContext;
+class BattleContext;
 
 enum class PreemptiveRight {
     SEER_ROBOT_1,
@@ -153,6 +154,8 @@ struct BattleWorkspace {
             // 连击次数默认 1（单段）。0 段是非法值 → 必须显式恢复。
             combo_view[i].value = 1;
             combo_view[i].rewritten = false;
+            combo_count_resolver[i] = nullptr;   // 动态解析/逐段钩子均一次性，防跨攻击泄漏
+            combo_hit_hook[i] = nullptr;
             skill_effect_source[i] = SkillReplaceSource{};  // 未替换 → 用本槽位技能
         }
     }
@@ -456,6 +459,27 @@ public:
     //    否则 ×N 吃到的是破防前的能力等级（连击就享受不到暴击破防）。
     SkillView combo_view[2];
 
+    //========== 技能使用基线（2026-10-03 判据统一）==========
+    // 回合初由 FSM 快照的 skill_use_seq（执行主流程 ++；被控/嗑药/NONE 不动；miss/被盔
+    // 算使用）。`skill_use_seq[side] > skill_use_seq_round_start[side]` = 本回合该方
+    // **成功使用过技能**（"使用=成功使用出来，被控不算"，用户 2026-10-03 裁定）。
+    // 执行期判据助手见 moves_lib/common.h 的 executed_skill_this_round/executed_skill_is_attack。
+    int skill_use_seq_round_start[2]{};
+
+    //========== 动态连击解析器 / 逐段钩子（2026-10-03 连击面）==========
+    // 效果在 SKILL_EFFECT 时点挂（直接写 ws），红伤管线消费、**用后即焚**：
+    // - combo_count_resolver：动态次数（484「每次命中后连击数+{1}」/612「概率攻击{1}次」/
+    //   1685「对手异常时上限={2}」）——stage_simple_attack_damage 在**第一次公式**读
+    //   combo_view 之前咨询一次、materialize 写回（不打变威力标记）。解析值=1 → 不触发
+    //   重算 → 与普通单击完全等价（暴击破防不可见：第一次公式在破防前算完；浮动不重掷）；
+    //   N>1 → 与静态连击同路（第一次 → 破防 → 按归零双防重算单次 → ×N）。固定次数族
+    //   不挂解析器，静态 roll 直用。
+    // - combo_hit_hook：逐段子效果（1454「每次攻击X%概率附加固伤」/1172「每次攻击概率
+    //   令自身X」）——红伤落地后按 resolvedDamage.hitCount 循环调用（效果函数自带概率）；
+    //   挡伤作用于**整段**（final<=0 无命中）→ 不触发。
+    std::function<int(BattleContext*)> combo_count_resolver[2];
+    std::function<void(BattleContext*, int)> combo_hit_hook[2];
+
     //========== 技能替换：kExecOnly 载体（艾欧丽娅式，见 SkillReplaceSource 注释）==========
     // "执行什么技能"的唯一取用点是 battleFsm.cpp 的 resolve_executing_skill；
     // active=false（默认）→ 用玩家点选的本槽位技能。技能对象不被拷贝，只重定向取用点。
@@ -468,10 +492,14 @@ public:
     int skill_element_view[2][2]{};
 
     //========== 技能类别视图层（物理/特殊/属性）==========
-    // 攻击结算视角的技能类别：resolve_skill_execution 与威力/连击/系别视图**同点物化**
-    // skill.type（SkillType）。消费方：通用特性「精神」（特攻增伤门控）、「瞬杀」
-    // （进攻类技能门控）。⚠️ ws.reset() 的 memset 归 0（=Physical）；每次攻击都会
-    // 重新物化，读点全在攻击结算内部（ON_SKILL_HIT 之后、ATTACK_DAMAGE 管线里）。
+    // **本次实际执行技能的类型**（2026-10-03 判据统一钦定槽）：resolve_skill_execution
+    // 与威力/连击/系别视图**同点物化** executing skill 的 type——替换技（resolve_executing_
+    // skill）物化替换后的类型；变型技（天启星魂 2210：按自身异常在 SKILL_EFFECT 改写
+    // 物理/特殊、奥菲利娅式属性→攻击）直接写本视图。消费方：伤害公式（calculation.h
+    // 选攻防项/属性门）、通用特性「精神」「瞬杀」、FSM 属性门（battleFsm:221）。
+    // ⚠️ ws.reset() 的 memset 归 0（=Physical）→ **回合初未执行前是旧值/0，选择期语境
+    //    不得读它**（判"选中的技能"用 moves_lib/common.h 的 selected_skill_is_attack；
+    //    执行期/回合末判"用出去的类型"用 executed_skill_is_attack）。
     int skill_type_view[2]{};
 
     // 克制倍率视图：>=0 直接用作本次攻击克制倍率（"不会出现微弱"钳到1、

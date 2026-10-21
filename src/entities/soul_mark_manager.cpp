@@ -478,6 +478,9 @@ void SoulMark::deactivate_soul_mark(BattleContext* context, int owner) {
     if (!context || owner < 0 || owner > 1) {
         return;
     }
+    // T6 窗界锚点清空（2026-10-21）：离场即结束本次上场的窗——再上场按新锚重开窗
+    //（"登场获得，持续N回合"族语义）；duration_rounds=0 的节点本就不进账本。
+    window_anchor_round_.clear();
     if (hooks_.on_exit) {
         hooks_.on_exit(context, owner);
     }
@@ -509,6 +512,26 @@ void SoulMark::register_soul_effect(BattleContext* context, int owner, bool owne
             if (!is_roster && !owner_on_stage) {
                 continue;  // STAGE 节点：宿主不在场则不注册
             }
+            // T6 一等公民窗界（2026-10-21）：duration_rounds>0 的节点按锚点记账——
+            // 首注册记锚（本次上场首回合），重注册携带剩余回合（复用 ContinuousEffect
+            // expiry：expires 当 currentRound - registered >= duration，锚点式剩余自洽），
+            // 窗过期后更新器跳过（病灶：原先永久 duration=-1 每回合重注册 = 无限续窗）。
+            int node_duration = -1;
+            if (node.duration_rounds > 0) {
+                const auto anchor_it =
+                    window_anchor_round_.find(static_cast<int>(node_idx));
+                const int anchor = (anchor_it != window_anchor_round_.end())
+                                       ? anchor_it->second
+                                       : context->roundCount;
+                if (anchor_it == window_anchor_round_.end()) {
+                    window_anchor_round_.emplace(static_cast<int>(node_idx), anchor);
+                }
+                const int remaining = anchor + node.duration_rounds - context->roundCount;
+                if (remaining <= 0) {
+                    continue;   // 窗已过：跳过重注册
+                }
+                node_duration = remaining;
+            }
             // ⚠️ effect_id 必须**逐节点不同**：桶 key = (source_id << 32) | effect_id，
             //    同魂印的节点若共用 id，则**同一 State 上的两个节点互相覆盖**（后注册顶掉
             //    先注册 → 前者永不执行）。旧规避是"节点放不同 State"（CLAUDE.md §5.3），
@@ -518,7 +541,7 @@ void SoulMark::register_soul_effect(BattleContext* context, int owner, bool owne
             Effect wrapper(node_effect_id, 0, owner, /*left_round=*/-1,
                            bind_soulmark_args(args, owner, host_slot), node.effect_fn);
             auto ce = std::make_unique<ContinuousEffect>(
-                wrapper, node.trigger_state, owner, /*duration=*/-1, context->roundCount
+                wrapper, node.trigger_state, owner, node_duration, context->roundCount
             );
             ce->source_id_ = id;
             // ROSTER → TEAM：跨切换保留且不被断回合作废（常驻效果的语义）

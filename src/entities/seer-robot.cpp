@@ -28,8 +28,10 @@ bool SeerRobot::use_medicine(BattleContext* ctx, int robot_id, int item_id) {
         return false;
     }
     ElfPet& pet = ctx->getPet(robot_id);
-    if (pet.hp <= 0) {
-        return false;  // 精灵已死不能嗑
+    // 精灵已死不能嗑；死亡已登记的同样拒绝——死亡时点绝对权威，药疗不得逆转
+    // 裁定（提 HP 的唯一合法出口是 revive_pet，见 battleContext.h 门控注释）。
+    if (pet.hp <= 0 || ctx->is_death_registered(robot_id, ctx->on_stage[robot_id])) {
+        return false;
     }
     auto record = official_data::OfficialDataStore::instance().repository().load_battle_item(item_id);
     if (!record) {

@@ -27,7 +27,7 @@ HUB_LOCK="$NIGHT_DIR/hub.lock"
 STOP_FILE="$NIGHT_DIR/STOP"
 # D 组已收官（看板移入 05-任务清单/已收官/）——活跃看板改为 E 组工单（2026-09-29）。
 # 通用入口仍可用 SBS_KANBAN 环境变量覆盖。
-KANBAN_REL="docs_local/docs/05-任务清单/E组批量效果工单.md"
+KANBAN_REL="docs_local/docs/05-任务清单/已收官/K组魂印批产工单.md"
 KANBAN="${SBS_KANBAN:-$HUB/$KANBAN_REL}"
 AGENTS_DIR="${SBS_AGENTS_DIR:-$(dirname "$HUB")/agents}"
 SCENARIO_ALLOC="$NIGHT_DIR/scenario.alloc"
@@ -118,18 +118,18 @@ git_commit_kanban() { # $1=提交说明；只提交看板文件，不动工作�
 }
 
 # ── v2（2026-09-29）：看板操作走 tools/taskctl.py（flock+CAS，看板对脚本只读）──
-# 夜跑默认打 F 板（E 组已收官；SBS_NIGHT_BOARD 可覆盖）。
-NIGHT_BOARD="${SBS_NIGHT_BOARD:-F}"
+# 夜跑默认打 K 板（E/F/J 均已收官；SBS_NIGHT_BOARD 可覆盖）。
+NIGHT_BOARD="${SBS_NIGHT_BOARD:-K}"
 taskctl() { python3 "$HUB/tools/taskctl.py" "$@"; }
 
 v2_pending() { # 最小序号的待领取任务 id（如 F1）；无则空
-    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '$2 ~ /待领取/ {print $1; exit}'
+    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '/待领取/ {print $1; exit}'
 }
 v2_pending_count() {
-    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '$2 ~ /待领取/ {n++} END {print n+0}'
+    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '/待领取/ {n++} END {print n+0}'
 }
 v2_busy_count() {
-    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '$2 ~ /进行中/ {n++} END {print n+0}'
+    taskctl list --board "$NIGHT_BOARD" 2>/dev/null | awk '/进行中/ {n++} END {print n+0}'
 }
 v2_claim() { # 领取（flock+CAS 在 taskctl 内部）；stdout 一行 JSON，失败非 0
     taskctl claim --board "$NIGHT_BOARD"
@@ -150,14 +150,90 @@ scenario_alloc() {
     echo "$start $(( start + SCENARIO_BLOCK - 1 ))"
 }
 
+# ── 策略档（用户可写、agent 只读）：build/night/policy.json ──
+# 用户改档 → 下一次判定立即生效（脚本每次重读盘，不需重启会话）。
+POLICY_FILE="$NIGHT_DIR/policy.json"
+policy_read() { # $1=键 → stdout 值（缺省/坏档 → 空）
+    [ -f "$POLICY_FILE" ] || return 0
+    python3 -c "
+import json
+try:
+    d=json.load(open('$POLICY_FILE',encoding='utf-8'))
+    print(d.get('$1','') if isinstance(d,dict) else '')
+except Exception:
+    pass
+" 2>/dev/null
+}
+
+# ── agent 注册表（领取式 ID）：build/night/agents.json ──
+AGENTS_REG="$NIGHT_DIR/agents.json"
+agent_status() { # $1=agent id → stdout status（未登记 → 空）
+    [ -f "$AGENTS_REG" ] || return 0
+    python3 -c "
+import json
+try:
+    d=json.load(open('$AGENTS_REG',encoding='utf-8'))
+    a=d.get('agents',{}).get('$1')
+    print(a.get('status','') if a else '')
+except Exception:
+    pass
+" 2>/dev/null
+}
+
 # ── 终止判定：exit 0=该停了（stdout 给原因）──
+# 判定源（优先级从高到低）：
+#   1) STOP 哨兵文件（touch 即全员停，最高优先级，任何策略都压不过）
+#   2) 策略档 policy.json：mode=stop → 全员停；mode=window → 只在窗口内跑
+#      （allow_overtime=true 时允许越过 stop_at 继续跑——限时免费模型期间用）
+#   3) 本 agent 自身被用户停用（agents.json 里 status=disabled）→ 该会话停
+#   4) 旧口径：早晨停止窗口（night.conf 的 STOP_AT），仅在 allow_overtime=false 时生效
 check_stop() {
     if [ -f "$STOP_FILE" ]; then echo "STOP 哨兵存在（${STOP_FILE}）"; return 0; fi
-    local now
+
+    local mode stop_at win_start allow_ot now
+    mode="$(policy_read mode)"; [ -n "$mode" ] || mode="run"
+    stop_at="$(policy_read stop_at)"; [ -n "$stop_at" ] || stop_at="$STOP_AT"
+    win_start="$(policy_read window_start)"; [ -n "$win_start" ] || win_start="0000"
+    allow_ot="$(policy_read allow_overtime)"
+    case "$allow_ot" in True|true) allow_ot=1 ;; *) allow_ot=0 ;; esac
+
+    # ③ 本 agent 被用户停用
+    local my_id="${SBS_AGENT_ID:-}"
+    if [ -n "$my_id" ]; then
+        if [ "$(agent_status "$my_id")" = "disabled" ]; then
+            echo "本 agent（${my_id}）已被用户停用"; return 0
+        fi
+    fi
+
+    # ② 策略档硬停
+    if [ "$mode" = "stop" ]; then
+        echo "策略档 mode=stop（用户设置全员停；改 build/night/policy.json 可恢复）"
+        return 0
+    fi
+
     now=$((10#$(date +%H%M)))
-    # 只在早晨窗口生效（STOP_AT~11:59），避免晚 20 点启动被 2000>0825 误停
+    if [ "$mode" = "window" ]; then
+        if [ "$allow_ot" = "1" ]; then
+            # 允许超时：用户要的就是"一直跑到额度用完"，只在窗口起始前停
+            if [ "$now" -lt "$((10#$win_start))" ]; then
+                echo "窗口模式但未到起始时刻（now=$(date +%H:%M) < ${win_start}）"
+                return 0
+            fi
+            return 1
+        fi
+        if [ "$now" -ge "$((10#$stop_at))" ] || [ "$now" -lt "$((10#$win_start))" ]; then
+            echo "停止窗口（now=$(date +%H:%M)，窗口 ${win_start}~${stop_at}）"
+            return 0
+        fi
+        return 1
+    fi
+
+    # ④ 旧口径（allow_overtime=true → 不受晨窗限制）
+    if [ "$allow_ot" = "1" ]; then
+        return 1
+    fi
     if [ "$now" -ge "$((10#$STOP_AT))" ] && [ "$now" -le 1159 ]; then
-        echo "进入停止窗口（now=$(date +%H:%M) ≥ ${STOP_AT}，09:00 前留缓冲）"
+        echo "进入停止窗口（now=$(date +%H:%M) ≥ ${STOP_AT}；改 policy.json allow_overtime=true 可免）"
         return 0
     fi
     return 1

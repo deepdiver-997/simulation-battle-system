@@ -7,5 +7,6 @@ if reason="$(check_stop)"; then
     echo "STOP：$reason"
     exit 0
 fi
-echo "GO：未到停止点（STOP_AT=${STOP_AT}，队列 $(kanban_pending_count) 待领取 / $(kanban_busy_count) 进行中）"
+# 队列计数用 v2 看板（taskctl）——老 kanban_* 函数指向已归档的 E 组工单，报错且无意义
+echo "GO：未到停止点（STOP_AT=${STOP_AT}，队列 $(v2_pending_count) 待领取 / $(v2_busy_count) 进行中）"
 exit 1

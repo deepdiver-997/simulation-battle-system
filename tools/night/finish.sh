@@ -7,6 +7,10 @@
 set -u
 . "$(dirname "$0")/lib.sh"
 
+# TASKCTL_WORKER 必须与本会话 agent ID 一致，否则 taskctl 的属主校验会把
+# **属主自己的退回**当成跨会话抢占而拒绝（2026-10-21 抢单防护引入后新增约束）。
+[ -n "${SBS_AGENT_ID:-}" ] && export TASKCTL_WORKER="${TASKCTL_WORKER:-$SBS_AGENT_ID}"
+
 DN="${1:-}"; VERDICT="${2:-}"; NOTE="${3:-}"
 if [ -z "$DN" ] || { [ "$VERDICT" != ok ] && [ "$VERDICT" != blocked ]; }; then
     echo "用法：finish.sh <Dn> ok|blocked [备注]"; exit 64
@@ -30,6 +34,16 @@ if [ -e "$wt/.git" ]; then
 fi
 if [ "$VERDICT" = ok ]; then
     v2_done "$DN" "$info" "$sha" "$NOTE"
+    # 完工 = 这一单交还，**不是**会话收摊。
+    # ⚠️ 2026-10-21 抢单事故修：原先这里无条件 `agent_id release`——会话领完一单
+    #   就被标 released，而它**通常还会继续领下一单**（release 语义是"不接新单"
+    #   不是"不干活了"）。另一会话据此判定 🔄 行被遗弃 → release+claim 抢占 →
+    #   两 agent 在同一 worktree 同文件并发写。
+    # 现在：**清 busy**（这一单交还了），**不动 status**（会话还在）。
+    #   真收摊 = 会话显式调 `agent_id.sh release <id>`（见夜跑总入口 §四）。
+    if [ -n "${SBS_AGENT_ID:-}" ]; then
+        python3 "$NIGHT_ROOT/agent_id.py" idle "$SBS_AGENT_ID" >/dev/null 2>&1 || true
+    fi
 else
     [ -n "$NOTE" ] || NOTE="原因未填"
     v2_release "$DN" "${info} ${NOTE}"

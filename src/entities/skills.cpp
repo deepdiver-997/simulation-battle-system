@@ -1,4 +1,5 @@
 #include <entities/skills.h>
+#include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
 
 #include <cstdlib>
 
@@ -98,6 +99,9 @@ State effect_register_state(int effect_id) {
             return State::BATTLE_FIRST_ATTACK_DAMAGE;
         case 2020:  // 末法迪知 "若自身处于异常状态则先制+3"：先制计算时点判定
             return State::BATTLE_FIRST_MOVE_RIGHT;
+        // （1491 的选择期路由走 loadSkills 的 selection_effects_ 硬编码表——2020 的
+        //   effect_register_state 路由注册进的是用技期分支，赶不上首回合先制判定，
+        //   J66 实测勘误：条件先制族须走 2298/779/1860 同款表，勿再加 case。）
         case 2397:  // 王·天衍星霜 "击败对手时转移宙变之殢"：击败对手后时点（1960 同款）
         case 865:   // 重生之翼·无上天命剑 "击败对手则获得{0}层神耀能量"：击败与否在
                     // "击败对手后"时点才可知；归因读 pet 槽 kWingKillRoundKey
@@ -107,6 +111,20 @@ State effect_register_state(int effect_id) {
         case 101:   // "伤害数值的{0}%恢复自身"（吸血）：同上，伤害结算后按最终伤害回血
         case 422:   // "附加所造成伤害值{0}%的固定伤害"：伤害结算后读**裸伤台账**
                     // （ws.raw_attack_damage，"管线前"的值；见 battleWorkspace.h 三值说明）
+        case 628:   // J54 "若对手处于能力下降状态则造成伤害的{0}%恢复体力"：同 101/422——
+                    // 造成伤害×%回血须在结算后读裸伤台账（SKILL_EFFECT 桶在管线前，台账为 0）
+        case 194:   // "造成伤害的1/{0}回血，若对手{1}则1/{2}回血"：双档吸血按**裸伤台账**
+                    // 分档（417/628 同通道；条件档判对手异常码。J60，2026-10-03）
+        case 1029:  // J61 "造成的伤害低于{0}则下{1}回合先制+{2}"：阈值判定读
+                    // resolvedDamage.final（1256 同款）
+        case 1223:  // J61 "造成的攻击伤害若高于{0}则…先制+{2}"：同上，比较方向取反
+        case 458:   // "若先出手则造成攻击伤害的{0}%恢复自身体力"：先手归属与裸伤都在
+                    // 结算后可知（101/2440 同族，2026-10-03 J72 线）
+        case 1104:  // "造成的伤害低于{0}则吸取对手1/{1}最大体力"：阈值判 final 后吸取
+        case 665:   // "造成的伤害低于{0}则{1}回合内受伤减少{2}"：阈值判 final 后挂减伤窗
+                    // （J78，2026-10-03；1256/1306 同族）
+        case 947:   // J112 "造成的伤害不足{0}则吸取 1/{1}"：阈值判定读管线后 final
+                    // （1256/1306 阈值形）
         case 1221:  // 王·酷烈风息 "反转自身能力下降"：攻击技能**先结算伤害再反转**——
                     // 反转不参与本次伤害（本次用反转前等级，提升留给下次），故伤害结算后操作 levels
         case 521:   // 反转自身能力下降状态（无参基本形，1221 的主子句同族）：同上口径
@@ -469,13 +487,21 @@ bool Skills::loadSkills() {
         // 穿透类效果（697"无视伤害限制"/699"无视攻击免疫"）→ 并入本技能穿透凭证，
         // 不注册普通分支。理由：穿透在 query_usage 门判定（效果注册之前）就消费，
         // 697/699 是 args_num=0 的纯标记模板，注册成 HIT 分支既无函数可执行也时机太晚。
+        // ⚠️ 只吞并**静态可合并**的 id（penetration_flags_for_effect 有映射的 697/699）。
+        //   此前对分类为 Penetration 的 id 一律 continue：pf 全零时既无凭证又吞掉后续
+        //   路由/普通分支注册 → "先出手时无视…"/"N回合内无视…"（750/1508/790 等带
+        //   条件/窗口的变体）整体哑火（J42 790 记档的根因，2026-10-03 J114 修复：
+        //   其余穿透句式放行走下方路由/普通注册，由插件运行时 grant_penetration）。
         const EffectMeta* meta = EffectMetaCatalog::instance().find(effect_record.effect_id);
         if (meta && meta->category == EffectCategory::Penetration) {
             const PenetrationFlags pf = penetration_flags_for_effect(effect_record.effect_id);
-            penetration_flags.ignore_attack_immunity |= pf.ignore_attack_immunity;
-            penetration_flags.ignore_damage_limit |= pf.ignore_damage_limit;
-            penetration_flags.level = std::max(penetration_flags.level, pf.level);
-            continue;
+            if (pf.ignore_attack_immunity || pf.ignore_damage_limit || pf.force_execute
+                || pf.level > 0) {
+                penetration_flags.ignore_attack_immunity |= pf.ignore_attack_immunity;
+                penetration_flags.ignore_damage_limit |= pf.ignore_damage_limit;
+                penetration_flags.level = std::max(penetration_flags.level, pf.level);
+                continue;
+            }
         }
         // 选择期先制效果 → selection_effects_（on_selected 统一注册到 MOVE_RIGHT 桶，
         // 先手权比较前生效）。与基值先制同族——**必须在选技时决定**，注册到 SKILL_EFFECT
@@ -494,7 +520,48 @@ bool Skills::loadSkills() {
         //        （见 qiling_skills.cpp：先/后手各挂一格、只在自己那格执行）。
         if (effect_record.effect_id == 2000 || effect_record.effect_id == 610
             || effect_record.effect_id == 954 || effect_record.effect_id == 1848
-            || effect_record.effect_id == 881 || effect_record.effect_id == 1532) {
+            || effect_record.effect_id == 881 || effect_record.effect_id == 1532
+        //   2298/779 盖亚武道：不处于能力提升状态时/对手处于能力提升状态时先制+2
+        //   （2026-10-02 J11 线：与 881 同为条件先制，点击期判定——用技后注册的
+        //   MOVE_RIGHT 节点首回合吃不到加成，选择期路由才是正位）
+        //   1860 天奔零式系：自身不处于能力提升状态时先制+1且必定命中（2026-10-02
+        //   J29 线：2298 同款选择期路由——必中写 ws.must_hit_grant 供 query_usage 消费）
+        //   454/1484/1487 条件先制族（2026-10-02 J53 线）：低体 1/{0}/半血/护盾状态
+        //   → 先制+N（881/1860 同款选择期条件先制；判据在插件 hp×denom<max /
+        //   shield_bank_.total()>0）
+            || effect_record.effect_id == 2298 || effect_record.effect_id == 779
+            || effect_record.effect_id == 1860
+            || effect_record.effect_id == 454 || effect_record.effect_id == 1484
+            || effect_record.effect_id == 1487
+        //   1491 遇到天敌时先制+1（2026-10-03 J66 线：2298 同款选择期路由——选择期判
+        //   is_predator 直加先制，本回合当次生效）
+            || effect_record.effect_id == 1491
+        //   750/1508 先出手时无视伤害限制/攻击免疫（2026-10-03 J114 线）：穿透凭证须在
+        //   query_usage 物化前就位，而"先出手"在 MOVE_RIGHT 桶（先手权比较前）判定不了
+        //   ——插件路由体在此注册 FIRST/SECOND_ACTION_START 一次性 tick，先手域 tick 内
+        //   判 acting_side_is_first 再 grant_penetration 当回合窗口（两桶对称、后手 no-op）
+            || effect_record.effect_id == 750 || effect_record.effect_id == 1508
+        //   747 自身处于能力下降时先制+{0}（2026-10-03 J74 线：2298 同款选择期路由——
+        //   条件先制族须走本表，effect_register_state case 赶不上首回合先制判定）
+            || effect_record.effect_id == 747
+        //   1527/1465 后手必暴/先手概率暴（2026-10-04 J136 线）：暴击掷点在 query_usage
+        //   ①.5 先于 SKILL_EFFECT，而先后手在 MOVE_RIGHT 桶判不了——路由体注册
+        //   SECOND/FIRST_ACTION_START 一次性 tick，先后手域内判 acting_side_is_first
+        //   再写 ws.must_crit（J114 750/1508 两级注册同构）
+            || effect_record.effect_id == 1527 || effect_record.effect_id == 1465
+        //   1243 对手处于能力下降状态时先制+1（2026-10-03 J91 线：2298 同款选择期路由，
+        //   J74 747 孪生——条件先制族须走本表）
+            || effect_record.effect_id == 1243
+        //   539 对手处于能力提升状态时先制额外+1且威力翻倍（2026-10-03 J103 线：
+        //   2298 同款选择期路由——先制半在选择期判，威力半由 body 自挂当回合
+        //   SKILL_EFFECT 节点）
+            || effect_record.effect_id == 539
+        //   958 对手处于{0}状态则先制+{1}（2026-10-03 J115 线：2298 同款选择期路由——
+        //   条件=has_active_anomaly(对手, 指定码)）
+        //   1174/1081 自身/对手处于能力提升状态则先制+2/+1（2026-10-03 J115 线：
+        //   2298/779 孪生——正槽判据 ability_levels 直读；条件先制族须走本表）
+            || effect_record.effect_id == 958
+            || effect_record.effect_id == 1174 || effect_record.effect_id == 1081) {
             Effect sel = clone_effect(effect_record.effect_id, build_effect_args_for_skill(effect_record));
             if (sel.logic) {
                 selection_effects_.push_back(
@@ -776,11 +843,11 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             }
             if (const std::optional<EffectiveTrait> p =
                     ctx->effective_common_trait(owner, TraitKind::Precision)) {
-                accuracy = accuracy * (100 + p->args[0]) / 100;
+                accuracy = checked_pct_mul(accuracy, p->args[0], "skills 精准特性");
             }
             if (const std::optional<EffectiveTrait> e =
                     ctx->effective_common_trait(1 - owner, TraitKind::Evasion)) {
-                accuracy = accuracy * (100 - e->args[0]) / 100;
+                accuracy = checked_pct_mul(accuracy, -e->args[0], "skills 回避特性");
             }
             // 命中等级（view_levels 槽 **5**，官方能力提升六项之一）——2026-09-18 接入精度公式。
             // 来源有三类：① 异常衍化族（焚烬 22 结束后"转化为烧伤与命中等级-1"，
@@ -1137,9 +1204,12 @@ std::pair<SkillExecResult, SkillResolutionFlags> Skills::execute(BattleContext* 
     // E13"使用即触发"锚点（2026-09-29）：技能被**选择使用**就发——miss/被封属/打盔
     // 也算"使用"（469"若对手使用属性技能"字面；与 EVENT_HIT 的"命中才发"正交）。
     // target = 对方；used_attribute 标记属性技（消费方：神离之始 469 一族）。
+    // skill_id/skill_name（2026-10-04 显示面线）：前端事件带要显示"谁用了哪个技能"。
     {
         BattleEvent used_ev{EventType::EVENT_SKILL_USED, owner, ctx->opponent(owner)};
         used_ev.used_attribute = (type == SkillType::Attribute);
+        used_ev.skill_id = id;
+        used_ev.skill_name = name;
         ctx->event_center_.emit(used_ev);
     }
 

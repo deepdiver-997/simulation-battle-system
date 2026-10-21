@@ -7,7 +7,15 @@
 set -u
 . "$(dirname "$0")/lib.sh"
 
-SESSION="${1:-night-x}"
+# 会话名：优先用传入值；否则用已领取的 agent ID（SBS_AGENT_ID）——保证看板行的
+# worker 字段与会话注册表对得上（2026-10-13 协议改造）。
+SESSION="${1:-${SBS_AGENT_ID:-night-x}}"
+if [ -z "${1:-}" ] && [ -n "${SBS_AGENT_ID:-}" ]; then
+    log "会话名沿用已领取的 agent ID：${SESSION}"
+fi
+# TASKCTL_WORKER 与 SESSION 对齐：不设的话 taskctl 会退化用 `zhr@pidNNN`，
+# 与注册表 agent ID 对不上 → 属主校验/ busy 登记全部失效（2026-10-21）。
+[ -n "${SBS_AGENT_ID:-}" ] && export TASKCTL_WORKER="${TASKCTL_WORKER:-$SBS_AGENT_ID}"
 WAIT=0; [ "${2:-}" = "--wait" ] && WAIT=1
 
 claim_one() { # rc: 0=已领取 1=队列空 9=锁失败 8=worktree 失败 7=提交失败
@@ -21,7 +29,18 @@ claim_one() { # rc: 0=已领取 1=队列空 9=锁失败 8=worktree 失败 7=提�
     br="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["branch"])')"
     row="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["row"])')"
     # worktree（taskctl 已登记，这里建实体）：目录在→复用；分支在→挂回；否则 -b 新建
+    #
+    # ⚠️ 2026-10-21 抢单事故修：**目录已存在不等于"这单没人做"**——上一会话
+    #   可能正在这个 worktree 里写文件。复用前先问注册表"有没有活着的属主"：
+    #   有 → 退回这一单（不抢），等对方收工或心跳超时。
+    #   （判据在 taskctl claim 内部也做了一道；这里是第二道闸，防绕路。）
     if [ -e "$wt/.git" ]; then
+        live_owner="$(python3 "$NIGHT_ROOT/agent_id.py" owner-of "$dn" 2>/dev/null | head -1)"
+        if [ -n "$live_owner" ] && [ "$live_owner" != "$SESSION" ]; then
+            v2_release "$dn" "worktree 在用（属主 $live_owner 活着），自动退回"
+            log "worktree 在用且属主 $live_owner 活着 → 退回 $dn，不抢占"
+            return 1
+        fi
         log "worktree 已存在，复用：$wt"
     elif ! git -C "$HUB" worktree add -b "$br" "$wt" main-local >/dev/null 2>&1 \
        && ! git -C "$HUB" worktree add "$wt" "$br" >/dev/null 2>&1; then
@@ -65,7 +84,7 @@ while :; do
     while [ "$waited" -lt "$WAIT_TIMEOUT" ]; do
         sleep 30; waited=$((waited + 30))
         if reason="$(check_stop)"; then echo "STOP $reason"; exit 2; fi
-        if [ "$(kanban_pending_count)" -eq 0 ] && [ "$(kanban_busy_count)" -eq 0 ]; then
+        if [ "$(v2_pending_count)" -eq 0 ] && [ "$(v2_busy_count)" -eq 0 ]; then
             echo "ALL_DONE 看板已清空——全部完成"; exit 0
         fi
         [ -n "$(v2_pending)" ] && break

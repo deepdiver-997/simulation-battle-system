@@ -46,12 +46,18 @@ struct SoulMarkNodeRef {
     // 标注单位 = 带尾注的子句（tips 按 | 分句；同一子句的**所有**节点必须统一置位，
     // 漏标会产生半初始化状态，如轮回只禁 arm 留着回档）。未标注 = 任何对局照常。
     bool boss_invalid = false;
+    // 窗界回合数（T6 一等公民窗界，2026-10-21；0 = 永久 = 既有语义不变）：
+    // >0 = 本节点自**本次上场首次注册**起只活 N 回合——更新器重注册按锚点携带剩余、
+    // 窗过期后跳过重注册（不再借"每回合重注册复位"无限续窗，K3/j-prod-3 实测病灶）；
+    // 离场清锚 → 再上场重开窗。复用 ContinuousEffect 既有 expiry。
+    int duration_rounds = 0;
 
     SoulMarkNodeRef() = default;
     SoulMarkNodeRef(State trigger, EffectFn fn, bool once_ = false, bool early_ = false,
-                    SoulScope scope_ = SoulScope::STAGE, bool boss_invalid_ = false)
+                    SoulScope scope_ = SoulScope::STAGE, bool boss_invalid_ = false,
+                    int duration_rounds_ = 0)
         : trigger_state(trigger), effect_fn(fn), once(once_), early(early_), scope(scope_),
-          boss_invalid(boss_invalid_) {}
+          boss_invalid(boss_invalid_), duration_rounds(duration_rounds_) {}
 };
 
 // 魂印级可选钩子（插件提供；留空则走引擎默认行为）。
@@ -359,6 +365,10 @@ inline void flush(IEffectRegistry* registry) {
     [[maybe_unused]] const bool kSoulProgramReg_##id =                              \
         ::plugin_reg::add_soul_program((id), {__VA_ARGS__});                        \
     }
+
+// 类型化魂印行参（T4，K5 用户裁定）在 <plugin/soul_node_args.h>：shim 需要完整
+// EffectArgs，而本文件与 effect.h 互相包含（本文件在前向声明层）——类型化面放
+// effect.h 之下的独立头，由 resources/soul_lib/common.h 统一引入。
 
 // 单元准入门（全局一条）：UNIT_ADMISSION(fn) —— fn 签名见 UnitAdmissionFn。
 #define UNIT_ADMISSION(fn)                                                          \

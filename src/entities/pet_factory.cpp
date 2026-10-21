@@ -313,7 +313,7 @@ ElfPet PetFactory::create_pet(const BattlePetMessage& message) {
         0,
         false,
         create_skills_for_pet(*monster, message.chosen_skills_id, message.oracle_on,
-                              message.effect_params, message.disabled_effects)
+                              message.effect_params, message.disabled_effects, message.trust_bar)
     );
     // 抗性训练（培养线 2026-09-26）：enabled=false 保持全 0 默认（未开启 = 永不触发）。
     apply_resist_config(pet, cultivate.resist);
@@ -349,7 +349,8 @@ std::array<Skills, 5> PetFactory::create_skills_for_pet(
     const std::array<int, 5>& chosen_skill_ids,
     bool oracle_on,
     const std::vector<EffectParamOverride>& effect_params,
-    const DisabledEffects& disabled
+    const DisabledEffects& disabled,
+    bool trust_bar
 ) {
     // 神谕开关对技能池的影响（精灵王线 K1）：
     //   OFF：锁神谕新技——hide_moves 里混着的"神谕新第五"（它必然也在 sp_hide_moves）
@@ -403,6 +404,16 @@ std::array<Skills, 5> PetFactory::create_skills_for_pet(
     }
     std::unordered_set<int> hidden_move_ids(effective.hidden_moves.begin(),
                                             effective.hidden_moves.end());
+    // 官方回放口径（trust_bar）：栏内技能不查归属——直接并入 effective 学习表
+    //（槽位规则随之下放；moves 表不存在仍由 Skills::loadSkills 抛错兜底）。
+    if (trust_bar) {
+        for (const int skill_id : chosen_skill_ids) {
+            if (skill_id > 0 && !learnable_move_ids.contains(skill_id)) {
+                effective.learnable_moves.push_back({skill_id, 0});
+                learnable_move_ids.insert(skill_id);
+            }
+        }
+    }
 
     std::unordered_set<int> seen_skill_ids;
     for (int slot = 0; slot < 5; ++slot) {

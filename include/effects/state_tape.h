@@ -13,6 +13,7 @@
 // 因此默认关闭（tape_enabled），只有服务端对局才打开 —— 71 个场景用例不受影响。
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <effects/event_center.h>
@@ -31,6 +32,13 @@ struct StateSample {
     // 双方**场上**精灵的体力。场下体力见快照 —— 事件带只跟踪场上变化，避免每时点搬整队。
     int hp[2] = {0, 0};
     int max_hp[2] = {0, 0};
+
+    // 双方场上精灵的身份（2026-10-04 显示面线）：前端日志/动画要用宠名而不是 p0/p1。
+    // on_stage 未定（越界）时 id=-1、name 为空 —— 序列化时条件输出。
+    // pet_slot 同步带上：镜像对局（双方同 id 宠）里 id 判等区分不出换宠，id+槽位才是身份。
+    int pet_id[2] = {-1, -1};
+    std::string pet_name[2];
+    int pet_slot[2] = {-1, -1};
 
     // 能力等级：-6..+6。必须逐槽带上 —— 等级变化不产生事件
     // （不是"发生了什么"而是"值变了"），只靠事件流前端看不出强化/弱化。
@@ -69,7 +77,9 @@ public:
     // FSM 在"某个时点执行完 + 事件已 drain"之后调用。
     // 调用方保证 current_events_ 里是本时点投递的全部事件。
     void record(int state, int round, int actor, const int hp[2], const int max_hp[2],
-                const int levels[2][kSampleLevelSlots], int pending_damage, int resolved_damage) {
+                const int levels[2][kSampleLevelSlots], int pending_damage, int resolved_damage,
+                const int pet_id[2] = nullptr, const std::string* pet_name = nullptr,
+                const int pet_slot[2] = nullptr) {
         if (!enabled_) {
             current_events_.clear();
             return;
@@ -82,6 +92,13 @@ public:
         for (int i = 0; i < 2; ++i) {
             s.hp[i] = hp[i];
             s.max_hp[i] = max_hp[i];
+            if (pet_id) {
+                s.pet_id[i] = pet_id[i];
+                s.pet_name[i] = pet_name[i];
+                if (pet_slot) {
+                    s.pet_slot[i] = pet_slot[i];
+                }
+            }
             for (int k = 0; k < kSampleLevelSlots; ++k) {
                 s.levels[i][k] = levels[i][k];
             }

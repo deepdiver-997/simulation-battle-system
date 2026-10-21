@@ -16,3 +16,8 @@
 # 场景编号段：每任务独占 SCENARIO_BLOCK 个号，从 SCENARIO_BASE 起全局顺延（模板要求 170 起）
 # SCENARIO_BASE=170
 # SCENARIO_BLOCK=10
+
+# 自主立单（author.sh）：制定权最长持有秒数（过期可被其他会话接管）
+# AUTHOR_MAX=1800
+# 同会话卸任后再任的冷却秒数（轮转防霸占）
+# AUTHOR_COOLDOWN=600

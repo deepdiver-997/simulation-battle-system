@@ -5,7 +5,7 @@ set -u
 
 echo "═══ 看板战况（taskctl list）═══"
 taskctl() { python3 "$HUB/tools/taskctl.py" "$@"; }
-taskctl list --board "${SBS_NIGHT_BOARD:-F}"
+taskctl list --board "${SBS_NIGHT_BOARD:-K}"
 
 echo "═══ 领取/完工流水（最近 10 条）═══"
 git -C "$HUB" log --oneline -10 -- "$KANBAN_REL" 2>/dev/null || true

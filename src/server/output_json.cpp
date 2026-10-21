@@ -78,6 +78,14 @@ const char* event_type_name(int event_type) {
         case EventType::EVENT_ANOMALY_EXPIRED: return "EVENT_ANOMALY_EXPIRED";
         case EventType::EVENT_ANOMALY_RESISTED: return "EVENT_ANOMALY_RESISTED";
         case EventType::EVENT_ANOMALY_IMMUNED: return "EVENT_ANOMALY_IMMUNED";
+        // 2026-10-04 补登记：下列事件在此之前落带为 EVENT_UNKNOWN，前端只能显示裸枚举名。
+        case EventType::EVENT_HP_EXHAUSTED: return "EVENT_HP_EXHAUSTED";
+        case EventType::EVENT_PP_REDUCED: return "EVENT_PP_REDUCED";
+        case EventType::EVENT_BEFORE_SKILL_HIT: return "EVENT_BEFORE_SKILL_HIT";
+        case EventType::EVENT_HEAL_RESTORED: return "EVENT_HEAL_RESTORED";
+        case EventType::EVENT_STAT_REMOVED: return "EVENT_STAT_REMOVED";
+        case EventType::EVENT_SKILL_USED: return "EVENT_SKILL_USED";
+        case EventType::EVENT_STAT_BOOSTS_LOST: return "EVENT_STAT_BOOSTS_LOST";
     }
     return "EVENT_UNKNOWN";
 }
@@ -106,6 +114,12 @@ std::string tape_to_json(int match_id, const std::vector<StateSample>& samples) 
         oss << ",\"actor\":" << s.actor;
         oss << ",\"hp\":[" << s.hp[0] << "," << s.hp[1] << "]";
         oss << ",\"maxHp\":[" << s.max_hp[0] << "," << s.max_hp[1] << "]";
+        // 双方场上精灵（2026-10-04 显示面线）：前端日志/动画用宠名代替 p0/p1。
+        // on_stage 未定时 id=-1、名字空，条件输出（老客户端不认识也不影响）。
+        oss << ",\"petIds\":[" << s.pet_id[0] << "," << s.pet_id[1] << "]";
+        oss << ",\"petNames\":[\"" << json_escape(s.pet_name[0]) << "\",\""
+            << json_escape(s.pet_name[1]) << "\"]";
+        oss << ",\"petSlots\":[" << s.pet_slot[0] << "," << s.pet_slot[1] << "]";
         oss << ",\"levels\":[[";
         for (int k = 0; k < kSampleLevelSlots; ++k) {
             if (k > 0) oss << ",";
@@ -134,6 +148,30 @@ std::string tape_to_json(int match_id, const std::vector<StateSample>& samples) 
             oss << ",\"state\":" << ev.state;
             if (ev.slot >= 0) {
                 oss << ",\"slot\":" << ev.slot;
+            }
+            // ── 扩展字段（2026-10-04 显示面线，条件输出——没填就不占带宽）──
+            // 伤害分型（EVENT_TAKE_DAMAGE：0红/1粉固/2粉%/3粉%值/4真/5属性）
+            if (ev.damage_kind >= 0) {
+                oss << ",\"damageKind\":" << ev.damage_kind;
+            }
+            // 能力等级变化族：哪一槽、变了多少、变后是多少
+            if (ev.stat_index >= 0) {
+                oss << ",\"statIndex\":" << ev.stat_index;
+                oss << ",\"levelDelta\":" << ev.level_delta;
+                oss << ",\"levelAfter\":" << ev.level_after;
+            }
+            // 技能使用：技能 id/名（前端"谁用了哪个技能"+ 命中动画标注）
+            if (ev.skill_id >= 0) {
+                oss << ",\"skillId\":" << ev.skill_id;
+                oss << ",\"skillName\":\"" << json_escape(ev.skill_name) << "\"";
+            }
+            // 属性技标记（EVENT_SKILL_USED）
+            if (ev.used_attribute) {
+                oss << ",\"usedAttribute\":true";
+            }
+            // 盔结算：真正生效 / 被穿
+            if (ev.type == EventType::EVENT_SKILL_ARMOR_RESOLVED) {
+                oss << ",\"blocked\":" << (ev.blocked ? "true" : "false");
             }
             oss << "}";
         }

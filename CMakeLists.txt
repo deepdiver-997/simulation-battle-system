@@ -6,6 +6,19 @@ if(POLICY CMP0167)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
+
+# ⚠️ sanitizer 变体必须在**任何 target 创建之前**全局生效（2026-10-02 seed 88 教训）：
+# add_compile_options 只影响其后创建的 target——放中部会让 sim_core 带着 ASan-OFF 的
+# libc++（_LIBCPP_HAS_ASAN=0）与 ASan-ON 的插件混链，inline 拷贝经弱符号绑定随机
+# 命中哪份，容器注解"一边毒化一边不解" → 幻影 container-overflow（向量状态全程
+# 合法，fuzz 探针已证）。fuzz oracle 只认统一消毒下的真红。
+if(SBS_FUZZ_SANITIZERS)
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined
+                        -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -148,12 +161,6 @@ endif()
 # 插件 deploy 会把带 sanitizer 的 lib_1 拷进源码树 resources/*_lib/，普通 build
 # 运行时会加载它 → 混用必崩（恢复方法见 README）。
 option(SBS_FUZZ_SANITIZERS "Fuzz 构建变体：本目录所有目标加 ASan+UBSan" OFF)
-if(SBS_FUZZ_SANITIZERS)
-    # -fno-sanitize-recover：UBSan 报错即 abort —— fuzz 的 oracle 只认"崩"。
-    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined
-                        -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=address,undefined)
-endif()
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/fuzz/fuzz_battle.cpp)
     add_executable(sim_fuzz_battle
