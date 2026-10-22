@@ -56,16 +56,11 @@ worktree 隔离、限流构建回归、finish 登记，不需要等人派活。
 内部文档根：`docs_local/docs/`（任务清单在 `05-任务清单/`，交接在 `06-交接/`，
 覆盖率与机制盘点在 `08-参考/`）。
 
-## 7. 多 agent 并行工作区（agent-workspace-kit）
+## 7. 并行工作流（维护者内部，未随仓库发布）
 
-多个 agent 并行时**必须**走 `tools/agents/`（上游母本 `~/.agent-parallel/`）：
-worktree 生命周期、设备磁盘预算（全机一份账本 `~/.agent-workspaces/`，开工前强制
-检查）、全局构建锁（`tools/agents/gate.sh` = .git/agents/build.lock + 全量门）、
-无头派发（spawn.sh）。**开工作区/派发/收尾的命令与项目策略层**见
-`tools/agents/README.md`；spawn 任务的起手式（必读文档、立单三查、号段 alloc、
-db_at 行参、过门标准、fail-closed 红线）固化在 `tools/agents/task-template.md`。
+本职工作是单人开发的引擎，公开面只保证"构建 + 回归"两条命令可独立运行
+（见 `docs/07-工具与测试/快速上手.md`）。
 
-资源上限与退出码契约：`0` 成功；`1/2` 编译/测试失败；`75` 构建锁等待超时；
-`76` STOP 哨兵（人工刹车，`<hub>/.git/agents/STOP`）；`78` 磁盘预算不足。
-无人值守时磁盘预算必须已人工设定（`budget.sh set`），且 agent 不 push、不动
-主干分支、不删他人工作区——安全靠 fail-closed 机制，不靠祈祷。
+维护者本人另有一套多 agent 并行工作流（worktree 生命周期、设备磁盘预算、
+全局构建锁、无头派发、任务看板），其工具与项目策略层**属个人开发流程，
+不随本仓库发布**——公开检出里没有对应目录，相关引用请忽略。
