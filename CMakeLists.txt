@@ -184,6 +184,23 @@ endif()
 # 运行时会加载它 → 混用必崩（恢复方法见 README）。
 option(SBS_FUZZ_SANITIZERS "Fuzz 构建变体：本目录所有目标加 ASan+UBSan" OFF)
 
+# ── 效果 id 撞号审计（2026-10-22）────────────────────────────────────────
+# 同 id 两处实现 = 后者**静默覆盖**前者（不报错、行为被无声改写）。实测事故：
+#   · 魂印 id 221 被两个文件同时注册（"对手体力变一致" + "登场回血 1/10"）→ 一子句从未生效；
+#   · 手写 id 1001/1002/1004/1005/1006 直接撞官方 effect_id 行 → 六只真实宠物误触发旧程序。
+# 机制：注册宏带来源（文件:行）→ 宿主（sim_core，唯一账本）合并时比对 → registry
+# dump 时点（每次启动必跑）出报告。插件不链接 sim_core，故账本只能在宿主侧。
+# SBS_ID_COLLISION_STRICT=ON → 撞号即非零退出（门禁用；默认只报告不失败）。
+option(SBS_ID_COLLISION_CHECK "效果 id 撞号审计（注册来源采集 + 宿主侧比对）" ON)
+option(SBS_ID_COLLISION_STRICT "撞号即失败（严格模式，门禁用）" OFF)
+
+if(SBS_ID_COLLISION_CHECK)
+    add_compile_definitions(SBS_ID_COLLISION_CHECK)
+endif()
+if(SBS_ID_COLLISION_STRICT)
+    add_compile_definitions(SBS_ID_COLLISION_STRICT)
+endif()
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/fuzz/fuzz_battle.cpp)
     add_executable(sim_fuzz_battle
         test/fuzz/fuzz_battle.cpp

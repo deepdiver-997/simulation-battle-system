@@ -264,6 +264,20 @@ bool PetFactory::initialize_runtime_data(const std::string& db_path) {
     SoulMarkManager::getInstance("resources/soul_lib");
     // 套装插件（套装线，2026-09-19）：目录缺失（公开检出无本地插件源）= 零注册不报错。
     SuitManager::getInstance("resources/suit_lib");
+
+    // ── id 撞号审计（2026-10-22）────────────────────────────────────────
+    // 判定点 = **三个插件目录全部 flush 完之后**（这里）。理由：撞号是跨 dylib
+    // 现象，宿主把各库的表合并后才看得见"同 id 两个来源"；早判只能看到半个世界。
+    // 末尾统一判定（有新增撞号 → 抛异常停进程），不是撞到第一个就报错——
+    // 那样一轮只能改一处，反复重编译。
+    //
+    // ⚠️ 场景测试也走这条路径（initialize_runtime_data）：撞号会让**全部**场景
+    // 在启动期就失败——这是有意的（问题一眼可见），但意味着新增撞号要一次改干净。
+    const std::string collision_report = id_collision::audit_now();
+    if (!collision_report.empty()) {
+        std::cerr << "[WARN] [registry] 效果 id 撞号审计（已备案存量，不阻断启动）：\n"
+                  << collision_report << std::endl;
+    }
     return true;
 }
 

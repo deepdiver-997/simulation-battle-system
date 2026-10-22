@@ -17,19 +17,35 @@
 //     extern "C" void suit_plugin_register(void* api) { suit_reg::flush(api); }
 // ════════════════════════════════════════════════════════════════════
 
+#include <string>
 #include <vector>
 
 #include <plugin/core_api.h>
+#include <plugin/id_collision.h>
 
+// 可见性：套装注册表必须**每 dylib 一份**——同 plugin_interface.h 的说明
+// （默认可见性下头文件 inline 的静态量是 weak 符号 → 动态链接器做符号插入 →
+// 后加载的 dylib 读到先加载 dylib 的表）。见 plugin_interface.h 的详细注释。
+#if defined(__GNUC__) || defined(__clang__)
+#define SBS_SUIT_HIDDEN_VIS_BEGIN _Pragma("GCC visibility push(hidden)")
+#define SBS_SUIT_HIDDEN_VIS_END _Pragma("GCC visibility pop")
+#else
+#define SBS_SUIT_HIDDEN_VIS_BEGIN
+#define SBS_SUIT_HIDDEN_VIS_END
+#endif
+
+SBS_SUIT_HIDDEN_VIS_BEGIN
 namespace suit_reg {
 
 struct SuitEntry {
     int id;
     EffectFn fn;
+    std::string source;   // 注册来源（"文件:行 [宏名]"）——撞号审计用
 };
 struct SuitProgramEntry {
     int id;
     std::vector<SoulMarkNodeRef> nodes;
+    std::string source;   // 注册来源——撞号审计用
 };
 
 // 函数内静态：每 dylib 一份（inline 函数的函数内静态在各自 .so/.dylib 里独立实例，
@@ -43,12 +59,13 @@ inline std::vector<SuitProgramEntry>& suit_programs() {
     return table;
 }
 
-inline bool add_suit(int id, EffectFn fn) {
-    suits().push_back(SuitEntry{id, fn});
+inline bool add_suit(int id, EffectFn fn, const std::string& source = {}) {
+    suits().push_back(SuitEntry{id, fn, source});
     return true;
 }
-inline bool add_suit_program(int id, std::vector<SoulMarkNodeRef> nodes) {
-    suit_programs().push_back(SuitProgramEntry{id, std::move(nodes)});
+inline bool add_suit_program(int id, std::vector<SoulMarkNodeRef> nodes,
+                             const std::string& source = {}) {
+    suit_programs().push_back(SuitProgramEntry{id, std::move(nodes), source});
     return true;
 }
 
@@ -57,8 +74,9 @@ inline bool add_suit_program(int id, std::vector<SoulMarkNodeRef> nodes) {
 // 装错目录的 dylib 不会被误注册（找不到符号就只是被跳过）。
 struct SuitPluginApi {
     const CoreApi* core;
-    void (*register_suit)(int suit_id, EffectFn fn);
-    void (*register_suit_program)(int suit_id, const std::vector<SoulMarkNodeRef>& nodes);
+    void (*register_suit)(int suit_id, EffectFn fn, const std::string& source);
+    void (*register_suit_program)(int suit_id, const std::vector<SoulMarkNodeRef>& nodes,
+                                  const std::string& source);
 };
 
 // 插件入口符号（SuitManager 在 dlopen 后 dlsym 它）。
@@ -71,25 +89,28 @@ inline void flush(void* api) {
         return;
     }
     for (const SuitEntry& e : suits()) {
-        init->register_suit(e.id, e.fn);
+        init->register_suit(e.id, e.fn, e.source);
     }
     for (const SuitProgramEntry& e : suit_programs()) {
-        init->register_suit_program(e.id, e.nodes);
+        init->register_suit_program(e.id, e.nodes, e.source);
     }
 }
 
 }  // namespace suit_reg
+SBS_SUIT_HIDDEN_VIS_END
 
 // 静态自注册宏（语义同 plugin_interface.h 的 SKILL_EFFECT/SOUL_PROGRAM）：
 // dlopen 静态初始化期入表，suit_plugin_register 时一次推送。表由插件推、id 留编译期。
 #define SUIT(id, fn)                                                                    \
     namespace {                                                                         \
-    [[maybe_unused]] const bool kSuitReg_##fn = ::suit_reg::add_suit((id), &(fn));      \
+    [[maybe_unused]] const bool kSuitReg_##fn = ::suit_reg::add_suit((id), &(fn),       \
+        ::id_collision::source_of(__FILE__, __LINE__, "SUIT"));                         \
     }
 #define SUIT_PROGRAM(id, ...)                                                           \
     namespace {                                                                         \
     [[maybe_unused]] const bool kSuitProgramReg_##id =                                  \
-        ::suit_reg::add_suit_program((id), std::vector<SoulMarkNodeRef>{__VA_ARGS__});  \
+        ::suit_reg::add_suit_program((id), std::vector<SoulMarkNodeRef>{__VA_ARGS__},    \
+            ::id_collision::source_of(__FILE__, __LINE__, "SUIT_PROGRAM"));             \
     }
 
 #endif  // SUIT_REG_H

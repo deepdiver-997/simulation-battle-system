@@ -275,20 +275,28 @@ void EffectFactory::registerEffect(int effectId, EffectFn effect) {
     effect_cache_[effectId] = effect;
 }
 
-void EffectFactory::registerSoulMark(int soulmark_id, EffectFn effect_fn) {
+void EffectFactory::registerSoulMark(int soulmark_id, EffectFn effect_fn,
+                                  const std::string& source) {
     // EffectFactory doesn't handle soul marks
     (void)soulmark_id;
     (void)effect_fn;
+    (void)source;
 }
 
 void EffectFactory::registerSoulMarkProgram(
-    int soulmark_id, const std::vector<SoulMarkNodeRef>& nodes) {
+    int soulmark_id, const std::vector<SoulMarkNodeRef>& nodes,
+    const std::string& source) {
     // EffectFactory doesn't handle soul marks（魂印程序归 SoulMarkManager）
     (void)soulmark_id;
     (void)nodes;
+    (void)source;
 }
 
-void EffectFactory::registerSkillEffect(int effect_id, EffectFn effect_fn) {
+void EffectFactory::registerSkillEffect(int effect_id, EffectFn effect_fn,
+                                    const std::string& source) {
+    // id 撞号审计（2026-10-22）：同 id 两处实现 = 后者**静默覆盖**前者。
+    id_collision::instance().record(id_collision::Category::SkillEffect, effect_id,
+                                    source);
     registerEffect(effect_id, effect_fn);
 }
 
@@ -311,9 +319,13 @@ void EffectFactory::registerUnitAdmission(UnitAdmissionFn fn) {
     add_unit_admission(fn);
 }
 
-void EffectFactory::registerCarryEffect(int effect_id, CarryEffectFn fn) {
+void EffectFactory::registerCarryEffect(int effect_id, CarryEffectFn fn,
+                                        const std::string& source) {
     // 携带类效果与技能效果的运行时分流：本 map 只在 loadSkills 装槽时读（加载期），
     // 战斗执行期不再查（fn 已随 Skills 走），无热路径锁竞争。
+    // id 撞号审计（2026-10-22）：该表按 id 覆盖语义 → 同 id 两处 = 后者盖前者。
+    id_collision::instance().record(id_collision::Category::CarryEffect, effect_id,
+                                    source);
     carry_effects_[effect_id] = fn;
 }
 
@@ -340,8 +352,14 @@ std::vector<int> EffectFactory::registered_effect_ids() const {
 }
 
 void EffectFactory::registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
-                                              PreBattlePatchFn fn) {
-    pre_battle_patches_.push_back(PreBattlePatchEntry{soulmark_id, phase, fn});
+                                              PreBattlePatchFn fn,
+                                              const std::string& source) {
+    // id 撞号审计（2026-10-22）：补丁表是 vector（追加语义）——同 (魂印 id, 时段)
+    // 出现两次 = 补丁被执行两次。与 SoulMarkManager 用同一类别 → 跨库同 id 同时段
+    // 也会被报出（两个管理器的补丁共用一条执行线）。
+    id_collision::instance().record(id_collision::Category::PreBattlePatch, soulmark_id,
+                                    source, static_cast<int>(phase));
+    pre_battle_patches_.push_back(PreBattlePatchEntry{soulmark_id, phase, fn, source});
 }
 
 void EffectFactory::run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase) {

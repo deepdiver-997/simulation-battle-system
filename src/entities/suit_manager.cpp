@@ -41,15 +41,16 @@ bool has_dynamic_library_extension(const std::string& filename) {
 // 递给静态跳板（装载期间单例已存在，指针只在 ensureInitialized 窗口内有效）。
 SuitManager* g_loading_manager = nullptr;
 
-void thunk_register_suit(int suit_id, EffectFn fn) {
+void thunk_register_suit(int suit_id, EffectFn fn, const std::string& source) {
     if (g_loading_manager) {
-        g_loading_manager->registerSuit(suit_id, fn);
+        g_loading_manager->registerSuit(suit_id, fn, source);
     }
 }
 
-void thunk_register_suit_program(int suit_id, const std::vector<SoulMarkNodeRef>& nodes) {
+void thunk_register_suit_program(int suit_id, const std::vector<SoulMarkNodeRef>& nodes,
+                                 const std::string& source) {
     if (g_loading_manager) {
-        g_loading_manager->registerSuitProgram(suit_id, nodes);
+        g_loading_manager->registerSuitProgram(suit_id, nodes, source);
     }
 }
 
@@ -102,13 +103,17 @@ void SuitManager::ensureInitialized(const std::string& lib_dir) {
     initialized_ = true;
 }
 
-void SuitManager::registerSuit(int suit_id, EffectFn fn) {
+void SuitManager::registerSuit(int suit_id, EffectFn fn, const std::string& source) {
+    // id 撞号审计（2026-10-22）：套装单效果表按 id 覆盖语义 → 同 id 两处 = 静默覆盖。
+    id_collision::instance().record(id_collision::Category::SuitEffect, suit_id, source);
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     effect_cache_[suit_id] = fn;
 }
 
 void SuitManager::registerSuitProgram(int suit_id,
-                                      const std::vector<SoulMarkNodeRef>& nodes) {
+                                      const std::vector<SoulMarkNodeRef>& nodes,
+                                      const std::string& source) {
+    id_collision::instance().record(id_collision::Category::SuitProgram, suit_id, source);
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
     program_cache_[suit_id] = nodes;
 }

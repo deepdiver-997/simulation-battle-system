@@ -94,11 +94,40 @@ if git -C "${STAGING}" merge --no-ff --no-edit "${BR}" >/dev/null 2>&1; then
     exit 0
 fi
 
-# ---- 冲突：不猜，给人/agent 明确解法 ----
-git -C "${STAGING}" merge --abort 2>/dev/null || true
-conflicts="$(git -C "${STAGING}" diff --name-only --diff-filter=U 2>/dev/null | head -10)"
-[ -z "${conflicts}" ] && conflicts="(merge 失败但无冲突文件——看 ${STAGING} 状态)"
-die "汇入冲突：${BR} × ${BATCH}
+# ---- 冲突：配置/构建面自动裁决（ours = 批分支基线 = main-local 侧优先）----
+# 判据：冲突文件属于**集成侧管辖面**（.gitignore / CMakeLists.txt / CLAUDE.md /
+# README.md / docs_local/）→ 一律取 ours（基线侧更新），因为：
+#   · 内核与构建配置由集成会话维护，agent 分支上的那份是**旧基线**（分支切出时
+#     的快照），不是"agent 的产出"——取 theirs 会把集成侧的新配置回退掉；
+#   · agent 的产出面是 resources/（效果实现）与 test/scenario/（场景），这两处
+#     冲突会**如实报给人**（不自动解——那是真撞号/真逻辑冲突）。
+# 其余冲突（效果/场景/内核代码）→ 不猜，报解法。
+git -C "${STAGING}" merge --no-ff --no-edit "${BR}" >/dev/null 2>&1 || {
+    conflict_files="$(git -C "${STAGING}" diff --name-only --diff-filter=U 2>/dev/null)"
+    auto_resolved=""
+    remaining=""
+    for f in $conflict_files; do
+        case "$f" in
+            .gitignore|CMakeLists.txt|CLAUDE.md|README.md|docs_local/*)
+                git -C "${STAGING}" checkout -q --ours "$f" 2>/dev/null && \
+                    git -C "${STAGING}" add "$f" && auto_resolved="$auto_resolved $f" ;;
+            *) remaining="$remaining $f" ;;
+        esac
+    done
+    if [ -n "$auto_resolved" ] && [ -z "$remaining" ]; then
+        git -C "${STAGING}" commit -q --no-edit
+        log "配置面冲突已自动裁决（取基线侧）:${auto_resolved}"
+        log "已汇入：${BR} → ${BATCH}（--no-ff）"
+        git -C "${STAGING}" log --oneline -1
+        log "批分支现领先 ${BASE_BRANCH} $(git -C "${STAGING}" rev-list --count "${BASE_BRANCH}..${BATCH}") 个提交"
+        log "验收：cd ${STAGING} && tools/agents/gate.sh 一次过门 → 合回 ${BASE_BRANCH}"
+        exit 0
+    fi
+    # 仍有真冲突 → 回滚到干净态并报解法
+    git -C "${STAGING}" merge --abort 2>/dev/null || true
+    conflicts="$(git -C "${STAGING}" diff --name-only --diff-filter=U 2>/dev/null | head -10)"
+    [ -z "$conflicts" ] && conflicts="(merge 失败但无冲突文件——看 ${STAGING} 状态)"
+    die "汇入冲突：${BR} × ${BATCH}
 冲突文件：
 ${conflicts}
 手动解法（在你的上下文里解，别在验收时爆）：
@@ -107,3 +136,4 @@ ${conflicts}
   # 逐文件解决后 git add → git commit --no-edit
   # 解完可再跑本命令核对
 判例参考：docs_local/docs/06-交接/合并记录-*.md（看板 md 冲突按行级 ✅ 优先裁决）"
+}
