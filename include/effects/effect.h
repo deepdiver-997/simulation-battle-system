@@ -188,10 +188,13 @@ public:
     bool no_confilict(int id1, int id2);
 
     // IEffectRegistry interface - for plugin use
-    void registerSoulMark(int soulmark_id, EffectFn effect_fn) override;
+    void registerSoulMark(int soulmark_id, EffectFn effect_fn,
+                          const std::string& source = {}) override;
     void registerSoulMarkProgram(int soulmark_id,
-                                 const std::vector<SoulMarkNodeRef>& nodes) override;
-    void registerSkillEffect(int effect_id, EffectFn effect_fn) override;
+                                 const std::vector<SoulMarkNodeRef>& nodes,
+                                 const std::string& source = {}) override;
+    void registerSkillEffect(int effect_id, EffectFn effect_fn,
+                             const std::string& source = {}) override;
     void registerSoulMarks(
         const std::vector<std::pair<int, EffectFn>>& soulmarks) override;
     void registerSkillEffects(
@@ -202,7 +205,8 @@ public:
 
     // 携带类效果（IEffectRegistry）：effect_id → fn 注册表。loadSkills 加载技能时
     // 逐条查询、命中把 fn 装进 Skills::carryEffects 槽位（见 CarryEffectFn 注释）。
-    void registerCarryEffect(int effect_id, CarryEffectFn fn) override;
+    void registerCarryEffect(int effect_id, CarryEffectFn fn,
+                             const std::string& source = {}) override;
     // 查询（loadSkills 用）；未注册返回 nullptr。init 前调用安全（空表）。
     CarryEffectFn find_carry_effect(int effect_id) const;
 
@@ -212,7 +216,8 @@ public:
 
     // 战前魂印补丁（IEffectRegistry）：按 (魂印 id, 时段) 注册，见 PreBattlePhase 注释。
     void registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
-                                   PreBattlePatchFn fn) override;
+                                   PreBattlePatchFn fn,
+                                   const std::string& source = {}) override;
     // 两时段扫描执行：遍历双方全部 6 槽，魂印 id 命中本时段注册表即执行 fn(ctx, side, slot)。
     // init_battle 在 activate_suits / 携带扫描之后按 PANEL_SNAPSHOT → STAT_MODIFY 各调一次。
     void run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase);

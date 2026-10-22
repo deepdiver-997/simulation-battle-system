@@ -49,4 +49,15 @@ fi
 if ! ./build/sim_server --dump-registry-exit build/registry.json; then
     log "registry dump 失败"; exit 3
 fi
-log "ALL PASS：$total 个场景回归 + registry dump OK"
+
+# ── std::any 存储槽键撞号扫描（2026-10-22）────────────────────────────────
+# 与 registry 撞号审计是**两类**问题：那管注册表（效果 id），这个管运行期状态槽
+# （plugin_storage / soulmark_storage / on_stage_storage 的 int 键）。
+# 撞键没有"注册"时点可盯 → 只能静态扫（键是编译期 constexpr 常量）。
+# 退出码 1 = 有跨文件同键（跨 dylib 撞键）→ 门禁拦住。
+if ! python3 tools/check_storage_keys.py --quiet; then
+    log "存储槽键撞号扫描失败（详见上方报告）"
+    exit 4
+fi
+
+log "ALL PASS：$total 个场景回归 + registry dump + 存储槽键扫描 OK"

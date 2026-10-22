@@ -222,12 +222,23 @@ void SoulMarkManager::registerEffect(int soulmarkId, EffectFn effect) {
     effect_cache_[soulmarkId] = effect;
 }
 
-void SoulMarkManager::registerSoulMark(int soulmark_id, EffectFn effect_fn) {
+void SoulMarkManager::registerSoulMark(int soulmark_id, EffectFn effect_fn,
+                                        const std::string& source) {
+    // id 撞号审计（2026-10-22）：同 id 两处实现 = 后者**静默覆盖**前者（不报错、
+    // 不警告、行为被无声改写）——实测 id 221 被两个文件同时注册（"对手体力变一致"
+    // + "登场回血 1/10"），一个子句从未生效。这里记账，末尾统一判定。
+    // ⚠️ 分类 = 真实的 map：单效果表 effect_cache_ 与程序表 program_cache_ 是两张
+    //    独立的表 → 同 id 各注册一次**互不覆盖**，不能并成一个类别（否则误报）。
+    id_collision::instance().record(id_collision::Category::SoulMarkEffect, soulmark_id,
+                                    source);
     registerEffect(soulmark_id, effect_fn);
 }
 
 void SoulMarkManager::registerSoulMarkProgram(int soulmark_id,
-                                              const std::vector<SoulMarkNodeRef>& nodes) {
+                                              const std::vector<SoulMarkNodeRef>& nodes,
+                                              const std::string& source) {
+    id_collision::instance().record(id_collision::Category::SoulMarkProgram, soulmark_id,
+                                    source);
     std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
     program_cache_[soulmark_id] = nodes;
 }
@@ -241,7 +252,11 @@ const std::vector<SoulMarkNodeRef>* SoulMarkManager::getSoulMarkProgram(int soul
     return &it->second;
 }
 
-void SoulMarkManager::registerSoulMarkHooks(int soulmark_id, const SoulMarkHooks& hooks) {
+void SoulMarkManager::registerSoulMarkHooks(int soulmark_id, const SoulMarkHooks& hooks,
+                                             const std::string& source) {
+    // id 撞号审计（2026-10-22）：钩子表按 id 覆盖语义 → 同 id 两处 = 后者盖前者。
+    id_collision::instance().record(id_collision::Category::SoulMarkHook, soulmark_id,
+                                    source);
     std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
     hooks_cache_[soulmark_id] = hooks;
 }
@@ -255,11 +270,13 @@ const SoulMarkHooks* SoulMarkManager::getSoulMarkHooks(int soulmarkId) const {
     return &it->second;
 }
 
-void SoulMarkManager::registerSkillEffect(int effect_id, EffectFn effect_fn) {
+void SoulMarkManager::registerSkillEffect(int effect_id, EffectFn effect_fn,
+                                        const std::string& source) {
     // SoulMarkManager only handles soul marks, not skill effects
     // This is a no-op for soul mark manager
     (void)effect_id;
     (void)effect_fn;
+    (void)source;
 }
 
 void SoulMarkManager::registerSoulMarks(
@@ -282,14 +299,22 @@ void SoulMarkManager::registerUnitAdmission(UnitAdmissionFn fn) {
 }
 
 void SoulMarkManager::registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
-                                                PreBattlePatchFn fn) {
+                                                PreBattlePatchFn fn,
+                                                const std::string& source) {
     // soul_plugin 的 flush 落在本注册表（与魂印程序/钩子同一条通道）。保注册序。
-    pre_battle_patches_.push_back(PreBattlePatchEntry{soulmark_id, phase, fn});
+    // id 撞号审计（2026-10-22）：补丁表是 vector（追加语义，不覆盖）——同 (魂印 id,
+    // 时段) 出现两次 = **补丁被执行两次**。两个管理器各有各的 vector 但共用一条
+    // 执行线（init_battle 各跑一次）→ 跨库同 id 同时段同样要报，故用同一类别。
+    id_collision::instance().record(id_collision::Category::PreBattlePatch, soulmark_id,
+                                    source, static_cast<int>(phase));
+    pre_battle_patches_.push_back(PreBattlePatchEntry{soulmark_id, phase, fn, source});
 }
 
-void SoulMarkManager::registerCarryEffect(int effect_id, CarryEffectFn fn) {
+void SoulMarkManager::registerCarryEffect(int effect_id, CarryEffectFn fn,
+                                          const std::string& source) {
     // 转发：loadSkills 装槽只查 EffectFactory（见 header 注释）。
-    EffectFactory::getInstance().registerCarryEffect(effect_id, fn);
+    // 撞号记账在**表主** EffectFactory 侧做——本管理器只是转发，两边都记会重复计数。
+    EffectFactory::getInstance().registerCarryEffect(effect_id, fn, source);
 }
 
 void SoulMarkManager::run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase) {

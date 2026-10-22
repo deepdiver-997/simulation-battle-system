@@ -23,12 +23,16 @@ public:
     EffectFn getEffectFunc(int soulmarkId);
 
     // IEffectRegistry interface - for plugin use
-    void registerSoulMark(int soulmark_id, EffectFn effect_fn) override;
+    void registerSoulMark(int soulmark_id, EffectFn effect_fn,
+                          const std::string& source = {}) override;
     void registerSoulMarkProgram(int soulmark_id,
-                                 const std::vector<SoulMarkNodeRef>& nodes) override;
+                                 const std::vector<SoulMarkNodeRef>& nodes,
+                                 const std::string& source = {}) override;
     // 魂印级钩子（登场/离场额外动作；见 plugin_interface.h SoulMarkHooks）。
-    void registerSoulMarkHooks(int soulmark_id, const SoulMarkHooks& hooks) override;
-    void registerSkillEffect(int effect_id, EffectFn effect_fn) override;
+    void registerSoulMarkHooks(int soulmark_id, const SoulMarkHooks& hooks,
+                               const std::string& source = {}) override;
+    void registerSkillEffect(int effect_id, EffectFn effect_fn,
+                            const std::string& source = {}) override;
     void registerSoulMarks(
         const std::vector<std::pair<int, EffectFn>>& soulmarks) override;
     void registerSkillEffects(
@@ -40,12 +44,14 @@ public:
     // 战前魂印补丁（IEffectRegistry）：soul_lib 走本注册表（soul_plugin 的 flush 落在
     // 本管理器而非 EffectFactory——与魂印程序/钩子同一条通道）。见 PreBattlePhase 注释。
     void registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
-                                   PreBattlePatchFn fn) override;
+                                   PreBattlePatchFn fn,
+                                   const std::string& source = {}) override;
 
     // 携带类效果（IEffectRegistry）：转发到 EffectFactory——loadSkills 装槽只查
     // EffectFactory，而 soul_plugin 的 flush 落本管理器；不转发的话插件侧
     // CARRY_EFFECT 会被默认空实现静默吞掉。
-    void registerCarryEffect(int effect_id, CarryEffectFn fn) override;
+    void registerCarryEffect(int effect_id, CarryEffectFn fn,
+                             const std::string& source = {}) override;
 
     // 战前补丁扫描执行（init_battle 调；语义同 EffectFactory::run_pre_battle_patches，
     // 只是注册表换成本管理器的）。见 PreBattlePhase 注释。

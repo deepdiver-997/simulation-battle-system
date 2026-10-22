@@ -21,6 +21,7 @@
 #include <effects/rule_center.h>
 #include <fsm/state.h>
 #include <net/poller.h>
+#include <plugin/id_collision.h>   // id 撞号审计（2026-10-22）
 #include <server/output_json.h>
 
 #include <algorithm>
@@ -59,6 +60,24 @@ bool dump_registry_json(const std::string& path) {
     std::printf("[INFO] [server] 注册表已导出 %s（moves=%zu soul=%zu suit=%zu）\n",
                 path.c_str(), dump.moves, dump.soul, dump.suit);
     std::fflush(stdout);
+
+    // ── id 撞号审计 ──────────────────────────────────────────────────────
+    // 判定已移到 PetFactory::initialize_runtime_data() 末尾（**所有 dylib flush
+    // 之后**）——那里是唯一看得见"同 id 两个来源"的时点，且对**所有**入口生效
+    // （服务器 / 场景测试 / 工具），不是只有 --dump-registry 才查。
+    // 这里只做**报告**：已备案存量列出来（存量每条带处置结论）；新增撞号在那边
+    // 就已经抛异常停进程了，走不到这里。
+    const std::string collisions = id_collision::instance().report();
+    if (!collisions.empty()) {
+        const std::size_t fresh = id_collision::instance().new_collisions().size();
+        std::fprintf(stderr,
+                     "[WARN] [server] 效果 id 撞号：新增 %zu 处 / 已备案存量 %zu 处"
+                     "——同 id 被多处注册，后者会静默覆盖前者：\n%s",
+                     fresh,
+                     id_collision::instance().collisions().size() - fresh,
+                     collisions.c_str());
+        std::fflush(stderr);
+    }
     return true;
 }
 
