@@ -25,9 +25,14 @@ acquire() {
             return 0
         fi
         # 陈旧清扫：持有进程已死且超 60s
+        # owner 文件是**一行**三字段："<pid> <pwd> <epoch>"（见上面 acquire 的写入）。
+        # 旧实现按两行读（head/tail 各取一行）→ 读回整行，kill -0 必失败、算术里
+        # 把路径词当变量名求值，set -u 下直接 "private: unbound variable" 崩掉，
+        # 等锁语义失效（2026-10-22 a17-jprod 实证）。按字段取。
         local owner_pid since
-        owner_pid="$(head -1 "${LOCK_DIR}/owner" 2>/dev/null)"
-        since="$(tail -1 "${LOCK_DIR}/owner" 2>/dev/null)"
+        owner_pid="$(awk '{print $1}' "${LOCK_DIR}/owner" 2>/dev/null)"
+        since="$(awk '{print $3}' "${LOCK_DIR}/owner" 2>/dev/null)"
+        case "${since}" in ''|*[!0-9]*) since=0 ;; esac
         if [ -n "${owner_pid}" ] && ! kill -0 "${owner_pid}" 2>/dev/null \
             && [ -n "${since}" ] && [ $(( $(date +%s) - since )) -gt 60 ]; then
             rm -rf "${LOCK_DIR}" && continue

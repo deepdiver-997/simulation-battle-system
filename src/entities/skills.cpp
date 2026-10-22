@@ -102,6 +102,12 @@ State effect_register_state(int effect_id) {
         // （1491 的选择期路由走 loadSkills 的 selection_effects_ 硬编码表——2020 的
         //   effect_register_state 路由注册进的是用技期分支，赶不上首回合先制判定，
         //   J66 实测勘误：条件先制族须走 2298/779/1860 同款表，勿再加 case。）
+        case 168:   // J289 "若对手处于睡眠状态，则威力翻倍"：
+                    // 睡眠在 ON_SKILL_HIT 的 anomaly_on_attack_hit_hook 里被清除
+                    // （先于 SKILL_EFFECT，K2 口径）→ 必须注册在 ON_SKILL_HIT 桶：
+                    // 该桶排在 resolve_skill_execution（威力视图已物化）之后、
+                    // 睡眠清除钩子之前，条件与威力写入都还赶得上。
+            return State::BATTLE_FIRST_ON_SKILL_HIT;
         case 2397:  // 王·天衍星霜 "击败对手时转移宙变之殢"：击败对手后时点（1960 同款）
         case 865:   // 重生之翼·无上天命剑 "击败对手则获得{0}层神耀能量"：击败与否在
                     // "击败对手后"时点才可知；归因读 pet 槽 kWingKillRoundKey
