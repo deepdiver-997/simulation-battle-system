@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #ifndef CURSE_STACK_H
 #define CURSE_STACK_H
 
@@ -199,7 +200,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                 }
                 if (!forced) {
                     const int n = get_curse_stacks(c, bucket_owner);
-                    forced = n > 0 && (std::rand() % 100) < n * kCurseFloorPctPerStack;
+                    forced = n > 0 && (sbs_rand() % 100) < n * kCurseFloorPctPerStack;
                 }
                 if (!forced) {
                     return;
@@ -221,7 +222,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
     ctx->invalid_skill_damage_hooks.push_back(
         [](BattleContext* c, int attacker) -> bool {
             const int n = get_curse_stacks(c, attacker);
-            if (n <= 0 || (std::rand() % 100) >= n * kCurseFloorPctPerStack) {
+            if (n <= 0 || (sbs_rand() % 100) >= n * kCurseFloorPctPerStack) {
                 return false;
             }
             c->plugin_storage[curse_stack_detail::kFloorFlagBase + attacker] = true;

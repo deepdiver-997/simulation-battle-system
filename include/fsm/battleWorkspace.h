@@ -1,6 +1,7 @@
 #ifndef BATTLE_WORKSPACE_H
 #define BATTLE_WORKSPACE_H
 
+#include <cstring>
 #include <functional>
 #include <ostream>
 #include <effects/effect.h>

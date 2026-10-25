@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #ifndef SKILLS_H
 #define SKILLS_H
 
@@ -306,13 +307,13 @@ public:
     int combo_max = 1;
 
     // 连击次数掷点：**每次技能使用掷一次**，第一次/第二次结算共用同一个 N。
-    // 区间退化（min==max，绝大多数技能是 1~1）时**不消耗 rand()** —— 与"暴击率 0 短路"同理，
+    // 区间退化（min==max，绝大多数技能是 1~1）时**不消耗 sbs_rand()** —— 与"暴击率 0 短路"同理，
     // 保证没有连击的既有场景 rand 序列逐字节不变。
     int roll_combo_count() const {
         if (combo_max <= combo_min) {
             return std::max(1, combo_min);
         }
-        return combo_min + (std::rand() % (combo_max - combo_min + 1));
+        return combo_min + (sbs_rand() % (combo_max - combo_min + 1));
     }
     // 技能请求凭证（697"无视伤害限制"/699"无视攻击免疫"/强制执行等效果模板经 effect_meta 识别后合并）。
     // 攻击时由 materialize_attack_credential 并入 ws.attack_credential，作为"请求携带的凭证"，

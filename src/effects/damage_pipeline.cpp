@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <effects/damage_pipeline.h>
 
 #include <entities/elf-pet.h>

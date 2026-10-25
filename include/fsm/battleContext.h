@@ -1,6 +1,7 @@
 #ifndef __battleContext_H
 #define __battleContext_H
 
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -134,6 +135,18 @@ public:
     // 掷点结果）。key 由插件自约定；clearAllEffects 清空。pet 级状态请用
     // ElfPet::soulmark_storage（下场保留）/ on_stage_storage（本场上场）。
     std::map<int, std::any> plugin_storage;
+
+    //--- K6 虚拟异常视图（2026-10-24 由 plugin_storage 魔数段 4699000 转正为一等字段）---
+    // "视为不处于异常"类效果的层数记录：来源=效果 id，按方生效。写入走
+    // CoreApi::set_anomaly_view_layers / 读取走 get_anomaly_view_layers；
+    // has_active_anomaly（插件条件查询面）查询时拉取：任一来源层数 >0 → 该方视为
+    // 不处于任何异常；层数被消耗归零 → 自然解除。内核结算面不走这里。
+    struct AnomalyViewEntry {
+        int effect_id = 0;
+        int side = 0;
+        int layers = 0;
+    };
+    std::vector<AnomalyViewEntry> anomaly_view_layers;
 
     //--- 上一回合先手权（T2，2026-10-05 决策清单 K4.3 用户裁定）---
     // preemptive_right 是 ws 字段、每回合 FMR 入口清零（handle_BattleFirstMoveRight），
@@ -1105,6 +1118,7 @@ public:
         extra_spirits[0].clear();            // 额外精灵容器随对局清（黑白龙/咽咎尸骸…）
         extra_spirits[1].clear();
         hp_consume_marks.clear();            // 消耗全部体力印记（死亡印记）随对局清（连续对局复用 context 防泄漏）
+        anomaly_view_layers.clear();         // K6 虚拟异常视图层数随对局清
         for (int side = 0; side < 2; ++side) {
             for (int slot = 0; slot < 6; ++slot) {
                 last_damage_actor[side][slot] = -1;   // 死亡归因不跨对局残留

@@ -58,9 +58,10 @@ worktree 隔离、限流构建回归、finish 登记，不需要等人派活。
 
 ## 7. 并行工作流（维护者内部，未随仓库发布）
 
-本职工作是单人开发的引擎，公开面只保证"构建 + 回归"两条命令可独立运行
-（见 `docs/07-工具与测试/快速上手.md`）。
-
-维护者本人另有一套多 agent 并行工作流（worktree 生命周期、设备磁盘预算、
-全局构建锁、无头派发、任务看板），其工具与项目策略层**属个人开发流程，
-不随本仓库发布**——公开检出里没有对应目录，相关引用请忽略。
+**任何 worktree（含单会话）一律 `tools/agents/new-worktree.sh <name>` 开在 `~/.agent-workspaces/workspaces/sbs-local/<name>`，不得建在仓库同级目录**（旧 `~/code/c++/project/agents/` 已退役为历史区）。多个 agent 并行时**必须**走 `tools/agents/`（上游母本 `~/.agent-parallel/`）：
+worktree 生命周期、设备磁盘预算（全机一份账本 `~/.agent-workspaces/`，开工前强制
+检查）、全局构建锁（`tools/agents/gate.sh` = .git/agents/build.lock + 全量门）、
+无头派发（spawn.sh）。**开工作区/派发/收尾的命令与项目策略层**见
+`tools/agents/README.md`；spawn 任务的起手式（必读文档、立单三查、号段 alloc、
+db_at 行参、过门标准、fail-closed 红线）固化在 `tools/agents/task-template.md`。
+>>>>>>> b651acf804ba9f6f424e6888bc70d04789da0cbb

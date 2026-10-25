@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #include <entities/skills.h>
 #include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
 
@@ -566,8 +567,19 @@ bool Skills::loadSkills() {
         //   条件=has_active_anomaly(对手, 指定码)）
         //   1174/1081 自身/对手处于能力提升状态则先制+2/+1（2026-10-03 J115 线：
         //   2298/779 孪生——正槽判据 ability_levels 直读；条件先制族须走本表）
+        //   1956 若对手不处于异常状态则先制+1 / 1292 自身体力低于对手时先制+{0}
+        //   （2026-10-23 J312 线：J115 孪生——1956 判据 = 对手**任一**异常
+        //   （has_active_anomaly 扫全集 0..43，J86 同款）；1292 判据 = hp 严格小于
+        //   对手（954 同款），先制量走行参）
             || effect_record.effect_id == 958
-            || effect_record.effect_id == 1174 || effect_record.effect_id == 1081) {
+            || effect_record.effect_id == 1174 || effect_record.effect_id == 1081
+            || effect_record.effect_id == 1956 || effect_record.effect_id == 1292
+        //   95 对手处于睡眠状态时致命一击率提升{0}/16（2026-10-24 J254 线：选择期路由，
+        //   2298 同款——暴击掷点在 query_usage ①.5（execute 内、所有桶之前），
+        //   SKILL_EFFECT/ON_SKILL_HIT 都晚于掷骰（168 威力写赶的是伤害管线不是掷骰），
+        //   路由体在本回合 MOVE_RIGHT 直写 ws.crit_rate_add（每回合 reset，无跨回合
+        //   泄漏）；睡眠判据 g_core->has_active_anomaly(opp,8)，J289 168 同款）
+            || effect_record.effect_id == 95) {
             Effect sel = clone_effect(effect_record.effect_id, build_effect_args_for_skill(effect_record));
             if (sel.logic) {
                 selection_effects_.push_back(
@@ -823,7 +835,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             // 失明：见 abnormal-types.h AbnormalStatusId::Blind。
             if (cred.must_hit) {
                 // 必中技能：50% 正常命中 / 50% 命中效果失效（官方口径，用户 2026-09-13 确认）。
-                blind_hit_invalid = (std::rand() % 2) != 0;
+                blind_hit_invalid = (sbs_rand() % 2) != 0;
             } else {
                 // 非必中技能：必定 miss。走到这里就是 miss（不再掷命中率）。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -912,7 +924,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
                     void_miss = trait_proc_roll(*v);   // ⚠️ rand 只在带虚无时消耗
                 }
             }
-            if (attr_must_miss || void_miss || (std::rand() % 100) >= hit_chance) {
+            if (attr_must_miss || void_miss || (sbs_rand() % 100) >= hit_chance) {
                 // miss 也照常 notify 中心：文档 §2.3「一旦本次技能命中失败（miss 类），
                 // 会消耗所有可响应的次数类效果」——狮盔会被响应并消耗，尽管技能是 miss 的。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -949,12 +961,12 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             if (h->args[0] <= 1) {
                 rate += 6.25f;   // 0 星：加法（1/16）
             } else {
-                crit_second_roll = (std::rand() % 10000) < h->args[0] * 10;   // 独立二次
+                crit_second_roll = (sbs_rand() % 10000) < h->args[0] * 10;   // 独立二次
             }
         }
         ctx->crit_happened[owner] = ctx->ws.must_crit[owner] || crit_second_roll
             || rate >= 100.0f
-            || (rate > 0.0f && (std::rand() % 10000) < static_cast<int>(rate * 100.0f));
+            || (rate > 0.0f && (sbs_rand() % 10000) < static_cast<int>(rate * 100.0f));
         // 2380 「自身下{0}次致命一击视为命中并强制执行命中效果」（圣光莫妮卡·繁嚣此寂
         // 29299；技能组 2026-09-25）：暴击落地即消费 1 层计数（plugin_storage 990238000+owner，
         // 技能效果侧武装）→ cred.force_execute——"视为命中"与"强制执行"都由它承载
@@ -1034,7 +1046,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
         // 语料 idx=473「失神：50 概率属性无效」。
         if (is_attribute
             && ctx->has_active_abnormal_status(owner, static_cast<int>(AbnormalStatusId::Distraction))
-            && (std::rand() % 100) < 50) {
+            && (sbs_rand() % 100) < 50) {
             return SkillUsageResult::SEALED;
         }
         // ②.1' **非同系攻击免疫门**（圣光莫妮卡 2492 神谕口径，2026-09-25 待落①落地）：

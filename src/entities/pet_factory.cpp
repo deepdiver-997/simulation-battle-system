@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <entities/pet_factory.h>
 
 #include <effects/effect.h>
@@ -12,7 +13,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
-#include <arpa/inet.h>
 
 namespace {
 
@@ -56,10 +56,14 @@ BattleCreateRequest decode_battle_create_request(const std::vector<char>& payloa
         );
     }
 
+    // 大端（网络序）→ 主机序；不引 arpa/inet.h 的 ntohl（Windows 无此头，手写可移植）
+    auto be32_to_host = [](uint32_t v) {
+        return ((v & 0xFFu) << 24) | ((v & 0xFF00u) << 8) | ((v >> 8) & 0xFF00u) | ((v >> 24) & 0xFFu);
+    };
     auto read_int = [&](std::size_t offset) {
         uint32_t raw = 0;
         std::memcpy(&raw, payload.data() + offset, sizeof(raw));
-        return static_cast<int>(ntohl(raw));
+        return static_cast<int>(be32_to_host(raw));
     };
 
     BattleCreateRequest request;

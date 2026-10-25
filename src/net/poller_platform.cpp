@@ -1,17 +1,21 @@
-// 平台 poller 实现：macOS/BSD 走 kqueue，Linux 走 epoll。
+// 平台 poller 实现：macOS/BSD 走 kqueue，Linux 走 epoll，Windows 走 WSAPoll。
 //
-// 两者都是 readiness 语义，差异只在注册方式和事件翻译，所以共用一套
+// 三者都是 readiness 语义。kqueue/epoll 有内核侧常驻注册表，共用一套
 // "待应用变更表 + 注册状态表" 的结构：
 //   - changes_   本线程内累积的 control() 请求，在 wait() 开头一次性提交，
 //                避免"每次注册一次 syscall"（写队列空↔非空会频繁切关注集合）。
 //   - registered_ 已经生效的 (fd → 关注位) 映像。有了它就不会对没注册过的
 //                filter 发 DELETE（kqueue 会回 ENOENT、epoll 会回 ENOENT，
 //                都不是错误，但日志会脏）。
+// WSAPoll 没有内核注册表（每次 wait() 自带 fd 数组），结构见对应分支内注释。
 
+#include <cstdint>
 #include <net/poller.h>
 
 #include <cerrno>
 #include <cstring>
+#include <chrono>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -25,6 +29,20 @@
 #define NET_POLLER_EPOLL 1
 #include <sys/epoll.h>
 #include <unistd.h>
+#elif defined(_WIN32)
+#define NET_POLLER_WSAPOLL 1
+// _WIN32_WINNT 下限 0x0600：WSAPoll/WSAPOLLFD 只在 Vista+ 的 ws2tcpip.h 里声明。
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #else
 #define NET_POLLER_NONE 1
 #endif
@@ -353,6 +371,99 @@ private:
     std::unordered_map<int, uint32_t> registered_;
 };
 
+#elif defined(NET_POLLER_WSAPOLL)
+
+constexpr uint8_t kWantRead = 1u << 0;
+constexpr uint8_t kWantWrite = 1u << 1;
+
+// WSAPoll 后端（readiness / 水平触发，天然贴合本接口，见决策 D5）。
+//
+// 与 kqueue/epoll 的结构差异：WSAPoll **没有内核侧常驻注册表**——每次 wait()
+// 都要自带完整 fd 数组。所以这里没有变更队列：registered_ 映像表就是"注册表"
+// 本身——
+//   - control() 直接改表（改的是用户态数据，没有 syscall，无批量提交的必要；
+//     wait/control 同属 Reactor loop 线程，无并发）；
+//   - wait() 由表现拼 pollfd 数组提交。
+// 错误码面：winsock 全家 WSAE*（经 WSAGetLastError() 取出），与 errno.h 的 E*
+// 取值不同，调用方（reactor.cpp）按同一套 kSockErr* 常量解读。
+class WsaPollPoller final : public Poller {
+public:
+    bool control(int fd, bool want_read, bool want_write, PollOp op) override {
+        if (fd < 0) {
+            return false;
+        }
+        if (op == PollOp::kDel || (!want_read && !want_write)) {
+            registered_.erase(fd);
+            return true;
+        }
+        uint8_t bits = 0;
+        if (want_read) bits |= kWantRead;
+        if (want_write) bits |= kWantWrite;
+        registered_[fd] = bits;
+        return true;
+    }
+
+    int wait(PollEvent* out, int max_events, int timeout_ms) override {
+        if (max_events <= 0) {
+            return 0;
+        }
+        if (registered_.empty()) {
+            // 无可等待 fd：WSAPoll 没有内核等待物，只能按超时自旋。真实服务路径
+            // 到不了这里（listen fd 至少注册了一条），纯防御；上限 1s 防止无定时器
+            // 时烧 CPU，也保住"到点返回 0"的契约。
+            const int nap = (timeout_ms < 0 || timeout_ms > 1000) ? 1000 : timeout_ms;
+            std::this_thread::sleep_for(std::chrono::milliseconds(nap));
+            return 0;
+        }
+
+        std::vector<WSAPOLLFD> fds;
+        fds.reserve(registered_.size());
+        for (const auto& kv : registered_) {
+            WSAPOLLFD p;
+            p.fd = static_cast<SOCKET>(kv.first);
+            p.events = 0;
+            if (kv.second & kWantRead) {
+                p.events |= POLLIN;
+            }
+            if (kv.second & kWantWrite) {
+                p.events |= POLLOUT;
+            }
+            p.revents = 0;
+            fds.push_back(p);
+        }
+
+        int n = 0;
+        do {
+            n = ::WSAPoll(fds.data(), static_cast<ULONG>(fds.size()), timeout_ms);
+        } while (n < 0 && ::WSAGetLastError() == WSAEINTR);
+
+        if (n < 0) {
+            return -1;  // 错误码经 WSAGetLastError() 保留，调用方按 WSAE* 解读
+        }
+
+        int produced = 0;
+        for (const WSAPOLLFD& p : fds) {
+            if (produced >= max_events) {
+                break;  // 装不下的就绪项留给下一轮（水平触发，不会丢）
+            }
+            if (p.revents == 0) {
+                continue;
+            }
+            const int fd = static_cast<int>(p.fd);
+            // 对齐 epoll 分支的翻译：POLLHUP≈EPOLLHUP，error 与 readable/writable
+            // 可同时成立，上层 run_once 先处理 error 直接关闭。
+            const bool error = (p.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0;
+            const bool readable = (p.revents & POLLIN) != 0;
+            const bool writable = (p.revents & POLLOUT) != 0;
+            out[produced++] = PollEvent{fd, readable, writable, error};
+        }
+        return produced;
+    }
+
+private:
+    std::unordered_map<int, uint8_t> registered_;
+};
+
 #endif  // platform
 
 }  // namespace
@@ -362,6 +473,8 @@ std::unique_ptr<Poller> Poller::create() {
     return std::unique_ptr<Poller>(new KqueuePoller());
 #elif defined(NET_POLLER_EPOLL)
     return std::unique_ptr<Poller>(new EpollPoller());
+#elif defined(NET_POLLER_WSAPOLL)
+    return std::unique_ptr<Poller>(new WsaPollPoller());
 #else
     return nullptr;
 #endif
@@ -372,6 +485,8 @@ const char* Poller::backend_name() {
     return "kqueue";
 #elif defined(NET_POLLER_EPOLL)
     return "epoll";
+#elif defined(NET_POLLER_WSAPOLL)
+    return "wsapoll";
 #else
     return "none";
 #endif

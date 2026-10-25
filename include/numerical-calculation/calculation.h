@@ -1,6 +1,8 @@
+#include <utils/sbs_rand.h>
 #ifndef CALCULATION_H
 #define CALCULATION_H
 
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <stdexcept>
@@ -74,7 +76,7 @@ class Calculation {
             restraint = 1.0;
         }
         damage = (0.84 * Attack / Defense * power + 2) * restraint
-                * (217 + rand() % 39) / 255;
+                * (217 + sbs_rand() % 39) / 255;
         // 本系加成（×1.5）：判据是**技能真实系别** vs 攻击方精灵系别。
         // ⚠️ "改系别只改克制、不改本系"是刻意的（改的是 `skill_element_view`，本系读 `skill.element`）；
         //    要"获得本系加成"的（effect 2490）走 `ws.force_involve` 这个显式开关，别去动 involve 的入参。

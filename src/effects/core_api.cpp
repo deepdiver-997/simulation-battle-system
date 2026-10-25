@@ -84,6 +84,8 @@ const char* first_empty_slot(const CoreApi& api) {
     if (!api.is_spirit_king) return "is_spirit_king";
     if (!api.hit_effect_invalid) return "hit_effect_invalid";
     if (!api.reset_hp) return "reset_hp";
+    if (!api.set_anomaly_view_layers) return "set_anomaly_view_layers";
+    if (!api.get_anomaly_view_layers) return "get_anomaly_view_layers";
     return nullptr;
 }
 }  // namespace
@@ -165,20 +167,39 @@ const CoreApi& core_api() {
             if (!c) {
                 return false;
             }
-            // K6 虚拟异常视图（查询时拉取）：扫描约定段，任一来源层数 >0 → 视为不处于异常。
+            // K6 虚拟异常视图（查询时拉取）：任一来源层数 >0 → 视为不处于异常。
             // 目标按方判定（荣光之裁等印记是 side 级）。内核结算面不走这里。
-            for (auto it = c->plugin_storage.lower_bound(kAnomalyViewMaskPubBase);
-                 it != c->plugin_storage.end() && it->first < kAnomalyViewMaskPubBase + 800000;
-                 ++it) {
-                const int side = it->first % 8;
-                if (side == target) {
-                    const int* v = std::any_cast<int>(&it->second);
-                    if (v && *v > 0) {
-                        return false;
-                    }
+            // 2026-10-24 转正：状态一等化到 anomaly_view_layers，
+            // 原 plugin_storage 魔数段 [4699000, +800000) 扫描退役。
+            for (const auto& entry : c->anomaly_view_layers) {
+                if (entry.side == target && entry.layers > 0) {
+                    return false;
                 }
             }
             return c->has_active_abnormal_status(target, status_id);
+        };
+        a.set_anomaly_view_layers = [](BattleContext* c, int effect_id, int side, int layers) {
+            if (!c) {
+                return;
+            }
+            for (auto& entry : c->anomaly_view_layers) {
+                if (entry.effect_id == effect_id && entry.side == side) {
+                    entry.layers = layers;
+                    return;
+                }
+            }
+            c->anomaly_view_layers.push_back({effect_id, side, layers});
+        };
+        a.get_anomaly_view_layers = [](const BattleContext* c, int effect_id, int side) {
+            if (!c) {
+                return 0;
+            }
+            for (const auto& entry : c->anomaly_view_layers) {
+                if (entry.effect_id == effect_id && entry.side == side) {
+                    return entry.layers;
+                }
+            }
+            return 0;
         };
         a.get_abnormal_status_end_round = [](const BattleContext* c, int target, int status_id) {
             return c ? c->get_abnormal_status_end_round(target, status_id) : 0;

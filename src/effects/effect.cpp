@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #include <effects/effect.h>
 #include <fsm/battleContext.h>
 #include <plugin/plugin_interface.h>
@@ -267,7 +268,7 @@ bool EffectFactory::no_confilict(int id1, int id2) {
 bool EffectFactory::roll_percent(int percent) {
     if (percent <= 0) return false;
     if (percent >= 100) return true;
-    return (std::rand() % 100) < percent;
+    return (sbs_rand() % 100) < percent;
 }
 
 void EffectFactory::registerEffect(int effectId, EffectFn effect) {

@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 /**
  * battle_primitives.cpp — 原语实现
  *
@@ -9,6 +10,7 @@
  * - break_round_effects
  */
 
+#include <cstdint>
 #include <primitives/battle_primitives.h>
 
 #include <abnormal-system/abnormal-types.h>
@@ -233,7 +235,7 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     //      官方口径「**以实际概率为准**」（战栗被提升到 100% 就不受影响）→ 判的是本次
     //      实际值；且必须**在掷骰之前**，这正是闸门做成查询式、事件中心承载不了的原因。
     //   ② 再按改写后的值掷一次：0 = 必定不触发（不消耗 rand）、>=100 = 必定触发
-    //      （同样不消耗 rand，与 roll_percent / trait_proc_roll 的契约一致）、其余 rand()%100。
+    //      （同样不消耗 rand，与 roll_percent / trait_proc_roll 的契约一致）、其余 sbs_rand()%100。
     // ⚠️ 位置：排在 ATTACH_BAN 与砥砺置位**之后**——"被禁令挡在门外"不算执行过（既有口径），
     //    而"概率没掷中"算执行过（动作已经做了，与免疫/抗性同类；官方"不要求真落地"）。
     // ⚠️ 通道无关：三个通道（Modern/Ancient/Raw）都过这一步。亮节原文点名覆盖"主动毒、
@@ -245,7 +247,7 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
         if (final_pct <= 0) {
             return ApplyAnomalyResult::ROLL_FAILED;
         }
-        if (final_pct < 100 && static_cast<int>(std::rand() % 100) >= final_pct) {
+        if (final_pct < 100 && static_cast<int>(sbs_rand() % 100) >= final_pct) {
             return ApplyAnomalyResult::ROLL_FAILED;
         }
     }
@@ -478,21 +480,21 @@ RandomAnomalyResult attach_random_anomalies(BattleContext* ctx,
         return out;
     }
     out.requested = std::min(count, static_cast<int>(pool.size()));
-    // ② 概率门：整个子句一次（同插件侧 roll_percent 语义：<100 时 rand()%100 判定）。
+    // ② 概率门：整个子句一次（同插件侧 roll_percent 语义：<100 时 sbs_rand()%100 判定）。
     // ⚠️ 掷骰**之前**先过闸门（亮节族）——与三个施加原语的 chance_pct 是同一道门。
     //    这是"整子句一次"的那次判定，故闸门在这里问；③ 里的逐只 apply_anomaly 传 -1
     //    （已判定过，不能再掷一次，否则一次子句会被掷 N 次）。
     const int gated_pct = ctx->rule_center_.rewrite_anomaly_chance(
         target, actor, probability_pct, ChanceTag::AnomalyAttach, source, ctx->roundCount);
     if (gated_pct < 100
-        && (gated_pct <= 0 || static_cast<int>(std::rand() % 100) >= gated_pct)) {
+        && (gated_pct <= 0 || static_cast<int>(sbs_rand() % 100) >= gated_pct)) {
         return out;
     }
     out.rolled = 1;
-    // ③ 不重复挑选（部分 Fisher-Yates：rand 序随引擎全局 std::rand，测试可 srand 固定）。
+    // ③ 不重复挑选（部分 Fisher-Yates：rand 序随引擎全局 sbs_rand，测试可 srand 固定）。
     std::vector<int> bag = pool;
     for (int pick = 0; pick < out.requested; ++pick) {
-        const int idx = pick + static_cast<int>(std::rand() % static_cast<unsigned>(bag.size() - pick));
+        const int idx = pick + static_cast<int>(sbs_rand() % static_cast<unsigned>(bag.size() - pick));
         std::swap(bag[pick], bag[idx]);
         const ApplyAnomalyResult r = apply_anomaly(ctx, target, bag[pick],
                                                    /*duration_rounds=*/-1, actor);
@@ -544,7 +546,7 @@ void deal_anomaly_damage(BattleContext* ctx, int target, const ElfPet& pet,
     }
     DamageKind kind = DamageKind::FIXED;
     switch (profile.tier) {
-        case AbnormalDamageTier::TruePercent: kind = DamageKind::TRUE; break;
+        case AbnormalDamageTier::TruePercent: kind = DamageKind::TRUE_DMG; break;
         case AbnormalDamageTier::Percent:     kind = DamageKind::PERCENT_VALUE; break;
         case AbnormalDamageTier::Fixed:       kind = DamageKind::FIXED; break;
         case AbnormalDamageTier::None:        return;
@@ -580,7 +582,7 @@ void derive_anomaly(BattleContext* ctx, int target, const ElfPet& /*pet*/,
             static_cast<int>(AbnormalStatusId::DeathCurse),
             static_cast<int>(AbnormalStatusId::WeaknessCurse),
         };
-        derived_id = kCurseRoll[std::rand() % 3];
+        derived_id = kCurseRoll[sbs_rand() % 3];
     }
     if (!is_valid_abnormal_status_id(derived_id)) {
         return;
@@ -589,7 +591,7 @@ void derive_anomaly(BattleContext* ctx, int target, const ElfPet& /*pet*/,
     int rounds = random_anomaly_duration();
     if (d.derived_rounds_min > 0) {
         const int hi = std::max(d.derived_rounds_min, d.derived_rounds_max);
-        rounds = d.derived_rounds_min + (std::rand() % (hi - d.derived_rounds_min + 1));
+        rounds = d.derived_rounds_min + (sbs_rand() % (hi - d.derived_rounds_min + 1));
     }
     // ⚠️ **+1 是必须的**：衍化发生在**回合扣减点**，而该回合的行动阶段（ACTION_START 等）
     //    早已跑完 —— 转出异常的"第一个生效回合"是**下一回合**。而 `has_active` 是
@@ -644,7 +646,7 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         if (p.timing != AbnormalDamageTiming::RoundReduction) {
             continue;
         }
-        if (p.chance_pct < 100 && (std::rand() % 100) >= p.chance_pct) {
+        if (p.chance_pct < 100 && (sbs_rand() % 100) >= p.chance_pct) {
             continue;
         }
         if (pet.hp <= 0) {
@@ -690,7 +692,7 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         if (p.timing != AbnormalDamageTiming::OnExpire || pet.hp <= 0) {
             continue;
         }
-        if (p.chance_pct < 100 && (std::rand() % 100) >= p.chance_pct) {
+        if (p.chance_pct < 100 && (sbs_rand() % 100) >= p.chance_pct) {
             continue;
         }
         deal_anomaly_damage(ctx, target, pet, p, /*actor=*/1 - target);
@@ -971,7 +973,7 @@ static void run_pink_damage(BattleContext* ctx, int target, int amount,
     //    在护罩**之后**的那一条（未受到型）看得到 `absorbed`。
     // ⚠️ 引擎**不猜**转不转：没有全局开关，谁的效果谁负责置位（见结构体注释）。
     if (r.true_damage > 0) {
-        deal_damage(ctx, target, r.true_damage, DamageKind::TRUE, actor);
+        deal_damage(ctx, target, r.true_damage, DamageKind::TRUE_DMG, actor);
         return;
     }
     if (r.final <= 0) {
@@ -1111,7 +1113,7 @@ void deal_damage(BattleContext* ctx, int target, int amount,
     //    （语料 idx=165「可以被免疫效果响应」）。
     // ⚠️ 属性伤害(ATTRIBUTE)不是真伤 → 不触发；异常扣血的 TruePercent 档走 TRUE → **会**触发
     //    （官方"受到真实伤害"字面如此：中毒/烧伤/冻伤/寄生的 1/8 都算）。
-    if (kind == DamageKind::TRUE && actual_damage > 0
+    if (kind == DamageKind::TRUE_DMG && actual_damage > 0
         && ctx->has_active_abnormal_status(target,
                static_cast<int>(AbnormalStatusId::Resolution))
         && !ctx->ws.anomaly_applied_by_opponent[target]) {
@@ -1133,7 +1135,7 @@ FixedDamageResult deal_true_damage(BattleContext* ctx, int target, int amount, i
     if (!ctx || target < 0 || target > 1 || amount <= 0) {
         return FixedDamageResult::INVALID_PARAM;
     }
-    deal_damage(ctx, target, amount, DamageKind::TRUE, actor);
+    deal_damage(ctx, target, amount, DamageKind::TRUE_DMG, actor);
     return ctx->getPet(target).hp <= 0 ? FixedDamageResult::TARGET_DEFEATED
                                        : FixedDamageResult::SUCCESS;
 }
@@ -1341,7 +1343,7 @@ int seal_skill(BattleContext* ctx, int source, int target, int effect_id, bool a
             if (chance <= 0) {
                 return false;
             }
-            return (std::rand() % 100) < chance;
+            return (sbs_rand() % 100) < chance;
         };
     }
     // 回合型 / 次数型**二选一**（文档 §5.1）：有 duration 走回合型（remaining_counts 不设，
