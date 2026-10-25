@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #include <effects/common_trait_effects.h>
 
 #include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
@@ -368,7 +369,7 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
         if (permille <= 0) {
             return;
         }
-        if (permille < 1000 && (std::rand() % 1000) >= permille) {
+        if (permille < 1000 && (sbs_rand() % 1000) >= permille) {
             return;
         }
     }
@@ -490,18 +491,18 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
                                                           ChanceSource::Trait);
         if (gated_pct <= 0
-            || (gated_pct < 100 && static_cast<int>(std::rand() % 100) >= gated_pct)) {
+            || (gated_pct < 100 && static_cast<int>(sbs_rand() % 100) >= gated_pct)) {
             continue;
         }
         if (ctx->getPet(defender_id).hp <= 0) {
             continue;
         }
-        const int duration = 2 + std::rand() % 2;
+        const int duration = 2 + sbs_rand() % 2;
         (void)apply_anomaly(ctx, defender_id, t.args[1], duration, attacker_id);   // **现代**通道
     }
 
     // ── 主动毒：攻方本体槽，物/特类别匹配后令**守方**中招（主动毒通道）──
-    // ⚠️ `std::rand()` 只在**确实要施加**时才消耗（duration 的计算放在分支内）——
+    // ⚠️ `sbs_rand()` 只在**确实要施加**时才消耗（duration 的计算放在分支内）——
     //    本仓库的伤害/命中断言依赖既有 rand 序列（场景 013/031/053/054 都因此抓过），
     //    无条件掷点会给所有场景移位。
     const EffectiveTrait& atk_own = ctx->trait_state_[attacker_id].own;
@@ -514,10 +515,10 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
                                                           ChanceSource::Trait);
         if (gated_pct > 0
-            && (gated_pct >= 100 || static_cast<int>(std::rand() % 100) < gated_pct)) {
+            && (gated_pct >= 100 || static_cast<int>(sbs_rand() % 100) < gated_pct)) {
             const ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
             if (defender.hp > 0) {
-                const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
+                const int duration = 2 + sbs_rand() % 2;   // 必修6：赋予回合随机 2~3
                 (void)apply_anomaly_ancient(ctx, defender_id, atk_own.args[1], duration,
                                             attacker_id);
             }
@@ -539,10 +540,10 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
             const int gated_pct = ctx->rewrite_anomaly_chance(attacker_id, defender_id,
                                                               declared_pct, ChanceSource::Trait);
             if (gated_pct > 0
-                && (gated_pct >= 100 || static_cast<int>(std::rand() % 100) < gated_pct)) {
+                && (gated_pct >= 100 || static_cast<int>(sbs_rand() % 100) < gated_pct)) {
                 const ElfPet& attacker = ctx->seerRobot[attacker_id].elfPets[ctx->on_stage[attacker_id]];
                 if (attacker.hp > 0) {
-                    const int duration = 2 + std::rand() % 2;   // 必修6：赋予回合随机 2~3
+                    const int duration = 2 + sbs_rand() % 2;   // 必修6：赋予回合随机 2~3
                     (void)apply_anomaly_raw(ctx, attacker_id, def_own.args[1], duration,
                                             defender_id);
                 }

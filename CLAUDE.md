@@ -58,7 +58,7 @@ worktree 隔离、限流构建回归、finish 登记，不需要等人派活。
 
 ## 7. 多 agent 并行工作区（agent-workspace-kit）
 
-多个 agent 并行时**必须**走 `tools/agents/`（上游母本 `~/.agent-parallel/`）：
+**任何 worktree（含单会话）一律 `tools/agents/new-worktree.sh <name>` 开在 `~/.agent-workspaces/workspaces/sbs-local/<name>`，不得建在仓库同级目录**（旧 `~/code/c++/project/agents/` 已退役为历史区）。多个 agent 并行时**必须**走 `tools/agents/`（上游母本 `~/.agent-parallel/`）：
 worktree 生命周期、设备磁盘预算（全机一份账本 `~/.agent-workspaces/`，开工前强制
 检查）、全局构建锁（`tools/agents/gate.sh` = .git/agents/build.lock + 全量门）、
 无头派发（spawn.sh）。**开工作区/派发/收尾的命令与项目策略层**见

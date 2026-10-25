@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <server/session.h>
 
 #include <server/battle_init.h>
@@ -48,7 +49,7 @@ void Session::send_frame(const std::string& frame) {
 }
 
 void Session::send_error(const std::string& text) {
-    send_payload(proto::Command::ERROR, text);
+    send_payload(proto::Command::CMD_ERROR, text);
 }
 
 void Session::send_payload(proto::Command cmd, const std::string& payload) {

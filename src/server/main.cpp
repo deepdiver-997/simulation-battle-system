@@ -2,13 +2,18 @@
 //
 // 启动序列：初始化数据层 → BattleService（建 worker 舰队 + 各自线程跑事件循环
 // + 战斗线程池）→ 主线程阻塞等信号。
-// 关闭序列：SIGINT/SIGTERM → 主线程从管道醒来 → service.stop()（停所有事件循环、
+// 关闭序列：POSIX=SIGINT/SIGTERM → 自管道唤醒主线程；Windows=Ctrl-C/控制台关闭 →
+// SetConsoleCtrlHandler 置事件唤醒主线程 → service.stop()（停所有事件循环、
 // join 线程、回收房间与战斗池）。
 //
 // 事件循环全部跑在 service 自己的线程上之后，main 不再需要"主线程跑 loop +
-// 守候线程收信号"的结构 —— 主线程直接阻塞读信号管道就是最简单的等待方式。
-// 仍然用自管道收信号：信号处理函数里只有 async-signal-safe 的调用能用，
+// 守候线程收信号"的结构 —— 主线程直接阻塞等待就是最简单的等待方式。
+// POSIX 仍用自管道收信号：信号处理函数里只有 async-signal-safe 的调用能用，
 // 直接调 service.stop()（内部有互斥锁与 join）是未定义行为。
+// Windows 的控制台处理函数跑在系统临时线程上，同样只置标志+置事件，
+// service.stop() 留给主线程做——语义两边对齐。
+// SIGPIPE 在 Windows 不存在：send() 对已关闭连接返回 WSAECONNABORTED 而非杀进程，
+// 相关兜底不需要移植。
 
 #include <server/service.h>
 
@@ -21,22 +26,62 @@
 #include <effects/rule_center.h>
 #include <fsm/state.h>
 #include <net/poller.h>
+#include <plugin/id_collision.h>   // id 撞号审计（2026-10-22）
 #include <server/output_json.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
-#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <string>
-#include <unistd.h>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <csignal>
+#include <unistd.h>
+#endif
 
 namespace {
 
+#if defined(_WIN32)
+
+// 收到控制台事件（Ctrl-C / Ctrl-Break / 关窗口 / 注销 / 关机）。
+// 只置事件，stop 逻辑在主线程跑（处理函数线程里 join/锁是雷区）。
+std::atomic<int> g_stop_signal{-1};
+HANDLE g_stop_event = nullptr;
+
+BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
+    g_stop_signal.store(static_cast<int>(ctrl_type), std::memory_order_release);
+    ::SetEvent(g_stop_event);
+    // 返回 TRUE = 事件已处理，系统不再走默认行为（默认行为是直接杀进程）。
+    // CTRL_CLOSE_EVENT 下系统给约 5 秒宽限，service.stop() 远快于此。
+    return TRUE;
+}
+
+#else
+
 int g_signal_pipe[2] = {-1, -1};
+
+void signal_handler(int signo) {
+    const unsigned char byte = static_cast<unsigned char>(signo);
+    ssize_t n = 0;
+    do {
+        n = ::write(g_signal_pipe[1], &byte, 1);
+    } while (n < 0 && errno == EINTR);
+}
+
+#endif
 
 // 把三个插件注册表的已注册 id 全集 + 时点/异常对照表写成一行 JSON：
 // {"moves":[...],"soul":[...],"suit":[...],
@@ -59,15 +104,25 @@ bool dump_registry_json(const std::string& path) {
     std::printf("[INFO] [server] 注册表已导出 %s（moves=%zu soul=%zu suit=%zu）\n",
                 path.c_str(), dump.moves, dump.soul, dump.suit);
     std::fflush(stdout);
-    return true;
-}
 
-void signal_handler(int signo) {
-    const unsigned char byte = static_cast<unsigned char>(signo);
-    ssize_t n = 0;
-    do {
-        n = ::write(g_signal_pipe[1], &byte, 1);
-    } while (n < 0 && errno == EINTR);
+    // ── id 撞号审计 ──────────────────────────────────────────────────────
+    // 判定已移到 PetFactory::initialize_runtime_data() 末尾（**所有 dylib flush
+    // 之后**）——那里是唯一看得见"同 id 两个来源"的时点，且对**所有**入口生效
+    // （服务器 / 场景测试 / 工具），不是只有 --dump-registry 才查。
+    // 这里只做**报告**：已备案存量列出来（存量每条带处置结论）；新增撞号在那边
+    // 就已经抛异常停进程了，走不到这里。
+    const std::string collisions = id_collision::instance().report();
+    if (!collisions.empty()) {
+        const std::size_t fresh = id_collision::instance().new_collisions().size();
+        std::fprintf(stderr,
+                     "[WARN] [server] 效果 id 撞号：新增 %zu 处 / 已备案存量 %zu 处"
+                     "——同 id 被多处注册，后者会静默覆盖前者：\n%s",
+                     fresh,
+                     id_collision::instance().collisions().size() - fresh,
+                     collisions.c_str());
+        std::fflush(stderr);
+    }
+    return true;
 }
 
 struct CliArgs {
@@ -170,9 +225,15 @@ int main(int argc, char** argv) {
     }
 
     if (!PetFactory::initialize_runtime_data()) {
+#if defined(_WIN32)
+        std::fprintf(stderr,
+                     "初始化运行期数据失败：检查 scripts/data/processed/seer_unity.sqlite 与 "
+                     "resources/<lib>/liblib_1.dll 是否存在，且当前目录是仓库根\n");
+#else
         std::fprintf(stderr,
                      "初始化运行期数据失败：检查 scripts/data/processed/seer_unity.sqlite 与 "
                      "resources/<lib>/liblib_1.dylib 是否存在，且当前目录是仓库根\n");
+#endif
         return 1;
     }
 
@@ -186,6 +247,17 @@ int main(int argc, char** argv) {
         }
     }
 
+#if defined(_WIN32)
+    g_stop_event = ::CreateEventW(nullptr, TRUE /*手动重置：处理函数先于等待触发也不丢*/, FALSE, nullptr);
+    if (g_stop_event == nullptr) {
+        std::fprintf(stderr, "创建停止事件失败: %lu\n", ::GetLastError());
+        return 1;
+    }
+    if (::SetConsoleCtrlHandler(console_ctrl_handler, TRUE) == 0) {
+        std::fprintf(stderr, "注册控制台处理函数失败: %lu\n", ::GetLastError());
+        return 1;
+    }
+#else
     if (::pipe(g_signal_pipe) != 0) {
         std::fprintf(stderr, "创建信号管道失败: %s\n", std::strerror(errno));
         return 1;
@@ -194,6 +266,7 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, signal_handler);
     // 向已关闭的连接写数据不该打死服务（net 层已设 SO_NOSIGPIPE，这里再兜一层）。
     std::signal(SIGPIPE, SIG_IGN);
+#endif
 
     server::BattleService::Options sopts;
     sopts.host = args.host;
@@ -212,10 +285,16 @@ int main(int argc, char** argv) {
     std::printf("[INFO] [server] 事件循环后端=%s，已就绪，Ctrl-C 退出\n", service.backend());
     std::fflush(stdout);
 
+    int sig = 0;
+#if defined(_WIN32)
+    // 主线程阻塞等控制台事件（处理函数只置标志+置事件）。
+    ::WaitForSingleObject(g_stop_event, INFINITE);
+    sig = g_stop_signal.load(std::memory_order_acquire);
+#else
     // 主线程阻塞等信号（信号处理函数只写一个字节进来）。
-    unsigned char sig = 0;
+    unsigned char sig_byte = 0;
     for (;;) {
-        const ssize_t n = ::read(g_signal_pipe[0], &sig, 1);
+        const ssize_t n = ::read(g_signal_pipe[0], &sig_byte, 1);
         if (n == 1) {
             break;
         }
@@ -224,12 +303,18 @@ int main(int argc, char** argv) {
         }
         break;  // 管道异常：也要走一遍优雅停机
     }
+    sig = static_cast<int>(sig_byte);
+#endif
 
-    std::printf("\n[INFO] [server] 收到信号 %d，正在停止…\n", static_cast<int>(sig));
+    std::printf("\n[INFO] [server] 收到信号 %d，正在停止…\n", sig);
     std::fflush(stdout);
     service.stop();
+#if defined(_WIN32)
+    ::CloseHandle(g_stop_event);
+#else
     ::close(g_signal_pipe[0]);
     ::close(g_signal_pipe[1]);
+#endif
 
     std::printf("[INFO] [server] 已停止\n");
     return 0;

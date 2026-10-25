@@ -55,7 +55,7 @@ enum class Command : std::uint16_t {
     // 单独请求合法动作集时回这个（INPUT_REQUIRED 里也带一份）。
     LEGAL_ACTIONS = 32,
     // 错误文本（FSM 原本把裸文本直接写进流，会破坏长度前缀成帧，这里补上帧）。
-    ERROR = 33,
+    CMD_ERROR = 33,
     // 入座/房间信息：match_id、seat、座位数、solo 还是 pvp。
     ROOM_INFO = 34,
     // 战斗结束：payload 是 JSON（winner + 最终快照）。
@@ -84,7 +84,7 @@ inline const char* command_name(Command cmd) {
         case Command::TAPE: return "TAPE";
         case Command::INPUT_REQUIRED: return "INPUT_REQUIRED";
         case Command::LEGAL_ACTIONS: return "LEGAL_ACTIONS";
-        case Command::ERROR: return "ERROR";
+        case Command::CMD_ERROR: return "ERROR";
         case Command::ROOM_INFO: return "ROOM_INFO";
         case Command::BATTLE_OVER: return "BATTLE_OVER";
         case Command::HELLO: return "HELLO";

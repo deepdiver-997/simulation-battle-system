@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <server/room.h>
 
 #include <fsm/battleContext.h>
@@ -379,7 +380,7 @@ void Room::async_write(int player_id, const std::string& data, BattleContext* ct
     // 新客户端会把它判成非法帧而断连。
     send_frame_to_player(
         player_id,
-        proto::build_frame(proto::Command::ERROR, static_cast<std::uint32_t>(match_id_), data));
+        proto::build_frame(proto::Command::CMD_ERROR, static_cast<std::uint32_t>(match_id_), data));
 
     // 与老实现同语义：交给客户端之后继续推进 ctx，让 FSM 重新进入 wait_for_input
     // 把等待重新排好（此时 is_empty 仍为 true，所以会立刻再次停在等输入）。
@@ -434,7 +435,7 @@ void Room::send_error_to_seat(int seat, const std::string& text) {
         }
     }
     if (target) {
-        target->send_frame(proto::build_frame(proto::Command::ERROR,
+        target->send_frame(proto::build_frame(proto::Command::CMD_ERROR,
                                               static_cast<std::uint32_t>(match_id_), text));
     }
 }

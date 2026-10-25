@@ -1,6 +1,7 @@
 #ifndef DAMAGE_PIPELINE_H
 #define DAMAGE_PIPELINE_H
 
+#include <cstdint>
 #include <algorithm>
 #include <array>
 #include <functional>

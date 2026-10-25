@@ -6,15 +6,32 @@
 // 输入线程 = stdin 命令；读取线程 = 收帧 + 打印 + （auto 模式下）自动应答待输入。
 // 两者只共用 socket 的写侧（加锁），读侧只有读取线程碰。
 
+#include <cstdint>
 #include <net/framing.h>
 #include <server/protocol.h>
 
+#if defined(_WIN32)
+// winsock 化（M2.5）：WSAStartup/WSACleanup、closesocket、WSAGetLastError。
+// _WIN32_WINNT 下限 0x0600：inet_pton 只在 Vista+ 声明。
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -30,8 +47,40 @@
 
 namespace {
 
+#if defined(_WIN32)
+using socket_t = SOCKET;
+constexpr socket_t kInvalidSocket = INVALID_SOCKET;
+
+inline int sock_err() { return static_cast<int>(::WSAGetLastError()); }
+constexpr int kSockErrInterrupted = WSAEINTR;
+
+inline std::string sock_err_str(int err) {
+    char buf[256] = {0};
+    ::FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
+                     static_cast<DWORD>(err), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf,
+                     sizeof(buf), nullptr);
+    std::string text(buf);
+    while (!text.empty() &&
+           (text.back() == '\n' || text.back() == '\r' || text.back() == ' ')) {
+        text.pop_back();
+    }
+    if (text.empty()) {
+        text = "winsock error";
+    }
+    return text + " (code " + std::to_string(err) + ")";
+}
+#else
+using socket_t = int;
+constexpr socket_t kInvalidSocket = -1;
+
+inline int sock_err() { return errno; }
+constexpr int kSockErrInterrupted = EINTR;
+
+inline std::string sock_err_str(int err) { return std::strerror(err); }
+#endif
+
 std::mutex g_write_mutex;
-int g_sock = -1;
+socket_t g_sock = kInvalidSocket;
 std::atomic<bool> g_running{true};
 std::atomic<bool> g_auto{false};
 
@@ -51,12 +100,13 @@ bool send_frame(proto::Command cmd, uint32_t uuid, const std::string& payload) {
     std::lock_guard<std::mutex> lk(g_write_mutex);
     std::size_t off = 0;
     while (off < frame.size()) {
-        const ssize_t n = ::send(g_sock, frame.data() + off, frame.size() - off, 0);
+        const int n = static_cast<int>(
+            ::send(g_sock, frame.data() + off, static_cast<int>(frame.size() - off), 0));
         if (n > 0) {
             off += static_cast<std::size_t>(n);
             continue;
         }
-        if (n < 0 && errno == EINTR) {
+        if (n < 0 && sock_err() == kSockErrInterrupted) {
             continue;
         }
         return false;
@@ -254,7 +304,7 @@ void handle_frame(const char* frame, std::size_t len) {
     const std::string payload(frame + proto::kHeaderSize, len - proto::kHeaderSize);
 
     // ERROR 是纯文本（FSM 的错误文案），不当 JSON 解析。
-    if (h.command == proto::Command::ERROR) {
+    if (h.command == proto::Command::CMD_ERROR) {
         log_line("ERROR", payload);
         return;
     }
@@ -306,7 +356,7 @@ void reader_loop() {
     net::LengthPrefixedFramer framer(1u << 20, proto::kHeaderSize);
     char buf[64 * 1024];
     for (;;) {
-        const ssize_t n = ::recv(g_sock, buf, sizeof(buf), 0);
+        const int n = ::recv(g_sock, buf, static_cast<int>(sizeof(buf)), 0);
         if (n > 0) {
             const bool ok = framer.feed(buf, static_cast<std::size_t>(n),
                                        [](const char* f, std::size_t l) { handle_frame(f, l); });
@@ -322,13 +372,13 @@ void reader_loop() {
             g_running.store(false);
             return;
         }
-        if (errno == EINTR) {
+        if (sock_err() == kSockErrInterrupted) {
             continue;
         }
         if (!g_running.load()) {
             return;
         }
-        log_line("ERROR", std::string("recv 失败: ") + std::strerror(errno));
+        log_line("ERROR", "recv 失败: " + sock_err_str(sock_err()));
         g_running.store(false);
         return;
     }
@@ -364,7 +414,15 @@ int action_type_of(const std::string& a) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#if defined(_WIN32)
+    WSADATA wsa;
+    if (::WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        log_line("ERROR", "WSAStartup 失败");
+        return 1;
+    }
+#else
     ::signal(SIGPIPE, SIG_IGN);
+#endif
 
     std::string host = "127.0.0.1";
     int port = 4399;
@@ -372,21 +430,26 @@ int main(int argc, char** argv) {
     if (argc > 2) port = std::atoi(argv[2]);
 
     g_sock = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (g_sock < 0) {
+    if (g_sock == kInvalidSocket) {
         log_line("ERROR", "socket() 失败");
         return 1;
     }
     int one = 1;
-    ::setsockopt(g_sock, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    ::setsockopt(g_sock, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&one),
+                 sizeof(one));
 
     sockaddr_in addr;
     std::memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(static_cast<uint16_t>(port));
-    addr.sin_addr.s_addr = inet_addr(host.c_str());
+    // inet_addr 已废弃（且 INADDR_NONE 与 255.255.255.255 混淆），统一走 inet_pton。
+    if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
+        log_line("ERROR", "无效的 IPv4 地址: " + host);
+        return 1;
+    }
     if (::connect(g_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         log_line("ERROR", "连接 " + host + ":" + std::to_string(port) + " 失败: " +
-                              std::strerror(errno));
+                              sock_err_str(sock_err()));
         return 1;
     }
     log_line("INFO", "已连接 " + host + ":" + std::to_string(port));
@@ -553,8 +616,14 @@ int main(int argc, char** argv) {
     }
 
     g_running.store(false);
+#if defined(_WIN32)
+    ::shutdown(g_sock, SD_BOTH);
+    ::closesocket(g_sock);
+    ::WSACleanup();
+#else
     ::shutdown(g_sock, SHUT_RDWR);
     ::close(g_sock);
+#endif
     if (reader.joinable()) {
         reader.join();
     }

@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <server/output_json.h>
 
 #include <abnormal-system/abnormal-types.h>

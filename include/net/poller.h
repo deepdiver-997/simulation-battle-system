@@ -10,10 +10,10 @@
 //   - control() 只允许在 Reactor 所在线程调用（跨线程一律走 Reactor::post）。
 //   - wait() 返回的就绪集合是**水平触发**的：只要可读/可写没处理干净，
 //     下一次 wait() 还会报同一个 fd。上层因此可以简单地"读到 EAGAIN 为止"。
-//   - 为什么要 readiness 而不是 completion：epoll/kqueue 本身是 readiness，
+//   - 为什么要 readiness 而不是 completion：epoll/kqueue/WSAPoll 本身是 readiness，
 //     IOCP 是 completion。二者不可通约——所以 IOCP 后端不是"再写一个 Poller"，
 //     而是替换 Reactor 的等待/投递机制（见 docs_local/docs/07-工具与测试/网络层设计.md 的说明）。
-//     本文件只覆盖 readiness 家族（macOS/Linux），Windows 不在本轮范围。
+//     本文件覆盖 readiness 家族：macOS/BSD=kqueue、Linux=epoll、Windows=WSAPoll（决策 D5）。
 
 #include <cstdint>
 #include <memory>

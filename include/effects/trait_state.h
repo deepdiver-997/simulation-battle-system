@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #ifndef TRAIT_STATE_H
 #define TRAIT_STATE_H
 
@@ -367,8 +368,8 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
 }
 
 // 触发掷点：被取消触发条件（proc_forced）→ 必发；概率 ≥1000‰（=100%）→ 必发**且不消耗
-// rand()**；否则 rand()%1000 < 千分点。
-// 引擎既有随机都走 std::rand（暴击掷点/连击掷点/伤害浮动），保持同源。
+// sbs_rand()**；否则 sbs_rand()%1000 < 千分点。
+// 引擎既有随机都走 sbs_rand（暴击掷点/连击掷点/伤害浮动），保持同源。
 // ⚠️ 100% 档**短路不消耗**是刻意为之，与本仓库既有的"不调用=不消耗"契约一致
 //    （参见 skills.h 连击区间退化 / battleFsm.cpp 无连击模板 / 暴击率 0 短路）——
 //    否则一次"必发"掷点会推动全局随机序列，使无关的伤害浮动/闪避判定整体错位
@@ -391,9 +392,9 @@ inline bool trait_proc_roll(const EffectiveTrait& t) {
         return false;
     }
     if (permille >= 1000) {
-        return true;   // 100%：不消耗 rand()
+        return true;   // 100%：不消耗 sbs_rand()
     }
-    return (std::rand() % 1000) < permille;
+    return (sbs_rand() % 1000) < permille;
 }
 
 // 复制来的特性条目（天女式）。生命周期锚**来源方**（仿 RuleCenter 的 source 锚）：

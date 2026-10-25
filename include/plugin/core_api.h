@@ -20,10 +20,12 @@
 //   - 与现有"插件→core 注册"（IEffectRegistry）互补：这是"core→插件 传函数"另一半。
 // ════════════════════════════════════════════════════════════════════
 
-// 插件 ABI 版本（2026-09-27 引入）。⚠️ 改 CoreApi 的**任何布局**（加槽/改槽签名/
-// 改字段/改 PluginInitApi）必须 +1——这是插件与内核头"不同源"时唯一响亮报警，
-// 不 bump 的结局是字段偏移错位、写进错误字段、行为随机（CLAUDE-full §5.13 事故）。
-constexpr uint32_t kPluginAbiVersion = 1;
+// 插件 ABI 版本。⚠️ 改 CoreApi 的**任何布局**（加槽/改槽签名/改字段/改 PluginInitApi）
+// 必须从 v2 +1——这是插件与内核头"不同源"时唯一响亮报警，不 bump 的结局是字段偏移
+// 错位、写进错误字段、行为随机（CLAUDE-full §5.13 事故）。
+//   v2（2026-10-24）：K6 虚拟异常视图转正——加 set/get_anomaly_view_layers 两槽，
+//   状态落 BattleContext::anomaly_view_layers（BattleContext 布局同时变化，全量重建）。
+constexpr uint32_t kPluginAbiVersion = 2;
 
 // Core 原语函数指针集合。由 sim_core 填充（见 src/effects/core_api.cpp 的 core_api()）。
 struct CoreApi {
@@ -214,6 +216,9 @@ struct CoreApi {
     // 只压剩余回合数、不解除——到期由 tick 自然收尾（星盘族只认自然耗尽，见原语注释）。
     int (*reduce_active_anomaly_rounds)(BattleContext*, int target, int delta) = nullptr;
     // 异常槽查询（BattleContext::has_active_abnormal_status 非 inline，插件不可直调）。
+    // ⚠️ 查询前先拉取 K6 虚拟异常视图（anomaly_view_layers）：任一来源层数 >0 →
+    // 该方视为不处于任何异常，直接返回 false（2026-10-24 起状态在 BattleContext 字段，
+    // 原实现扫描 plugin_storage 魔数段的逻辑退役）。
     bool (*has_active_anomaly)(BattleContext*, int target, int status_id) = nullptr;
     // 异常剩余回合查询（get_abnormal_status_end_round 同为非 inline；返回 end_round 原值，
     // "还剩几回合"由调用方减当前回合——转移类效果（灵巢之主 4599）用）。
@@ -257,14 +262,14 @@ struct CoreApi {
     // 效果 760，装配期预计算在 pet.is_spirit_king。只认 (side, on_stage 上的当前槽)
     // ——场下精灵王不是"在场精灵王"，由调用方按官方文本自己决定要不要扫背包。
     bool (*is_spirit_king)(const BattleContext*, int side, int slot) = nullptr;
+    // ── K6 虚拟异常视图（2026-10-24 转正：原 plugin_storage[4699000+eid*8+side] 魔数段
+    //    退役，状态一等化到 BattleContext::anomaly_view_layers，键空间撞号/手工分段算术
+    //    全部消失；effect_id 从此可参与撞号审计）────────────────────────────
+    // "视为不处于异常"层数读写（按来源效果 id + 方）。layers=0 即清除该来源记录；
+    // 层数被消耗归零 → has_active_anomaly 查询自然解除遮蔽，无需主动撤销。
+    void (*set_anomaly_view_layers)(BattleContext*, int effect_id, int side, int layers) = nullptr;
+    int (*get_anomaly_view_layers)(const BattleContext*, int effect_id, int side) = nullptr;
 };
-
-// ── 虚拟异常视图约定（K6，2026-09-25 改为查询时拉取，用户口径）──────────
-// "视为不处于异常"类效果**不做主动置位/撤销**：插件只把层数作为 int 维护在
-//   plugin_storage[kAnomalyViewMaskPubBase + effect_id * 8 + side]
-// has_active_anomaly（插件条件查询面）在查询前扫描该段，任一来源 >0 → 该方视为
-// 不处于任何异常；层数被消耗归零 → 自然解除。内核结算路径不受影响。
-constexpr int kAnomalyViewMaskPubBase = 4699000;
 
 // sim_core 暴露的 CoreApi 单例（具名填充 + 完整性检查，见 src/effects/core_api.cpp）。
 // 插件侧不调它；由 core 在初始化时传入。

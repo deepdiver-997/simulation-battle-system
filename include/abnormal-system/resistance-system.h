@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #ifndef RESISTANCE_SYSTEM_H
 #define RESISTANCE_SYSTEM_H
 
@@ -115,7 +116,7 @@ public:
 
         // 全异常免疫
         if (complete_immunity > 0) {
-            if (rand() % 100 < complete_immunity) {
+            if (sbs_rand() % 100 < complete_immunity) {
                 return true;
             }
         }
@@ -126,7 +127,7 @@ public:
         const auto& slots = is_control ? control : uncontrol;
         for (int i = 0; i < kResistanceSlotCount; ++i) {
             if (slots[i].first == anomaly_id && slots[i].second > 0) {
-                return rand() % 100 < slots[i].second;
+                return sbs_rand() % 100 < slots[i].second;
             }
         }
 

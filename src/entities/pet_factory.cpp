@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <entities/pet_factory.h>
 
 #include <effects/effect.h>
@@ -12,7 +13,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
-#include <arpa/inet.h>
 
 namespace {
 
@@ -56,10 +56,14 @@ BattleCreateRequest decode_battle_create_request(const std::vector<char>& payloa
         );
     }
 
+    // 大端（网络序）→ 主机序；不引 arpa/inet.h 的 ntohl（Windows 无此头，手写可移植）
+    auto be32_to_host = [](uint32_t v) {
+        return ((v & 0xFFu) << 24) | ((v & 0xFF00u) << 8) | ((v >> 8) & 0xFF00u) | ((v >> 24) & 0xFFu);
+    };
     auto read_int = [&](std::size_t offset) {
         uint32_t raw = 0;
         std::memcpy(&raw, payload.data() + offset, sizeof(raw));
-        return static_cast<int>(ntohl(raw));
+        return static_cast<int>(be32_to_host(raw));
     };
 
     BattleCreateRequest request;
@@ -264,6 +268,20 @@ bool PetFactory::initialize_runtime_data(const std::string& db_path) {
     SoulMarkManager::getInstance("resources/soul_lib");
     // 套装插件（套装线，2026-09-19）：目录缺失（公开检出无本地插件源）= 零注册不报错。
     SuitManager::getInstance("resources/suit_lib");
+
+    // ── id 撞号审计（2026-10-22）────────────────────────────────────────
+    // 判定点 = **三个插件目录全部 flush 完之后**（这里）。理由：撞号是跨 dylib
+    // 现象，宿主把各库的表合并后才看得见"同 id 两个来源"；早判只能看到半个世界。
+    // 末尾统一判定（有新增撞号 → 抛异常停进程），不是撞到第一个就报错——
+    // 那样一轮只能改一处，反复重编译。
+    //
+    // ⚠️ 场景测试也走这条路径（initialize_runtime_data）：撞号会让**全部**场景
+    // 在启动期就失败——这是有意的（问题一眼可见），但意味着新增撞号要一次改干净。
+    const std::string collision_report = id_collision::audit_now();
+    if (!collision_report.empty()) {
+        std::cerr << "[WARN] [registry] 效果 id 撞号审计（已备案存量，不阻断启动）：\n"
+                  << collision_report << std::endl;
+    }
     return true;
 }
 

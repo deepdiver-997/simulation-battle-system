@@ -1,5 +1,7 @@
+#include <utils/sbs_rand.h>
 #include <fsm/battleFsm.h>
 #include <fsm/battleContext.h>
+#include <fsm/state_snapshot.h>
 #include <fsm/iControlBlock.h>
 #include <effects/continuousEffect.h>
 #include <effects/burn_perception.h>
@@ -18,11 +20,18 @@
 
 namespace {
 
+// D16 快照挂点：当前正在跑的 battleContext（run/operation 入口登记，log() 每时点引用）
+BattleContext* g_snapshot_ctx = nullptr;
+
 std::string ts_now() {
     const auto now = std::chrono::system_clock::now();
     const std::time_t t = std::chrono::system_clock::to_time_t(now);
     std::tm tmv{};
+#if defined(_WIN32)
+    localtime_s(&tmv, &t);   // 注意：Windows CRT 版参数序与 POSIX localtime_r 相反
+#else
     localtime_r(&t, &tmv);
+#endif
     std::ostringstream oss;
     oss << std::put_time(&tmv, "%Y-%m-%d %H:%M:%S");
     return oss.str();
@@ -504,7 +513,7 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
         ctx->ws.skill_power_view[robot_id].materialize(base_power);
     }
     // 连击次数视图层：**每次技能使用掷一次**（"1回合做 x~y 次攻击"的 x~y 是随机区间），
-    // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗 rand()。
+    // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗 sbs_rand()。
     ctx->ws.combo_view[robot_id].materialize(skill.roll_combo_count());
     // 技能元素视图层：克制计算用的系别打底物化 skill.element，效果可改（"以XX系别算克制"）。
     // ★ 若**选择期**（MOVE_RIGHT）授予了"以指定系别进行伤害结算"（effect 2490），用授予值打底——
@@ -794,7 +803,7 @@ void apply_crit_defense_break(BattleContext* ctx, int attacker_id) {
 // 为什么重算安全：`stage_simple_attack_damage` 开头清空两个快照、末尾用局部 snapshot 整体赋值
 //   → 天然"覆盖"而不是"叠加"（不会把减伤/增伤算两遍）。
 // 暴力重掷：暴击**不**重掷（`ctx->crit_happened` 一次技能只掷一次，重算照它再乘一次倍率，
-//   正是官方"第二次重算包含暴击"）；伤害浮动 `rand()` 重掷（第二次是一次完整结算，用户 2026-09-14 裁定）。
+//   正是官方"第二次重算包含暴击"）；伤害浮动 `sbs_rand()` 重掷（第二次是一次完整结算，用户 2026-09-14 裁定）。
 //
 // 典型消费场景：
 //   · 无相谛 2260：强制执行打盔把视图置 0 → 技能自己的"威力+170"把它改回来 → 隔着盔打出红伤
@@ -847,7 +856,7 @@ void apply_resolved_damage(BattleContext* ctx) {
         return;
     }
     // 统一走伤害原语：护盾吸收 + EVENT_TAKE_DAMAGE（护盾被击破发 EVENT_SHIELD_BROKEN）
-    const DamageKind kind = damage.isTrueDamage ? DamageKind::TRUE
+    const DamageKind kind = damage.isTrueDamage ? DamageKind::TRUE_DMG
                          : (damage.isFixed ? DamageKind::FIXED : DamageKind::NORMAL);
     deal_damage(ctx, damage.defenderId, damage.final, kind, damage.attackerId);
 
@@ -931,7 +940,7 @@ void finish_attack_damage(BattleContext* ctx, int attacker_id) {
         if (dealt > 0 && ctx->getPet(victim).hp > 0) {
             const int extra = dealt * 60 / 100;
             if (extra > 0) {
-                deal_damage(ctx, victim, extra, DamageKind::TRUE, attacker_id);
+                deal_damage(ctx, victim, extra, DamageKind::TRUE_DMG, attacker_id);
             }
         }
     }
@@ -1057,7 +1066,7 @@ void stage_action_start_abnormal_damage(BattleContext* ctx, int robot_id) {
             continue;
         }
         // 概率档（官方 10 混乱只有 5%）：掷点放在 stage 期，快照里只留"这一回合确实要扣的段"。
-        if (profile.chance_pct < 100 && (std::rand() % 100) >= profile.chance_pct) {
+        if (profile.chance_pct < 100 && (sbs_rand() % 100) >= profile.chance_pct) {
             continue;
         }
         int amount = profile.numerator;
@@ -1114,7 +1123,7 @@ void settle_staged_action_start_abnormal_damage(BattleContext* ctx, int robot_id
             abnormal_damage_profile(static_cast<AbnormalStatusId>(status_id));
         DamageKind kind = DamageKind::FIXED;
         switch (profile.tier) {
-            case AbnormalDamageTier::TruePercent: kind = DamageKind::TRUE; break;
+            case AbnormalDamageTier::TruePercent: kind = DamageKind::TRUE_DMG; break;
             case AbnormalDamageTier::Percent:     kind = DamageKind::PERCENT_VALUE; break;
             case AbnormalDamageTier::Fixed:       kind = DamageKind::FIXED; break;
             case AbnormalDamageTier::None:        continue;
@@ -1205,6 +1214,7 @@ void BattleFsm::addStateAction(State state, HandlerType action) {
 }
 
 void BattleFsm::run(BattleContext* battleContext) {
+    g_snapshot_ctx = battleContext;
     {
         std::lock_guard<std::mutex> guard(battleContext->run_mutex);
 
@@ -1336,6 +1346,7 @@ void BattleFsm::record_tape_sample(BattleContext* ctx, State state) {
 
 void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType actionType, int index,
                           bool is_forced) {
+    g_snapshot_ctx = battleContext;
 
     int &on_stage = battleContext->on_stage[robotId];
     if (on_stage < 0 || on_stage >= 6) {
@@ -1418,6 +1429,9 @@ void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType 
 }
 
 void BattleFsm::log(const std::string& message) {
+    if (g_snapshot_ctx) {
+        fsm::snapshot_record(*g_snapshot_ctx, message);
+    }
     if (id_debug) {
         std::cout << "DEBUG: " << message << std::endl;
     }
@@ -1748,7 +1762,7 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
         return;
     }
     if (battleContext->roundChoice[0][0] == battleContext->roundChoice[1][0] && battleContext->roundChoice[0][0] == static_cast<int>(ActionType::USE_MEDICINE)) {
-        pr = rand() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
+        pr = sbs_rand() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
         log("Use medicine tie-break: " + std::string(pr == PreemptiveRight::SEER_ROBOT_1 ? "player0 wins." : "player1 wins."));
         battleContext->generateState();
         return;
@@ -1808,7 +1822,7 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
             // pr = PreemptiveRight::SEER_ROBOT_1;
             // log("Preemptive right determined by default: Host Robot 1 wins.");
             // 现在改为随机决定先手权，增加不确定性
-            pr = rand() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
+            pr = sbs_rand() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
             log("Preemptive right determined by tie-break: " + std::string(pr == PreemptiveRight::SEER_ROBOT_1 ? "player0 wins." : "player1 wins."));
         }
     }

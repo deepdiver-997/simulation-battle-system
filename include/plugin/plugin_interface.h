@@ -8,6 +8,8 @@
 
 #include <fsm/state.h>
 
+#include <plugin/id_collision.h>   // id 撞号审计的来源采集（2026-10-22）
+
 class BattleContext;
 struct EffectArgs;
 enum class EffectResult : int;
@@ -143,6 +145,7 @@ struct PreBattlePatchEntry {
     int soulmark_id;
     PreBattlePhase phase;
     PreBattlePatchFn fn;
+    std::string source;   // 注册来源（"文件:行 [宏名]"）——撞号审计用；空 = 旧调用方
 };
 
 // Plugin interface version for compatibility checking
@@ -161,16 +164,23 @@ public:
     virtual ~IEffectRegistry() = default;
 
     // Register a soul mark effect
-    virtual void registerSoulMark(int soulmark_id, EffectFn effect_fn) = 0;
+    // ⚠️ source（2026-10-22）：注册来源（"文件:行 [宏名]"），用于 id 撞号审计。
+    //    旧调用方不传 = 空串（审计时只报"首次/再次"其一，仍会报撞号）。
+    virtual void registerSoulMark(int soulmark_id, EffectFn effect_fn,
+                                  const std::string& source = {}) = 0;
 
     // Register a soul mark program（多时点：一个魂印 = 多个 State→effect 节点）。
     virtual void registerSoulMarkProgram(int soulmark_id,
-                                         const std::vector<SoulMarkNodeRef>& nodes) = 0;
+                                         const std::vector<SoulMarkNodeRef>& nodes,
+                                         const std::string& source = {}) = 0;
 
     // 注册魂印级钩子（可选取）。默认空实现，不强制既有实现者改写。
-    virtual void registerSoulMarkHooks(int soulmark_id, const SoulMarkHooks& hooks) {
+    // ⚠️ source（2026-10-22）：注册来源，用于 id 撞号审计（钩子表按 id 覆盖语义）。
+    virtual void registerSoulMarkHooks(int soulmark_id, const SoulMarkHooks& hooks,
+                                       const std::string& source = {}) {
         (void)soulmark_id;
         (void)hooks;
+        (void)source;
     }
 
     // 注册**单元准入门**（见 UnitAdmissionFn 注释）。默认空实现，不强制既有实现者改写。
@@ -178,22 +188,29 @@ public:
 
     // 注册**携带类效果**（见 CarryEffectFn 注释）。默认空实现，不强制既有实现者改写。
     // 注册表按 effect_id 索引；loadSkills 加载技能时逐条查询、命中装槽。
-    virtual void registerCarryEffect(int effect_id, CarryEffectFn fn) {
+    // ⚠️ source（2026-10-22）：注册来源，用于 id 撞号审计（该表按 id 覆盖语义）。
+    virtual void registerCarryEffect(int effect_id, CarryEffectFn fn,
+                                     const std::string& source = {}) {
         (void)effect_id;
         (void)fn;
+        (void)source;
     }
 
     // 注册**战前魂印补丁**（见 PreBattlePhase 注释）。默认空实现，不强制既有实现者改写。
     // 注册表按 (魂印 id, 时段) 索引；init_battle 分两时段扫描执行。
+    // ⚠️ source（2026-10-22）：注册来源，用于 id 撞号审计（同 id 同时段 = 补丁被执行两次）。
     virtual void registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase phase,
-                                           PreBattlePatchFn fn) {
+                                           PreBattlePatchFn fn,
+                                           const std::string& source = {}) {
         (void)soulmark_id;
         (void)phase;
         (void)fn;
+        (void)source;
     }
 
     // Register a skill/move effect
-    virtual void registerSkillEffect(int effect_id, EffectFn effect_fn) = 0;
+    virtual void registerSkillEffect(int effect_id, EffectFn effect_fn,
+                                     const std::string& source = {}) = 0;
 
     // Register multiple soul marks at once
     virtual void registerSoulMarks(
@@ -228,22 +245,47 @@ public:
 //
 // ⚠️ 表是**每 dylib 一份**：`inline` 函数的函数内静态在各 .so/.dylib 里各有一份实例
 //    （插件之间不互相链接，正合需要）。
+//    ⚠️⚠️ 但这条假设在 macOS 上**不成立**（2026-10-22 实测的真实 bug，非审计假阳性）：
+//    头文件里的 `inline` 函数 + 函数内静态量 → 编译器导出为 **weak 外部符号** →
+//    动态链接器做**符号插入**（interposition）：后加载的 dylib 对该符号的引用被
+//    绑定到**先加载** dylib 的副本。实际后果：
+//      ① soul_lib 的 `plugin_reg::flush` 实际跑的是 **moves_lib 的副本**、读的是
+//         moves 的表 → soul 的注册**从未被推给宿主**（soul 效果整批丢失）；
+//      ② moves 的条目被**推了两遍**（同 id 两处注册 = 后者静默覆盖前者）。
+//    修法见下面的可见性 pragma：把 plugin_reg 整体标 hidden → 不导出、不被插入
+//    → 每个 dylib 拿到自己那份（即原设计要的语义）。
 // ⚠️ 静态初始化在 dlopen 时执行，**早于** core 调 `plugin_register` —— 顺序天然正确。
 // ⚠️ 宏参数要求是**函数名**（`&(fn)` 取地址）：传成员函数/空指针编译不过，比运行期跳过更早暴露。
 // ════════════════════════════════════════════════════════════════════
+
+// 可见性宏：把 plugin_reg 命名空间**整体**标成 hidden。
+// ⚠️ 只藏 plugin_reg / suit_reg 这两个命名空间——**CoreApi 等跨库契约必须保持
+//    默认可见性**（插件要调用宿主的 core_api()），不能一起藏。
+#if defined(__GNUC__) || defined(__clang__)
+#define SBS_HIDDEN_VIS_BEGIN _Pragma("GCC visibility push(hidden)")
+#define SBS_HIDDEN_VIS_END _Pragma("GCC visibility pop")
+#else
+#define SBS_HIDDEN_VIS_BEGIN
+#define SBS_HIDDEN_VIS_END
+#endif
+
+SBS_HIDDEN_VIS_BEGIN
 namespace plugin_reg {
 
 struct SkillEffectEntry {
     int id;
     EffectFn fn;
+    std::string source;   // 注册来源（"文件:行 [宏名]"）——撞号审计用；空 = 旧调用方
 };
 struct SoulMarkEntry {
     int id;
     EffectFn fn;
+    std::string source;
 };
 struct SoulProgramEntry {
     int id;
     std::vector<SoulMarkNodeRef> nodes;
+    std::string source;
 };
 
 // 函数内静态：避开跨编译单元的静态初始化顺序问题。
@@ -260,16 +302,17 @@ inline std::vector<SoulProgramEntry>& soul_programs() {
     return table;
 }
 
-inline bool add_skill_effect(int id, EffectFn fn) {
-    skill_effects().push_back(SkillEffectEntry{id, fn});
+inline bool add_skill_effect(int id, EffectFn fn, const std::string& source = {}) {
+    skill_effects().push_back(SkillEffectEntry{id, fn, source});
     return true;
 }
-inline bool add_soul_mark(int id, EffectFn fn) {
-    soul_marks().push_back(SoulMarkEntry{id, fn});
+inline bool add_soul_mark(int id, EffectFn fn, const std::string& source = {}) {
+    soul_marks().push_back(SoulMarkEntry{id, fn, source});
     return true;
 }
-inline bool add_soul_program(int id, std::vector<SoulMarkNodeRef> nodes) {
-    soul_programs().push_back(SoulProgramEntry{id, std::move(nodes)});
+inline bool add_soul_program(int id, std::vector<SoulMarkNodeRef> nodes,
+                             const std::string& source = {}) {
+    soul_programs().push_back(SoulProgramEntry{id, std::move(nodes), source});
     return true;
 }
 
@@ -283,87 +326,114 @@ inline bool add_unit_admission(UnitAdmissionFn fn) {
     return true;
 }
 
-// 携带类效果：按 effect_id 索引（id → fn）。同 id 重复注册以后到者为准（覆盖键语义）。
-inline std::map<int, CarryEffectFn>& carry_effects() {
-    static std::map<int, CarryEffectFn> table;
+// 携带类效果：按 effect_id 索引（id → fn）。
+// ⚠️ 2026-10-22 改为**表 + 源**（原为 std::map<int, fn>）：map 语义是"同 id 后到者
+// 覆盖先到者"——**同一 dylib 内**的重复注册在推到宿主之前就被丢掉了，宿主侧审计
+// 根本看不见（撞号静默消失）。改成 vector 后所有注册都能推到宿主，由宿主统一判定。
+// 宿主侧 EffectFactory::carry_effects_ 仍是 map（覆盖语义不变），撞号由宿主账本记录。
+struct CarryEffectEntry {
+    int effect_id;
+    CarryEffectFn fn;
+    std::string source;
+};
+inline std::vector<CarryEffectEntry>& carry_effects() {
+    static std::vector<CarryEffectEntry> table;
     return table;
 }
-inline bool add_carry_effect(int effect_id, CarryEffectFn fn) {
-    carry_effects()[effect_id] = fn;
+inline bool add_carry_effect(int effect_id, CarryEffectFn fn, const std::string& source = {}) {
+    carry_effects().push_back(CarryEffectEntry{effect_id, fn, source});
     return true;
 }
 
 // 战前魂印补丁：按注册序存（同魂印可多条、跨时段保序——同注册序内先快照段后修改段
 // 由执行侧两次扫描保证，这里只保注册序）。
+// ⚠️ source（2026-10-22）：注册来源，用于 id 撞号审计。
 inline std::vector<PreBattlePatchEntry>& pre_battle_patches() {
     static std::vector<PreBattlePatchEntry> table;
     return table;
 }
-inline bool add_pre_battle_patch(int soulmark_id, PreBattlePhase phase, PreBattlePatchFn fn) {
-    pre_battle_patches().push_back(PreBattlePatchEntry{soulmark_id, phase, fn});
+inline bool add_pre_battle_patch(int soulmark_id, PreBattlePhase phase, PreBattlePatchFn fn,
+                                 const std::string& source = {}) {
+    pre_battle_patches().push_back(PreBattlePatchEntry{soulmark_id, phase, fn, source});
     return true;
 }
 
 // 魂印级钩子（登场/离场额外动作）：按魂印 id 存（2026-09-20，阿尔忒弥斯 4745
 // 离场清狩杀之魂首用）。见 SoulMarkHooks 注释——引擎默认行为（节点注册 + epoch 作废）
 // 之外的"桶外状态"清理走这里。
+// ⚠️ source（2026-10-22）：注册来源，用于 id 撞号审计（宿主侧 hooks_cache_ 按 id 覆盖）。
 struct SoulHookEntry {
     int soulmark_id;
     SoulMarkHooks hooks;
+    std::string source;
 };
 inline std::vector<SoulHookEntry>& soul_hooks() {
     static std::vector<SoulHookEntry> table;
     return table;
 }
-inline bool add_soul_hook(int soulmark_id, const SoulMarkHooks& hooks) {
-    soul_hooks().push_back(SoulHookEntry{soulmark_id, hooks});
+inline bool add_soul_hook(int soulmark_id, const SoulMarkHooks& hooks,
+                          const std::string& source = {}) {
+    soul_hooks().push_back(SoulHookEntry{soulmark_id, hooks, source});
     return true;
 }
 
 // 把本 dylib 的三张表一次性推给 registry（在 `plugin_register` 里调一次）。
+// ⚠️ source：插件侧由注册宏直接带进来（文件:行 [宏名]），宿主侧据此做 id 撞号审计。
 inline void flush(IEffectRegistry* registry) {
     if (!registry) {
         return;
     }
     for (const SkillEffectEntry& e : skill_effects()) {
-        registry->registerSkillEffect(e.id, e.fn);
+        registry->registerSkillEffect(e.id, e.fn, e.source.c_str());
     }
     for (const SoulMarkEntry& e : soul_marks()) {
-        registry->registerSoulMark(e.id, e.fn);
+        registry->registerSoulMark(e.id, e.fn, e.source.c_str());
     }
     for (const SoulProgramEntry& e : soul_programs()) {
-        registry->registerSoulMarkProgram(e.id, e.nodes);
+        registry->registerSoulMarkProgram(e.id, e.nodes, e.source.c_str());
     }
     for (UnitAdmissionFn fn : unit_admissions()) {
         registry->registerUnitAdmission(fn);
     }
-    for (const auto& [effect_id, fn] : carry_effects()) {
-        registry->registerCarryEffect(effect_id, fn);
+    for (const CarryEffectEntry& e : carry_effects()) {
+        registry->registerCarryEffect(e.effect_id, e.fn, e.source);
     }
     for (const PreBattlePatchEntry& e : pre_battle_patches()) {
-        registry->registerSoulMarkPreBattle(e.soulmark_id, e.phase, e.fn);
+        registry->registerSoulMarkPreBattle(e.soulmark_id, e.phase, e.fn, e.source);
     }
     for (const SoulHookEntry& e : soul_hooks()) {
-        registry->registerSoulMarkHooks(e.soulmark_id, e.hooks);
+        registry->registerSoulMarkHooks(e.soulmark_id, e.hooks, e.source);
     }
 }
 
 }  // namespace plugin_reg
+SBS_HIDDEN_VIS_END
 
+// 注册宏（2026-10-22 起携带**来源**：文件:行 + 宏名）——用于 id 撞号审计
+// （include/plugin/id_collision.h；宿主侧合并后比对，见 SoulMarkManager/EffectFactory）。
+// 插件作者**无需改动**：照旧用这三个宏即可，来源自动带上。
+//
+// ⚠️ 实现注意：source 走**独立语句**（`note_registration`）而不是宏参数位——
+//    SOUL_PROGRAM(id, {节点...}) 的 __VA_ARGS__ 是节点列表，参数位塞不进字符串。
 #define SKILL_EFFECT(id, fn)                                                        \
     namespace {                                                                     \
-    [[maybe_unused]] const bool kSkillEffectReg_##fn = ::plugin_reg::add_skill_effect((id), &(fn)); \
+    [[maybe_unused]] const bool kSkillEffectReg_##fn =                             \
+        ::plugin_reg::add_skill_effect((id), &(fn),                               \
+            ::id_collision::source_of(__FILE__, __LINE__, "SKILL_EFFECT"));       \
     }
 
 #define SOUL_MARK(id, fn)                                                           \
     namespace {                                                                     \
-    [[maybe_unused]] const bool kSoulMarkReg_##fn = ::plugin_reg::add_soul_mark((id), &(fn)); \
+    [[maybe_unused]] const bool kSoulMarkReg_##fn =                                \
+        ::plugin_reg::add_soul_mark((id), &(fn),                                  \
+            ::id_collision::source_of(__FILE__, __LINE__, "SOUL_MARK"));          \
     }
 
 #define SOUL_PROGRAM(id, ...)                                                       \
     namespace {                                                                     \
     [[maybe_unused]] const bool kSoulProgramReg_##id =                              \
-        ::plugin_reg::add_soul_program((id), {__VA_ARGS__});                        \
+        ::plugin_reg::add_soul_program((id), {__VA_ARGS__},                         \
+            ::id_collision::source_of(__FILE__, __LINE__, "SOUL_PROGRAM"));       \
     }
 
 // 类型化魂印行参（T4，K5 用户裁定）在 <plugin/soul_node_args.h>：shim 需要完整
@@ -381,7 +451,8 @@ inline void flush(IEffectRegistry* registry) {
 #define CARRY_EFFECT(id, fn)                                                        \
     namespace {                                                                     \
     [[maybe_unused]] const bool kCarryEffectReg_##id =                              \
-        ::plugin_reg::add_carry_effect((id), &(fn));                                \
+        ::plugin_reg::add_carry_effect((id), &(fn),                                 \
+            ::id_collision::source_of(__FILE__, __LINE__, "CARRY_EFFECT"));         \
     }
 
 // 战前魂印补丁：SOUL_PRE_BATTLE(id, phase, fn) —— 见 PreBattlePhase 注释。
@@ -389,7 +460,8 @@ inline void flush(IEffectRegistry* registry) {
 #define SOUL_PRE_BATTLE(id, phase, fn)                                              \
     namespace {                                                                     \
     [[maybe_unused]] const bool kPreBattlePatchReg_##id##_##fn =                    \
-        ::plugin_reg::add_pre_battle_patch((id), (phase), &(fn));                   \
+        ::plugin_reg::add_pre_battle_patch((id), (phase), &(fn),                    \
+            ::id_collision::source_of(__FILE__, __LINE__, "SOUL_PRE_BATTLE"));      \
     }
 
 // 魂印级钩子：SOUL_MARK_HOOKS(id, on_enter_fn, on_exit_fn) —— 两参均可传 nullptr。
@@ -397,7 +469,8 @@ inline void flush(IEffectRegistry* registry) {
 #define SOUL_MARK_HOOKS(id, enter_fn, exit_fn)                                      \
     namespace {                                                                     \
     [[maybe_unused]] const bool kSoulHookReg_##id =                                 \
-        ::plugin_reg::add_soul_hook((id), ::SoulMarkHooks{(enter_fn), (exit_fn)});  \
+        ::plugin_reg::add_soul_hook((id), ::SoulMarkHooks{(enter_fn), (exit_fn)},   \
+            ::id_collision::source_of(__FILE__, __LINE__, "SOUL_MARK_HOOKS"));      \
     }
 
 // Utility to convert effect ID to function name

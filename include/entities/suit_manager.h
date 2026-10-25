@@ -28,8 +28,10 @@ public:
     static SuitManager& getInstance(const std::string& lib_dir = "");
 
     // 注册（启动期 / 测试手动注入）。同 id 重复注册后到者为准。
-    void registerSuit(int suit_id, EffectFn fn);
-    void registerSuitProgram(int suit_id, const std::vector<SoulMarkNodeRef>& nodes);
+    // ⚠️ source（2026-10-22）：注册来源，用于 id 撞号审计。
+    void registerSuit(int suit_id, EffectFn fn, const std::string& source = {});
+    void registerSuitProgram(int suit_id, const std::vector<SoulMarkNodeRef>& nodes,
+                             const std::string& source = {});
 
     // 查询。程序未注册返回 nullptr（调用方回退单效果链路）；函数未注册返回 noop。
     const std::vector<SoulMarkNodeRef>* getSuitProgram(int suit_id) const;

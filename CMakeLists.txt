@@ -31,6 +31,14 @@ find_package(Threads REQUIRED)
 # 认证数据层：离线编码效果程序(JSON)加载器依赖 nlohmann::json（header-only）。
 find_path(NLOHMANN_INCLUDE_DIR nlohmann/json.hpp)
 
+# ── 引擎自有确定性 RNG（2026-10-25，决策 D13→D15）──────────────────────────
+# 全工程源码级替换 std::rand/srand（sed 机械迁移），编为 SHARED：宿主 exe 与插件 DLL
+# 进程内共享单一状态，对齐 macOS 单一 libc rand 语义。历史两方案退役：#define 强制头
+# 被 libstdc++ <cstdlib> 的 #undef rand 击毙；-Wl,--wrap 是 GNU-ld 专属不满足社区多工具链。
+# Mac 序列与 libc rand 实证全等（10 种子×1000 值），基线零变化。详见 include/utils/sbs_rand.h。
+add_library(sbs_rand SHARED src/utils/sbs_rand.cpp)
+target_include_directories(sbs_rand PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 set(SIM_CORE_SOURCES
     src/primitives/battle_primitives.cpp
     src/db/official_data_repository.cpp
@@ -55,6 +63,7 @@ set(SIM_CORE_SOURCES
     src/fsm/battleContext.cpp
     src/fsm/battleFsm.cpp
     src/fsm/battle_mutate.cpp
+    src/fsm/state_snapshot.cpp
     src/utils/dynamic_library.cpp
 )
 
@@ -66,16 +75,18 @@ target_link_libraries(sim_core
         SQLite::SQLite3
         Threads::Threads
         ${CMAKE_DL_LIBS}
+        sbs_rand
 )
 
 if(BATTLE_FSM_VERBOSE_DEFAULT)
     target_compile_definitions(sim_core PUBLIC BATTLE_FSM_VERBOSE_DEFAULT=1)
 endif()
 
-# net 层：原生事件循环（macOS/BSD = kqueue，Linux = epoll）+ 长度前缀成帧。
+# net 层：原生事件循环（macOS/BSD = kqueue，Linux = epoll，Windows = WSAPoll）+ 长度前缀成帧。
 # 不依赖 Boost：原 asio 用法只有 accept / async_read_some / async_write / thread_pool::post，
 # 自持一个 reactor 的维护成本远低于让整个项目背 Boost 依赖。
-# Windows(IOCP) 不在本轮范围，见 docs_local 的网络层设计文档。
+# Windows 走 WSAPoll 后端（M2 落地，决策 D5：readiness 语义天然贴合，IOCP 弃选）——
+# net/server/training_cli 三平台同构。
 set(SIM_NET_SOURCES
     src/net/poller_platform.cpp
     src/net/reactor.cpp
@@ -83,6 +94,10 @@ set(SIM_NET_SOURCES
 add_library(sim_net STATIC ${SIM_NET_SOURCES})
 target_include_directories(sim_net PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(sim_net PUBLIC Threads::Threads)
+if(WIN32)
+    # winsock2：reactor 的 socket 面 + WSAPoll 后端（M2）
+    target_link_libraries(sim_net PUBLIC ws2_32)
+endif()
 
 # server 层：一对局一 Room（同时是 FSM 的 IControlBlock 实现）+ 每连接一 Session。
 # 座位数决定 solo（一连接驱动双方）还是 pvp（两连接一局），对局层代码完全共用。
@@ -105,6 +120,7 @@ target_link_libraries(sim_server PRIVATE sim_core sim_net)
 # net 层验证：成帧 / 并发回显 / 部分 IO / 背压 / 关闭语义 / 定时器 / fd 泄漏。
 # test/ 是本地维护目录（.gitignore 排除），公开检出里不存在 → 用 EXISTS 守卫，
 # 否则 add_executable 会因为源文件缺失在 configure 阶段直接失败。
+# ⚠️ 测试本体是 POSIX 源码（fork/信号/自管道），Windows 上继续排除（M2 范围外）。
 if(NOT WIN32 AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/test_net_reactor.cpp)
     add_executable(sim_net_test test/test_net_reactor.cpp)
     target_include_directories(sim_net_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -114,6 +130,7 @@ endif()
 # 服务端端到端：真起 reactor + BattleService，真用 socket 打一局。
 # 守的是"各层单测全绿、合起来不能用"那类问题（字节序、生命周期）。
 # 复用 sim_server 的源文件（不是复制），保证测的就是线上那份实现。
+# ⚠️ 测试本体是 POSIX 源码，Windows 上继续排除（M2 范围外）。
 if(NOT WIN32 AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/test_server_e2e.cpp)
     add_executable(sim_server_e2e_test test/test_server_e2e.cpp ${SIM_SERVER_SOURCES})
     target_include_directories(sim_server_e2e_test PRIVATE
@@ -169,7 +186,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/examples/public/demo_scenario.cpp)
 endif()
 
 if(BUILD_TRAINING_CLI)
-    # 命令行联调客户端：原生阻塞 socket，不再依赖 Boost。
+    # 命令行联调客户端：原生阻塞 socket，不再依赖 Boost（winsock 化已随 M2.5 落地）。
     add_executable(sim_training_cli tools/training_cli.cpp)
     target_include_directories(sim_training_cli PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -184,7 +201,26 @@ endif()
 # 运行时会加载它 → 混用必崩（恢复方法见 README）。
 option(SBS_FUZZ_SANITIZERS "Fuzz 构建变体：本目录所有目标加 ASan+UBSan" OFF)
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/fuzz/fuzz_battle.cpp)
+# ── 效果 id 撞号审计（2026-10-22）────────────────────────────────────────
+# 同 id 两处实现 = 后者**静默覆盖**前者（不报错、行为被无声改写）。实测事故：
+#   · 魂印 id 221 被两个文件同时注册（"对手体力变一致" + "登场回血 1/10"）→ 一子句从未生效；
+#   · 手写 id 1001/1002/1004/1005/1006 直接撞官方 effect_id 行 → 六只真实宠物误触发旧程序。
+# 机制：注册宏带来源（文件:行）→ 宿主（sim_core，唯一账本）合并时比对 → registry
+# dump 时点（每次启动必跑）出报告。插件不链接 sim_core，故账本只能在宿主侧。
+# SBS_ID_COLLISION_STRICT=ON → 撞号即非零退出（门禁用；默认只报告不失败）。
+option(SBS_ID_COLLISION_CHECK "效果 id 撞号审计（注册来源采集 + 宿主侧比对）" ON)
+option(SBS_ID_COLLISION_STRICT "撞号即失败（严格模式，门禁用）" OFF)
+
+if(SBS_ID_COLLISION_CHECK)
+    add_compile_definitions(SBS_ID_COLLISION_CHECK)
+endif()
+if(SBS_ID_COLLISION_STRICT)
+    add_compile_definitions(SBS_ID_COLLISION_STRICT)
+endif()
+
+# fuzz 夜跑工具链（POSIX alarm/SIGALRM/unsetenv）明确不移植 Windows（任务书既定口径），
+# Windows 侧守卫跳过；test/ 是本地维护目录，公开检出不存在 → EXISTS 守卫同款语义。
+if(NOT WIN32 AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/fuzz/fuzz_battle.cpp)
     add_executable(sim_fuzz_battle
         test/fuzz/fuzz_battle.cpp
         src/server/legal_actions.cpp   # compute_legal_actions —— fuzz 驱动的合法动作源
@@ -218,6 +254,10 @@ target_include_directories(moves_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/incl
 set_target_properties(moves_plugin PROPERTIES
     OUTPUT_NAME "lib_1"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/moves_lib"
+    # Windows：DLL 是 RUNTIME 产物（且 MinGW DLL 带 lib 前缀 → liblib_1.dll）、import library
+    # 走 ARCHIVE——LIBRARY_OUTPUT_DIRECTORY 只在 macOS/Linux 生效，不补这两行三插件在 build 根撞号
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/moves_lib"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/moves_lib"
 )
 
 # soul_plugin 按机制家族分文件（2026-09-17 从 lib_1.cpp 单体拆分；common.h 为共享助手）。
@@ -232,6 +272,8 @@ target_include_directories(soul_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inclu
 set_target_properties(soul_plugin PROPERTIES
     OUTPUT_NAME "lib_1"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/soul_lib"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/soul_lib"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/soul_lib"
 )
 
 # ⚠️ 把插件部署到源码目录 —— **必须是 ALL 自定义 target，不能用 POST_BUILD**。
@@ -270,6 +312,8 @@ target_include_directories(suit_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inclu
 set_target_properties(suit_plugin PROPERTIES
     OUTPUT_NAME "lib_1"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/suit_lib"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/suit_lib"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/suit_lib"
 )
 
 add_custom_target(suit_plugin_deploy ALL
@@ -278,4 +322,9 @@ add_custom_target(suit_plugin_deploy ALL
     DEPENDS suit_plugin
     COMMENT "部署 suit_plugin → resources/suit_lib/liblib_1.dylib"
 )
+
+# 插件不链 sim_core，须各自链接 sbs_rand（进程共享单一 rand 状态，见 D15 注释）
+target_link_libraries(moves_plugin PRIVATE sbs_rand)
+target_link_libraries(soul_plugin PRIVATE sbs_rand)
+target_link_libraries(suit_plugin PRIVATE sbs_rand)
 endif()

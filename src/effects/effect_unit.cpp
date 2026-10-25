@@ -1,3 +1,4 @@
+#include <utils/sbs_rand.h>
 #include <effects/effect_unit.h>
 
 #include <cstdlib>
@@ -34,7 +35,7 @@ bool roll_chance(BattleContext* ctx, const EffectArgs& args, int chance_value, i
     if (percent >= 100) {
         return true;
     }
-    return (std::rand() % 100) < percent;
+    return (sbs_rand() % 100) < percent;
 }
 
 // 解析真实 owner：优先 args.int_args[0]（bind_participants 绑定），缺省回退 unit.actor。
