@@ -100,7 +100,7 @@ jobs:
     needs: build-test
     runs-on: ubuntu-latest
     outputs:
-      tier: ${{ out.tier }}
+      tier: ${{ steps.out.outputs.tier }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
