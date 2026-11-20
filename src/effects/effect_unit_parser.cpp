@@ -1,3 +1,5 @@
+// ⚠️ 本文件已废弃（2026-11-05 裁决：保留代码、冻结扩展；理由与现状数据见
+// include/effects/effect_unit_parser.h 头注、docs_local/docs/02-效果系统/EffectUnit层现状盘点.md）。
 #include <effects/effect_unit_parser.h>
 
 #include <cctype>

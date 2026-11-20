@@ -61,6 +61,45 @@ struct CustomOverrideRecord {
     std::string rationale;      // 与官方差异的原因(存决策, 防下个会话当 bug 重查)
 };
 
+// 静态连击索引规则（custom_skill_combo_rules 表，J326 数据刀清缴线二批，2026-11-05）。
+// 自 skills.cpp combo_arg_indices（13 case）+ combo_fixed_range（1608/1609/1610 常量
+// 旁路 {5,10}）数据化迁移——内核不再含任何效果 id 开关表或 {5,10} 常量；种子见
+// tools/db_patches/j4/1608_combo_rules.sql（160x 三行配套载体行参 [100,1,5,10]）。
+struct ComboRuleRecord {
+    int effect_id = -1;        // 技能空间效果号（非精灵号/魂印号）
+    int min_arg_index = 0;     // SkillEffectRecord.args 的零基下标（不含 owner/target +2 前缀）
+    int max_arg_index = 0;
+    int schema_version = 0;    // loader 只接受 kComboRulesSchemaVersion
+    std::string evidence;      // 来源/原内核 case/本地规范化理由（补丁 j4 种子）
+};
+
+// 连击规则表当前 schema 版本（J326 首版）。loader 对其它值显式失败（fail-closed，
+// 不静默退单击）——未来加版本须同步 loader 支持列表与补丁 CHECK 约束。
+inline constexpr int kComboRulesSchemaVersion = 1;
+
+// 选择期路由（custom_skill_selection_routes 表，J327 数据刀清缴线二批，2026-11-06）。
+// 自 skills.cpp loadSkills 两段 id 开关表（27 plain 条件先制/必暴/穿透预武装 +
+// 微弱族 3 条）数据化迁移——迁「何时装槽、如何喂参」，不重写效果函数：条件判定
+// 仍在插件运行时执行，on_selected 只装节点，FSM 侧 FIRST_MOVE_RIGHT 桶顺序零改动。
+// 内核不再含任何选择期效果 id 开关；种子见 tools/db_patches/j4/selection_routes_29.sql。
+struct SelectionRouteRecord {
+    int effect_id = -1;        // 技能空间效果号（moves 命名空间；非精灵号/魂印号）
+    std::string phase;         // 首版只认 "selection"
+    std::string state;         // 语义名，首版只认 "FIRST_MOVE_RIGHT"（禁 C++ enum 整数）
+    std::string arg_adapter;   // "plain"（沿用本效果参数切片）| "skill_static_elements"（追加静态系别双槽）
+    int schema_version = 0;    // loader 只接受 kSelectionRoutesSchemaVersion
+    std::string evidence;      // 来源/原内核行/插件文件（补丁 j4 种子）
+};
+
+// 选择期路由表当前 schema 版本（J327 首版）。loader 对其它值显式失败（fail-closed）。
+// 首版故意只开 phase=selection × state=FIRST_MOVE_RIGHT：on_selected 实际只建这一个
+// 桶（R4 §3.2）——DB 写别的 state 会形成"表面可配置、实际无效"的接口，直接拒绝。
+inline constexpr int kSelectionRoutesSchemaVersion = 1;
+inline constexpr const char* kSelectionRoutePhaseSelection = "selection";
+inline constexpr const char* kSelectionRouteStateFirstMoveRight = "FIRST_MOVE_RIGHT";
+inline constexpr const char* kSelectionRouteAdapterPlain = "plain";
+inline constexpr const char* kSelectionRouteAdapterStaticElements = "skill_static_elements";
+
 struct LearnableMoveRecord {
     int move_id = -1;
     int learning_level = 0;
@@ -291,6 +330,30 @@ public:
     // 供 EffectMetaCatalog 一次性加载（判"N回合内" vs "下N回合"的窗口家族，见 EffectWindowKind）。
     std::vector<std::pair<int, std::string>> load_effect_window_overrides() const;
 
+    // ── 静态连击索引规则（custom_skill_combo_rules，J326 2026-11-05）────
+    // 授权来源：数据刀清缴线（用户批方向）+ R4 计划 §2（docs_local/docs/05-任务清单/
+    // 数据刀清缴线二批计划.md）。发布绑定「新内核 + j4 补丁」：
+    //   load_combo_rules() 全量装载并缓存（按 DB 连接生命周期；close()/open_read_only()
+    //   清缓存）。返回 false = 数据错误（表缺失＝未打 j4 迁移 / schema_version 未知 /
+    //   负下标或 lo>hi / evidence 空），last_error() 带因——loadSkills 收到 false 必须
+    //   throw（fail-closed，不静默退单击）。
+    //   find_combo_rule() 查缓存；未装载成功时恒返回 nullptr（调用方须先 load_combo_rules）。
+    bool load_combo_rules() const;
+    const ComboRuleRecord* find_combo_rule(int effect_id) const;
+
+    // ── 选择期路由（custom_skill_selection_routes，J327 2026-11-06）────
+    // 授权来源：数据刀清缴线（用户批方向）+ R4 计划 §3（docs_local/docs/05-任务清单/
+    // 数据刀清缴线二批计划.md）。发布绑定「新内核 + j4 补丁」：
+    //   load_selection_routes() 全量装载并缓存（按 DB 连接生命周期；close()/
+    //   open_read_only() 清缓存）。返回 false = 数据错误（表缺失＝未打 j4 迁移 /
+    //   空表＝种子被清或迁移半途 / schema_version 未知 / phase-state-adapter 越出
+    //   首版白名单 / evidence 空），last_error() 带因——loadSkills 收到 false 必须
+    //   throw（fail-closed，不静默回硬编码或把效果当普通 HIT 分支）。
+    //   find_selection_route() 查缓存；未装载成功时恒返回 nullptr（调用方须先
+    //   load_selection_routes）。无路由行的效果保持既有执行分支（缺行不是错误）。
+    bool load_selection_routes() const;
+    const SelectionRouteRecord* find_selection_route(int effect_id) const;
+
     std::optional<int> find_monster_id_by_exact_name(const std::string& monster_name) const;
     std::optional<MonsterRecord> load_monster(int monster_id) const;
     std::optional<MonsterRecord> load_monster_by_exact_name(const std::string& monster_name) const;
@@ -345,6 +408,22 @@ public:
     // matrix[attacker_type_id][defender_type_id] ∈ {0, 1, 2}（0=微弱/免疫, 1=普通, 2=克制）。
     bool load_elemental_restraints(std::vector<std::vector<double>>& matrix) const;
 
+    // ── 复合属性映射层（J322，2026-11-05）──────────────────────────────
+    // type_id → 组件单属性 id 对（单属性行 → {id,0}，复合行 → 分解结果）。
+    // 全量载入：skill_types 138 行（26 单 + 112 复合）都在表里——克制聚合与本系
+    // 判定消费这份映射（ ElementalAttributes::typeComponents 拷贝本表）。
+    // 引用完整性未知项记 type_audit 账本（孤儿名/非法数组长度在 ensure 时记账）。
+    const std::unordered_map<int, std::pair<int, int>>& type_components() const;
+
+    // 启动审计：全库属性引用完整性（J322）。校验
+    //   ① moves.type_id 全部 ∈ skill_types id 集（排除 0）
+    //   ② monsters 属性（raw_json $.type）全部 ∈ id 集（排除 0）
+    // 未知 id 记 type_audit 账本（skill_types 孤儿名 / types_relation 孤儿名在
+    // ensure_type_components_cache / load_elemental_restraints 时已记账）。
+    // 返回报告文本（空 = 干净）；判定（响亮报错/STRICT fail）由 type_audit::audit_now
+    // 统一做，本函数只记账。
+    std::string audit_type_references() const;
+
 private:
     // 新 Unity 结构：双属性精灵 type 用合并 id（如 41=战斗地面），需分解为两个单属性 id。
     void ensure_type_components_cache() const;
@@ -355,6 +434,15 @@ private:
     mutable std::string last_error_;
     mutable bool type_components_cache_loaded_ = false;
     mutable std::unordered_map<int, std::pair<int, int>> type_components_cache_;
+    // 连击规则缓存（J326）：装载过（含失败——失败也缓存，fail-closed 不反复重查）
+    // 标记 + 结果表；close()/open_read_only() 双清。
+    mutable bool combo_rules_loaded_ = false;
+    mutable bool combo_rules_ok_ = false;
+    mutable std::unordered_map<int, ComboRuleRecord> combo_rules_cache_;
+    // 选择期路由缓存（J327）：语义同上（含失败也缓存）；close()/open_read_only() 双清。
+    mutable bool selection_routes_loaded_ = false;
+    mutable bool selection_routes_ok_ = false;
+    mutable std::unordered_map<int, SelectionRouteRecord> selection_routes_cache_;
 };
 
 class OfficialDataStore {

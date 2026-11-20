@@ -31,6 +31,55 @@
 #include <entities/soul_mark.h>
 #include <fsm/state.h>
 
+// ── #7 追捕审计环（仅 SBS_FUZZ_AUDIT 构建启用；2026-11-06）──────────────────
+// attack_boost_grants 的 grant/consume/stage 三类操作落进程级环形缓冲
+//（函数局部 static → 全 TU 单例，含插件 dylib——ODR 一致要求同构建配置
+// 全目标同宏，sanitizer 变体在 CMakeLists 统一定义）。ASan 死亡回调倒序
+// 打印最近轨迹，#7 的每个新样本自带"谁在何时把向量置成什么状态"的证据链。
+#ifdef SBS_FUZZ_AUDIT
+#include <cstdio>
+#include <cstddef>
+struct AbAuditEntry {
+    const void* ctx;
+    int op;        // 0=grant 1=consume 2=stage
+    int owner;
+    int size;
+    const void* data;
+    unsigned seq = 0;   // 进程级绝对序号（时序无歧义）
+};
+struct AbAuditRing {
+    AbAuditEntry ring[128];
+    int idx = 0;
+};
+inline AbAuditRing& ab_audit_ring() {
+    static AbAuditRing r;   // 函数局部 static → 全 TU（含插件 dylib）单例
+    return r;
+}
+inline void ab_audit(const void* ctx, int op, int owner, std::size_t size,
+                     const void* data) {
+    AbAuditRing& r = ab_audit_ring();
+    r.ring[r.idx % 128] =
+        AbAuditEntry{ctx, op, owner, static_cast<int>(size), data,
+                     static_cast<unsigned>(r.idx)};
+    ++r.idx;   // seq 绝对序号随 entry 一并存 → dump 时时序无歧义
+}
+inline void ab_audit_dump() {
+    // 死亡回调上下文：fprintf 可用（ASan 同步调用，非 signal）
+    const AbAuditRing& r = ab_audit_ring();
+    const int n = r.idx < 128 ? r.idx : 128;
+    std::fprintf(stderr, "[AB-AUDIT] last %d (op: 0=grant 1=consume 2=stage)\n", n);
+    for (int k = n - 1; k >= 0; --k) {
+        const AbAuditEntry& e = r.ring[(r.idx - 1 - k + 128000) % 128];
+        std::fprintf(stderr, "[AB-AUDIT]   seq=%u ctx=%p op=%d owner=%d size=%d data=%p\n",
+                     e.seq, e.ctx, e.op, e.owner, e.size, e.data);
+    }
+}
+#else
+inline void ab_audit(const void*, int, int, std::size_t, const void*) {}
+inline void ab_audit_dump() {}
+#endif
+
+
 // Forward declarations
 class BattleFsm;
 class IControlBlock;
@@ -67,6 +116,16 @@ public:
     // apply_anomaly_impl 在时长落定后统一钳制（抗性标记/覆盖/落地全生效）。
     // 由效果激活时装一次（shengmang_476.cpp）；**clearAllEffects 复位为 0**（新对局无残留）。
     int anomaly_duration_cap[2]{0, 0};
+
+    //--- 低段异常抗性惩罚（per side+slot；0 = 无惩罚）---
+    // 「不高于 50% 的异常抗性减少 N%（包含全免%）」族的**通用数据面**（2026-11-06 曝
+    // 印记首用，N=10）。apply_anomaly_impl [4] 把它传给
+    // `Resistance::isResistantTo(anomaly_id, penalty)`：只作用于 >0 且 ≤50% 的抗性段
+    // （全免% 与各抗性槽同规则），>50% 段与未配置抗性不受影响。
+    // kernel 不认识具体印记——由印记插件在挂印/消逝时写、clearAllEffects 复位 0。
+    // per-slot（不是 per-side）：曝绑到具体精灵且**下场保留**，同侧多只可各持各的。
+    int anomaly_resist_low_penalty[2][6]{};
+
 
     //--- 回合类效果计数（O(1) 查询”是否有回合类效果”）---
     // 计数已下沉到各 TimedBucket 内部（与桶内容一处维护，不会不同步）。
@@ -826,6 +885,8 @@ public:
             return;
         }
         attack_boost_grants[owner].push_back(AttackDamageBoost{source_effect_id, count, pct});
+        ab_audit(this, 0, owner, attack_boost_grants[owner].size(),
+                 attack_boost_grants[owner].data());
     }
 
     // 成功使用攻击技能后消费：每槽 remaining-1，0 移除（与穿透凭证同步）。
@@ -834,6 +895,7 @@ public:
             return;
         }
         auto& grants = attack_boost_grants[owner];
+        ab_audit(this, 1, owner, grants.size(), grants.data());
         for (auto it = grants.begin(); it != grants.end();) {
             --it->remaining;
             if (it->remaining <= 0) {

@@ -1,0 +1,153 @@
+name: gate
+
+# 构建 + 场景回归 + PR 分类。数据库不入库：现场从社区公开镜像构建并按镜像
+# commit 缓存（见 db-refresh.yml 同一缓存键）。
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 21 * * *'   # 每日 05:00 +08:00 全量回归（nightly）
+  workflow_dispatch:
+
+concurrency:
+  group: gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db:
+    runs-on: ubuntu-latest
+    outputs:
+      mirror_sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          SHA=$(curl -sfL https://api.github.com/repos/SeerAPI/seer-unity-assets/commits/HEAD \
+                | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "镜像 HEAD：$SHA"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: scripts/data/processed
+          key: seer-db-${{ steps.meta.outputs.sha }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install seerapi-solaris
+          python3 scripts/fetch_seer_unity_bytes.py
+          python3 scripts/decode_seer_bytes.py
+          python3 scripts/import_seer_unity_sqlite.py
+          tools/db_patches/apply_all.sh
+          ls -lh scripts/data/processed/seer_unity.sqlite
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seer-db
+          path: scripts/data/processed/seer_unity.sqlite
+
+  build-test:
+    needs: db
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # PR 场景提取需要 diff
+      - uses: actions/download-artifact@v4
+        with: { name: seer-db, path: scripts/data/processed }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-
+      - run: |
+          sudo apt-get update && sudo apt-get install -y ccache
+          ccache --max-size=500M
+      - name: configure & build
+        run: |
+          cmake -B build -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build -j$(nproc)
+      - name: registry dump
+        run: ./build/sim_server --dump-registry-exit build/registry.json
+      - name: smoke
+        run: ./build/sim_smoke_test
+      - name: affected scenarios（PR）
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          IDS=$(git diff --name-only "$BASE"...HEAD -- test/scenario/ \
+                | grep -oE 'scenario_[0-9]+' | grep -oE '[0-9]+' | sort -un || true)
+          FAILED=0
+          for b in build/sim_scenario_*; do
+            id=$(basename "$b" | grep -oE '[0-9]+' | head -1)
+            # PR 只跑变更场景 + 号段相邻场景（同族联动）；nightly 跑全量
+            if [ -n "$IDS" ] && ! echo "$IDS" | grep -qw "$id"; then continue; fi
+            timeout 300 "$b" || { echo "FAIL $b"; FAILED=1; }
+          done
+          exit $FAILED
+      - name: all scenarios（nightly / push main）
+        if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          FAILED=0
+          for b in build/sim_scenario_*; do
+            timeout 300 "$b" || { echo "FAIL $b"; FAILED=1; }
+          done
+          exit $FAILED
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: registry-json, path: build/registry.json }
+
+  classify:
+    if: github.event_name == 'pull_request'
+    needs: build-test
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ out.tier }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: label-check
+        run: |
+          if gh pr view ${{ github.event.pull_request.number }} --json labels \
+               -q '.labels[].name' 2>/dev/null | grep -qx 'kernel-approved'; then
+            echo "KERNEL_APPROVED=1" >> "$GITHUB_ENV"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - id: out
+        run: tools/ci/classify.sh \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}"
+        # classify.sh 退出码：1=需人工（mixed/kernel），2=引注缺失
+        continue-on-error: true
+
+  verdict:
+    if: github.event_name == 'pull_request'
+    needs: [build-test, classify]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: apply tier policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TIER: ${{ needs.classify.outputs.tier }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          case "$TIER" in
+            effects-new)
+              gh pr edit "$PR" --add-label tier0-auto
+              gh pr merge "$PR" --auto --squash
+              echo "tier0：CI 全绿 + 引注齐，已挂自动合并"
+              ;;
+            effects-ruling)
+              gh pr edit "$PR" --add-label needs-ruling
+              gh pr comment "$PR" --body "修改了既有效果/场景期望值（口径变更），等待维护者终审。"
+              ;;
+            kernel)
+              gh pr comment "$PR" --body "内核改动需要先开 issue 讨论并取得 kernel-approved 标签。当前 PR 会被阻止合并。"
+              exit 1
+              ;;
+            mixed)
+              gh pr comment "$PR" --body "效果层与内核层混碰：请拆成两个 PR（机器拒因见 gate 摘要）。"
+              exit 1
+              ;;
+            *) echo "tier=$TIER：中性变更，人工过目";;
+          esac

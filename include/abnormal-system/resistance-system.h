@@ -104,6 +104,11 @@ public:
     /**
      * 检查是否抵抗指定异常状态
      * @param anomaly_id 异常状态 ID
+     * @param low_pct_penalty 低段抗性惩罚（百分点数）。只作用于 **>0 且 ≤50%** 的抗性段
+     *   （全免% 与各抗性槽同规则）：0 < percent ≤ 50 时有效值 = percent - penalty，
+     *   扣到 ≤0 即该段不掷（0% = 无抗性）。>50% 的抗性与未配置抗性不受影响。
+     *   默认 0 = 行为与旧签名完全一致。消费面：apply_anomaly_impl [4]
+     *   （曝印记「不高于50%的异常抗性减少10%（包含5%全免）」，2026-11-06）。
      * @return true 表示本次抵抗成功（异常不施加）
      *
      * 判定顺序：
@@ -111,12 +116,15 @@ public:
      *   2. 该异常属于控制类 → 查控制类抗性槽位
      *   3. 该异常属于非控制类 → 查非控制类抗性槽位
      */
-    bool isResistantTo(int anomaly_id) const {
+    bool isResistantTo(int anomaly_id, int low_pct_penalty = 0) const {
         if (!is_valid_abnormal_status_id(anomaly_id)) return false;
-
+        const int complete_eff = low_pct_penalty > 0 && complete_immunity > 0
+                                     && complete_immunity <= 50
+                                     ? complete_immunity - low_pct_penalty
+                                     : complete_immunity;
         // 全异常免疫
-        if (complete_immunity > 0) {
-            if (sbs_rand() % 100 < complete_immunity) {
+        if (complete_eff > 0) {
+            if (sbs_rand() % 100 < complete_eff) {
                 return true;
             }
         }
@@ -127,7 +135,13 @@ public:
         const auto& slots = is_control ? control : uncontrol;
         for (int i = 0; i < kResistanceSlotCount; ++i) {
             if (slots[i].first == anomaly_id && slots[i].second > 0) {
-                return sbs_rand() % 100 < slots[i].second;
+                const int eff = low_pct_penalty > 0 && slots[i].second <= 50
+                                    ? slots[i].second - low_pct_penalty
+                                    : slots[i].second;
+                if (eff <= 0) {
+                    return false;   // 低段被扣到 0：这一段不再构成抗性
+                }
+                return sbs_rand() % 100 < eff;
             }
         }
 

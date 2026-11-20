@@ -1,5 +1,7 @@
 #include <db/official_data_repository.h>
 
+#include <db/type_audit.h>
+
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -226,6 +228,15 @@ void OfficialDataRepository::close() {
     db_path_.clear();
     type_components_cache_loaded_ = false;
     type_components_cache_.clear();
+    // 连击规则缓存随连接生命周期清空（J326）——换库重开（如负测切临时库）后
+    // load_combo_rules 重新装载，旧库规则不残留。
+    combo_rules_loaded_ = false;
+    combo_rules_ok_ = false;
+    combo_rules_cache_.clear();
+    // 选择期路由缓存随连接生命周期清空（J327）——语义同上。
+    selection_routes_loaded_ = false;
+    selection_routes_ok_ = false;
+    selection_routes_cache_.clear();
 }
 
 std::optional<SkillRecord> OfficialDataRepository::load_skill(int move_id) const {
@@ -347,6 +358,172 @@ std::vector<std::pair<int, std::string>> OfficialDataRepository::load_effect_win
         out.emplace_back(sqlite3_column_int(stmt.get(), 0), column_text(stmt.get(), 1));
     }
     return out;
+}
+
+// ── 静态连击索引规则（J326，2026-11-05）────────────────────────────────
+// 授权来源：数据刀清缴线（用户批方向）+ R4 计划 §2
+//（docs_local/docs/05-任务清单/数据刀清缴线二批计划.md；内核+DB 授权单 J326，
+// 唯一内核+DB 写者 a01-j326）。自 skills.cpp combo_arg_indices（13 case）与
+// combo_fixed_range（1608/1609/1610 常量旁路）数据化迁移；种子与配套载体行参
+// 见 tools/db_patches/j4/1608_combo_rules.sql。
+bool OfficialDataRepository::load_combo_rules() const {
+    if (combo_rules_loaded_) {
+        return combo_rules_ok_;
+    }
+    combo_rules_loaded_ = true;
+    combo_rules_ok_ = false;
+    combo_rules_cache_.clear();
+
+    Statement stmt(
+        db_,
+        "SELECT effect_id, min_arg_index, max_arg_index, schema_version, evidence "
+        "FROM custom_skill_combo_rules"
+    );
+    if (!stmt) {
+        // prepare 失败最常见 = 表缺失＝旧库未打 j4 迁移补丁。**显式失败**，
+        // 不静默当"无规则"（R4 §2.2：旧库未打补丁应报缺迁移，不留静默旁路）。
+        last_error_ = std::string("custom_skill_combo_rules 不可查询（缺 j4 迁移补丁?）: ")
+                      + sqlite3_errmsg(db_);
+        return false;
+    }
+    std::unordered_map<int, ComboRuleRecord> rules;
+    int rc = SQLITE_OK;
+    while ((rc = sqlite3_step(stmt.get())) == SQLITE_ROW) {
+        ComboRuleRecord rec;
+        rec.effect_id = sqlite3_column_int(stmt.get(), 0);
+        rec.min_arg_index = sqlite3_column_int(stmt.get(), 1);
+        rec.max_arg_index = sqlite3_column_int(stmt.get(), 2);
+        rec.schema_version = sqlite3_column_int(stmt.get(), 3);
+        rec.evidence = column_text(stmt.get(), 4);
+        if (rec.schema_version != kComboRulesSchemaVersion) {
+            last_error_ = "custom_skill_combo_rules effect "
+                          + std::to_string(rec.effect_id) + " schema_version="
+                          + std::to_string(rec.schema_version) + " 不受支持（当前只认 "
+                          + std::to_string(kComboRulesSchemaVersion) + "）";
+            return false;
+        }
+        if (rec.min_arg_index < 0 || rec.max_arg_index < rec.min_arg_index) {
+            last_error_ = "custom_skill_combo_rules effect " + std::to_string(rec.effect_id)
+                          + " 下标非法（min=" + std::to_string(rec.min_arg_index)
+                          + ", max=" + std::to_string(rec.max_arg_index) + "）";
+            return false;
+        }
+        if (rec.evidence.empty()) {
+            last_error_ = "custom_skill_combo_rules effect " + std::to_string(rec.effect_id)
+                          + " evidence 为空（来源不可审计）";
+            return false;
+        }
+        rules.emplace(rec.effect_id, std::move(rec));  // PK 表不会重复；emplace 兜底
+    }
+    if (rc != SQLITE_DONE) {
+        last_error_ = std::string("custom_skill_combo_rules 扫描中断: ") + sqlite3_errmsg(db_);
+        return false;
+    }
+    combo_rules_cache_ = std::move(rules);
+    combo_rules_ok_ = true;
+    return true;
+}
+
+const ComboRuleRecord* OfficialDataRepository::find_combo_rule(int effect_id) const {
+    if (!combo_rules_ok_) {
+        return nullptr;  // 未成功装载（调用方须先 load_combo_rules）
+    }
+    const auto it = combo_rules_cache_.find(effect_id);
+    return it != combo_rules_cache_.end() ? &it->second : nullptr;
+}
+
+// ── 选择期路由（J327，2026-11-06）──────────────────────────────────────
+// 授权来源：数据刀清缴线（用户批方向）+ R4 计划 §3
+//（docs_local/docs/05-任务清单/数据刀清缴线二批计划.md；内核+DB 授权单 J327，
+// 唯一内核+DB 写者 a01-j327）。自 skills.cpp loadSkills 两段选择期 id 开关表
+//（27 plain + 微弱族 3）数据化迁移；种子见 tools/db_patches/j4/selection_routes_29.sql。
+bool OfficialDataRepository::load_selection_routes() const {
+    if (selection_routes_loaded_) {
+        return selection_routes_ok_;
+    }
+    selection_routes_loaded_ = true;
+    selection_routes_ok_ = false;
+    selection_routes_cache_.clear();
+
+    Statement stmt(
+        db_,
+        "SELECT effect_id, phase, state, arg_adapter, schema_version, evidence "
+        "FROM custom_skill_selection_routes"
+    );
+    if (!stmt) {
+        // prepare 失败最常见 = 表缺失＝旧库未打 j4 迁移补丁。**显式失败**，
+        // 不静默当"无路由"（R4 §3.2：旧库未打补丁应报缺迁移，不留静默旁路）。
+        last_error_ = std::string("custom_skill_selection_routes 不可查询（缺 j4 迁移补丁?）: ")
+                      + sqlite3_errmsg(db_);
+        return false;
+    }
+    std::unordered_map<int, SelectionRouteRecord> routes;
+    int rc = SQLITE_OK;
+    while ((rc = sqlite3_step(stmt.get())) == SQLITE_ROW) {
+        SelectionRouteRecord rec;
+        rec.effect_id = sqlite3_column_int(stmt.get(), 0);
+        rec.phase = column_text(stmt.get(), 1);
+        rec.state = column_text(stmt.get(), 2);
+        rec.arg_adapter = column_text(stmt.get(), 3);
+        rec.schema_version = sqlite3_column_int(stmt.get(), 4);
+        rec.evidence = column_text(stmt.get(), 5);
+        if (rec.schema_version != kSelectionRoutesSchemaVersion) {
+            last_error_ = "custom_skill_selection_routes effect "
+                          + std::to_string(rec.effect_id) + " schema_version="
+                          + std::to_string(rec.schema_version) + " 不受支持（当前只认 "
+                          + std::to_string(kSelectionRoutesSchemaVersion) + "）";
+            return false;
+        }
+        if (rec.phase != kSelectionRoutePhaseSelection) {
+            last_error_ = "custom_skill_selection_routes effect "
+                          + std::to_string(rec.effect_id) + " phase=\"" + rec.phase
+                          + "\" 越出首版白名单（只认 selection）";
+            return false;
+        }
+        if (rec.state != kSelectionRouteStateFirstMoveRight) {
+            // on_selected 实际只建 FIRST_MOVE_RIGHT 一个桶（R4 §3.2）——写别的
+            // state 是"表面可配置、实际无效"的假接口，直接拒绝不静默。
+            last_error_ = "custom_skill_selection_routes effect "
+                          + std::to_string(rec.effect_id) + " state=\"" + rec.state
+                          + "\" 越出首版白名单（on_selected 只注册 FIRST_MOVE_RIGHT 桶）";
+            return false;
+        }
+        if (rec.arg_adapter != kSelectionRouteAdapterPlain
+            && rec.arg_adapter != kSelectionRouteAdapterStaticElements) {
+            last_error_ = "custom_skill_selection_routes effect "
+                          + std::to_string(rec.effect_id) + " arg_adapter=\"" + rec.arg_adapter
+                          + "\" 未知（只认 plain / skill_static_elements）";
+            return false;
+        }
+        if (rec.evidence.empty()) {
+            last_error_ = "custom_skill_selection_routes effect " + std::to_string(rec.effect_id)
+                          + " evidence 为空（来源不可审计）";
+            return false;
+        }
+        routes.emplace(rec.effect_id, std::move(rec));  // PK 表不会重复；emplace 兜底
+    }
+    if (rc != SQLITE_DONE) {
+        last_error_ = std::string("custom_skill_selection_routes 扫描中断: ") + sqlite3_errmsg(db_);
+        return false;
+    }
+    if (routes.empty()) {
+        // 空表 = 种子被清/迁移半途（J327 派发口径：缺表/空表/版本不符/坏行全拒绝）。
+        // 与 combo_rules 不同：路由表只为本特性而建，0 行没有任何合法部署形态。
+        last_error_ = "custom_skill_selection_routes 为空表（0 行）——疑似未打 "
+                      "tools/db_patches/j4/selection_routes_29.sql 种子或迁移半途";
+        return false;
+    }
+    selection_routes_cache_ = std::move(routes);
+    selection_routes_ok_ = true;
+    return true;
+}
+
+const SelectionRouteRecord* OfficialDataRepository::find_selection_route(int effect_id) const {
+    if (!selection_routes_ok_) {
+        return nullptr;  // 未成功装载（调用方须先 load_selection_routes）
+    }
+    const auto it = selection_routes_cache_.find(effect_id);
+    return it != selection_routes_cache_.end() ? &it->second : nullptr;
 }
 
 std::optional<int> OfficialDataRepository::find_monster_id_by_exact_name(const std::string& monster_name) const {
@@ -1059,19 +1236,49 @@ void OfficialDataRepository::ensure_type_components_cache() const {
     }
     while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
         const int id = sqlite3_column_int(stmt.get(), 0);
-        const std::vector<std::string> names = parse_json_string_array(column_text(stmt.get(), 1));
+        const std::string raw_en = column_text(stmt.get(), 1);
+        const std::vector<std::string> names = parse_json_string_array(raw_en);
         if (names.size() == 1) {
             type_components_cache_[id] = {id, 0};
             name_to_id[names[0]] = id;
         } else if (names.size() == 2) {
             pending_combined.emplace_back(id, std::make_pair(names[0], names[1]));
+        } else {
+            // J322 未知属性审计：en 数组长度非法（0 个名字 / >2 个）——这条 type_id
+            // 无法表达组件集合，克制的全组合聚合会静默算错。记账响亮报出。
+            type_audit::instance().record(
+                "skill_types.en", id, "",
+                "skill_types id=" + std::to_string(id) + " 的 en 数组长度=" +
+                    std::to_string(names.size()) + "（合法值 1=单属性 / 2=复合），raw=" +
+                    raw_en,
+                type_audit::source_of(__FILE__, __LINE__));
         }
     }
 
     for (const auto& [id, names] : pending_combined) {
-        const int a = name_to_id.count(names.first) ? name_to_id.at(names.first) : 0;
-        const int b = name_to_id.count(names.second) ? name_to_id.at(names.second) : 0;
-        type_components_cache_[id] = {a, b};
+        const auto ait = name_to_id.find(names.first);
+        const auto bit = name_to_id.find(names.second);
+        // J322 未知属性审计：复合条目引用的组件名字必须在单属性名集里有归属
+        //（如 "light"→12）。旧实现静默填 0（组件被丢成"空"），聚合与本系判定
+        // 会静默算错——现在记账响亮报出；组件仍填 0 保持容错（报告在启动统一判定）。
+        if (ait == name_to_id.end()) {
+            type_audit::instance().record(
+                "skill_types.en", id, names.first,
+                "skill_types id=" + std::to_string(id) + "（复合）引用的组件名 '" +
+                    names.first + "' 不在任何单属性行里（en='" + names.second +
+                    "' 为另一组件），无法分解",
+                type_audit::source_of(__FILE__, __LINE__));
+        }
+        if (bit == name_to_id.end()) {
+            type_audit::instance().record(
+                "skill_types.en", id, names.second,
+                "skill_types id=" + std::to_string(id) + "（复合）引用的组件名 '" +
+                    names.second + "' 不在任何单属性行里（en='" + names.first +
+                    "' 为另一组件），无法分解",
+                type_audit::source_of(__FILE__, __LINE__));
+        }
+        type_components_cache_[id] = {ait != name_to_id.end() ? ait->second : 0,
+                                      bit != name_to_id.end() ? bit->second : 0};
     }
 }
 
@@ -1111,6 +1318,9 @@ bool OfficialDataRepository::load_elemental_restraints(
                 name_to_id[names[0]] = id;
             }
         }
+        // J322：单属性名集与映射表共用同一条权威来源（skill_types 单属性行）。
+        // 复合行不进本 name_to_id——types_relation 的外键是单属性 en 名，
+        // 复合名若出现在 types_relation 属数据错误，下面逐行记账。
     }
 
     Statement stmt(
@@ -1129,6 +1339,25 @@ bool OfficialDataRepository::load_elemental_restraints(
         const auto ait = name_to_id.find(attacker);
         const auto dit = name_to_id.find(defender);
         if (ait == name_to_id.end() || dit == name_to_id.end()) {
+            // J322 未知属性审计：克制表引用的名字不在单属性名集——旧实现静默
+            // continue（该格落缺省 1.0，克制动静默错）。现在记账，启动统一响亮报出。
+            const std::string src = type_audit::source_of(__FILE__, __LINE__);
+            if (ait == name_to_id.end()) {
+                type_audit::instance().record(
+                    "types_relation", -1, attacker,
+                    "types_relation 行 attacker_type='" + attacker + "'（defender='" +
+                        defender + "'，multiple=" + std::to_string(multiple) +
+                        "）不在单属性名集，该格克制值被丢弃",
+                    src);
+            }
+            if (dit == name_to_id.end()) {
+                type_audit::instance().record(
+                    "types_relation", -1, defender,
+                    "types_relation 行 defender_type='" + defender + "'（attacker='" +
+                        attacker + "'，multiple=" + std::to_string(multiple) +
+                        "）不在单属性名集，该格克制值被丢弃",
+                    src);
+            }
             continue;
         }
         const int attacker_id = ait->second;
@@ -1143,6 +1372,73 @@ bool OfficialDataRepository::load_elemental_restraints(
         matrix[static_cast<std::size_t>(attacker_id)][static_cast<std::size_t>(defender_id)] = multiple;
     }
     return true;
+}
+
+const std::unordered_map<int, std::pair<int, int>>& OfficialDataRepository::type_components() const {
+    ensure_type_components_cache();
+    return type_components_cache_;
+}
+
+std::string OfficialDataRepository::audit_type_references() const {
+    if (!db_) {
+        last_error_ = "database is not open";
+        return {};
+    }
+    const std::string src = type_audit::source_of(__FILE__, __LINE__);
+    auto& ledger = type_audit::instance();
+
+    // ① moves.type_id 全量校验（排除 0 = 无属性哨兵，make_pet/空位合法值）。
+    {
+        Statement stmt(
+            db_,
+            "SELECT m.type_id, COUNT(*), MIN(m.id) FROM moves m "
+            "WHERE m.type_id != 0 AND m.type_id NOT IN (SELECT id FROM skill_types) "
+            "GROUP BY m.type_id ORDER BY m.type_id"
+        );
+        if (!stmt) {
+            last_error_ = sqlite3_errmsg(db_);
+            return {};
+        }
+        while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+            const int type_id = sqlite3_column_int(stmt.get(), 0);
+            const int cnt = sqlite3_column_int(stmt.get(), 1);
+            const int sample = sqlite3_column_int(stmt.get(), 2);
+            ledger.record(
+                "moves.type_id", type_id, "",
+                "moves 表 " + std::to_string(cnt) + " 个技能（样例 id=" +
+                    std::to_string(sample) + "）的 type_id=" + std::to_string(type_id) +
+                    " 在 skill_types 里没有任何行——克制聚合与本系判定无映射可用",
+                src);
+        }
+    }
+
+    // ② monsters 属性全量校验（raw_json $.type；0 = 无属性合法值）。
+    {
+        Statement stmt(
+            db_,
+            "SELECT json_extract(raw_json, '$.type') AS t, COUNT(*), MIN(id) FROM monsters "
+            "WHERE json_extract(raw_json, '$.type') != 0 "
+            "AND json_extract(raw_json, '$.type') NOT IN (SELECT id FROM skill_types) "
+            "GROUP BY t ORDER BY t"
+        );
+        if (!stmt) {
+            // 旧库 raw_json 结构缺失等：审计不可用不阻断启动（报告为空）。
+            return {};
+        }
+        while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+            const int type_id = sqlite3_column_int(stmt.get(), 0);
+            const int cnt = sqlite3_column_int(stmt.get(), 1);
+            const int sample = sqlite3_column_int(stmt.get(), 2);
+            ledger.record(
+                "monsters.type", type_id, "",
+                "monsters 表 " + std::to_string(cnt) + " 只精灵（样例 id=" +
+                    std::to_string(sample) + "）的 type=" + std::to_string(type_id) +
+                    " 在 skill_types 里没有任何行——精灵属性无法映射到单属性集",
+                src);
+        }
+    }
+
+    return ledger.report();
 }
 
 OfficialDataStore& OfficialDataStore::instance() {

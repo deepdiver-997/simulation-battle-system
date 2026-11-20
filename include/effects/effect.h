@@ -223,7 +223,7 @@ public:
     void run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase);
 
     // 手动注册效果（不通过动态库）
-    void registerEffect(int effectId, EffectFn effect);
+    void registerEffect(int effectId, EffectFn effect, const std::string& source = {});
 
     // 检查是否已初始化
     bool isInitialized() const { return initialized_; }

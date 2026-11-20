@@ -55,6 +55,14 @@ class Calculation {
         if (ws.defense_ignore_pct[defender] > 0) {
             Defense = Defense * (100 - ws.defense_ignore_pct[defender]) / 100.0;
         }
+        // ★ 除零守卫（night fuzz 2026-11-03 首曝，UBSan：inf→int 转换 UB）：官方口径
+        //   防御面板永不为 0（访问器输出 = 面板×[0.25,4] 等级系数，基础面板来自组装层
+        //   恒 >0）；此处若 ≤0 说明有路径把"空位精灵（面板全 0）"放上了被打位——
+        //   static_cast<int>(inf) 在非消毒环境是实现定义值（典型 INT_MIN）→ 伤害崩坏。
+        //   钳到 1.0：对合法对局零行为差异，对异常路径消灭未定义转换。
+        if (Defense <= 0.0) {
+            Defense = 1.0;
+        }
         // 技能威力视图层：ws.skill_power_view（效果可改，如威力提升/随机威力）优先，
         // 未物化(0)回退技能静态 power。
         // ⚠️ 哨兵是 **-1（未物化）** 而不是 0：视图威力 0 是一个**合法值**——强制执行打盔时
@@ -116,30 +124,81 @@ class Calculation {
         }
         return static_cast<int>(result);
     }
+    // J322（2026-11-05）聚合口径重写：官方克制 = 攻守**全属性对**倍率的算术平均。
+    //
+    // 旧实现是"属性对相乘"四分支（1v1=m00；2v2=m00×m11；2v1=m00×m10；1v2=m00×m01）
+    // ——与官方三道例题系统性不符（百科 03 章 §2.4 三例互证）：
+    //   · L99 红月祭司双系技（神秘+超能）打帝君（轮回）：avg(2.0, 1.0) = 1.5（相乘 2.0 ✗）
+    //   · L100 冰王（冰+暗影）打星皇（自然+圣灵）：avg(1.0, 0.5, 1.0, 0.5) = 0.75（相乘 0.5 ✗）
+    //   · L101 冰王先三打谱尼（圣灵）：avg(0.5, 0.5) = 0.5（相乘 0.25 ✗）
+    // 技能侧与精灵侧的 type_id 都经映射层（ElementalAttributes::componentsOf）拆成
+    // 组件单属性集合再全组合查表——复合技（type_id 21~132）由此第一次打出真实克制
+    // （旧实现复合 id 直查矩阵 = 落缺省 1.0）。单属性×单属性退化为单格值，与旧口径
+    // 字节级一致（含缺省 1.0：任一侧组件集为空 → 组合数 0 → 1.0）。
+    // 组件按集合语义去重（同 id 两侧多槽重复出现不重复计权）——官方例题的组件均互异，
+    // 重复场景无官方判例，取"集合"读法（majority reading，记档）。
     static double calculateRestraintMultiples(const int attacker[2], const int defender[2]) {
-        // 克制倍率矩阵存官方原始倍率 {0免疫, 0.5减半, 1普通, 2克制}。
-        // 双属性组合 = 各"属性对"倍率相乘（2v2/2v1/1v2 各两对）。
-        const double m00 =
-            ElementalAttributes::elementalAttributesRestraints[attacker[0]][defender[0]];
-        if (attacker[1] == 0 && defender[1] == 0) {  // 1 v 1
-            return m00;
+        // 展开两侧组件集合（各槽最多 2 组件 → 每侧最多 4，去重后仍 ≤4）。
+        int atk_set[4];
+        int atk_n = 0;
+        int def_set[4];
+        int def_n = 0;
+        const auto add_component = [](int* set, int& n, int id) {
+            if (id == 0) {
+                return;   // 空槽
+            }
+            for (int i = 0; i < n; ++i) {
+                if (set[i] == id) {
+                    return;   // 集合语义：去重
+                }
+            }
+            set[n++] = id;
+        };
+        const auto add_side = [&add_component](int* set, int& n, const int slots[2]) {
+            const std::pair<int, int> c0 = ElementalAttributes::componentsOf(slots[0]);
+            add_component(set, n, c0.first);
+            add_component(set, n, c0.second);
+            const std::pair<int, int> c1 = ElementalAttributes::componentsOf(slots[1]);
+            add_component(set, n, c1.first);
+            add_component(set, n, c1.second);
+        };
+        add_side(atk_set, atk_n, attacker);
+        add_side(def_set, def_n, defender);
+
+        if (atk_n == 0 || def_n == 0) {
+            // 任一侧无属性（组件集空）：旧口径查矩阵 [id][0] 缺省 1.0，此处等价 1.0。
+            return 1.0;
         }
-        if (attacker[1] != 0 && defender[1] != 0) {  // 2 v 2
-            return m00
-                * ElementalAttributes::elementalAttributesRestraints[attacker[1]][defender[1]];
+        double sum = 0.0;
+        for (int i = 0; i < atk_n; ++i) {
+            for (int j = 0; j < def_n; ++j) {
+                sum += ElementalAttributes::restraintCell(atk_set[i], def_set[j]);
+            }
         }
-        if (attacker[1] != 0) {  // 2 v 1：攻击方双属性各自对防御方单属性的倍率相乘
-            return m00
-                * ElementalAttributes::elementalAttributesRestraints[attacker[1]][defender[0]];
-        }
-        // 1 v 2：防御方双属性各自被攻击方单属性克制的倍率相乘
-        return m00
-            * ElementalAttributes::elementalAttributesRestraints[attacker[0]][defender[1]];
+        return sum / static_cast<double>(atk_n * def_n);
     }
+    // J322 本系加成判定重写：技能组件集合 ∩ 精灵属性集合 ≠ ∅ → ×1.5。
+    //
+    // 旧实现：单系技 = 精灵任一系匹配（OR）；双系技 = 两系全配（全等）。官方例题
+    // 的本系读法是"技能系别 ∈ 攻方属性集"——复合技（type_id 含自身属性之一）按
+    // 旧全等读法永不命中（J322 前双系技本系加成整体丢失，百科 03 章 §一/§4.2），
+    // 相交读法下 L99 例题"×1.5×1.5"的本系 1.5 才成立（红月祭司 神秘+超能，
+    // 复合技含神秘组件即本系）。语义变化记档：双系技从"全等"放宽为"相交非空"
+    // （设计目标 3 用户拍板口径）；单系技 OR 读法保留不变。
+    // elf 侧保持属性视图语义（ws.view_elementalAttributes 槽即单属性 id，直接比对；
+    // skill 侧经映射层展开，复合 id 拆组件后参与相交）。
     static inline bool involve(const int elf[2], const int skill[2]) {
-        if(skill[1] == 0)
-            return elf[0] == skill[0] || elf[1] == skill[0];
-        return elf[0] == skill[0] && elf[1] == skill[1];
+        const std::pair<int, int> s0 = ElementalAttributes::componentsOf(skill[0]);
+        const std::pair<int, int> s1 = ElementalAttributes::componentsOf(skill[1]);
+        for (int e : {elf[0], elf[1]}) {
+            if (e == 0) {
+                continue;   // 空槽
+            }
+            if (s0.first == e || s0.second == e || s1.first == e || s1.second == e) {
+                return true;
+            }
+        }
+        return false;
     }
 };
 

@@ -692,6 +692,8 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
     // 成功后由 consume_attack_boost_grants_after_attack 消费（见 skills.cpp），此处只累加不扣次数。
     {
         int boost_sum = 0;
+        ab_audit(ctx, 2, attacker_id, ctx->attack_boost_grants[attacker_id].size(),
+                 ctx->attack_boost_grants[attacker_id].data());
         for (const auto& g : ctx->attack_boost_grants[attacker_id]) {
             boost_sum += g.pct;
         }
@@ -814,6 +816,18 @@ void apply_crit_defense_break(BattleContext* ctx, int attacker_id) {
 //   ③ **本次是多段**（N>1）——"n次连击"本身就在官方的变威力描述清单里（L453），
 //      且用户 2026-09-14 裁定连击走"破防 → 按归零双防重算单次 → ×N"这条流水线。
 // 抽成独立判断是为了让**技能无效的出口**也能用（见 handle_*_AttackDamage 的早退分支）。
+// ⚠️ 消费方分两档（R8 勘误，2026-11-07）：
+//   · 命中趟收尾（`apply_variable_power_recalc`）用**全集**：静态连击（引擎打底物化，
+//     `materialize` 不置 rewritten，battleWorkspace.h:87）在命中趟也必须走
+//     "破防 → 重算单次 → ×N"（第一次公式在破防前算完，④044 C4 的 6× 断言靠它）；
+//   · **技能无效出口**（`run_attack_damage_from_invalid_skill` /
+//     `run_invalid_skill_damage_hooks`）只能用**效果改写子集**
+//     （`variable_power_rewritten_by_effect`）：`combo_view>1` 项会把引擎打底的静态
+//     连击基数也当"靠后的变威力改写"放行 → 连击技 **miss**（SKILL_INVALID 趟）白给
+//     全额 N× 重结算（K424 记档勘误：拍打 0/20 vs 手工 combo 界 20/20 实测隔离）。
+//     miss 趟官方口径 = 零攻击伤害（effect 72/136 族模板「若Miss则…」是仅有的补偿
+//     通道，见本文件 run_attack_damage_from_invalid_skill 注释）——只有**效果**在
+//     SKILL_INVALID 分支真的改写了视图（如 2501）才补结算。
 bool variable_power_requested(const BattleContext* ctx, int attacker_id) {
     if (!ctx || attacker_id < 0 || attacker_id > 1) {
         return false;
@@ -821,6 +835,19 @@ bool variable_power_requested(const BattleContext* ctx, int attacker_id) {
     return ctx->ws.skill_power_view[attacker_id].rewritten
         || ctx->ws.combo_view[attacker_id].rewritten
         || static_cast<int>(ctx->ws.combo_view[attacker_id]) > 1;
+}
+
+// 变威力的**效果改写子集**：只认 `rewritten` 标记（`SkillView::operator=`/`+=` 自动置位，
+// battleWorkspace.h:81-82），不认引擎打底的静态连击基数（`materialize` 不置标记）。
+// 仅供**技能无效出口**的两个消费点用——命中趟收尾仍用全集 `variable_power_requested`。
+// （两处 gates 必须同源：`run_invalid_skill_damage_hooks` 的"已接管"守卫说的是
+//   "上面的变威力路径**真的结算过**"，判据窄化了守卫必须跟着窄，否则漏问钩子。）
+bool variable_power_rewritten_by_effect(const BattleContext* ctx, int attacker_id) {
+    if (!ctx || attacker_id < 0 || attacker_id > 1) {
+        return false;
+    }
+    return ctx->ws.skill_power_view[attacker_id].rewritten
+        || ctx->ws.combo_view[attacker_id].rewritten;
 }
 
 void apply_variable_power_recalc(BattleContext* ctx, int attacker_id) {
@@ -859,6 +886,14 @@ void apply_resolved_damage(BattleContext* ctx) {
     const DamageKind kind = damage.isTrueDamage ? DamageKind::TRUE_DMG
                          : (damage.isFixed ? DamageKind::FIXED : DamageKind::NORMAL);
     deal_damage(ctx, damage.defenderId, damage.final, kind, damage.attackerId);
+
+    // ★ 本回合被攻击实扣累计（K443 查询面，全引擎唯一写入点——见 battleWorkspace.h
+    //   `round_taken_attack_damage` 头注）：实扣 = 净掉血（护盾吸收不计、钳 0 后），
+    //   逐笔 += 累计；本函数是攻击技能伤害落地的唯一收口（正常/技能无效两出口都经
+    //   finish_attack_damage 汇到这里），效果侧直调 deal_damage 的路径不经过本函数。
+    if (const int taken = hp_before - defender.hp; taken > 0) {
+        ctx->ws.round_taken_attack_damage[damage.defenderId] += taken;
+    }
 
     const int attacker_id = damage.attackerId;
     const int defender_id = damage.defenderId;
@@ -986,9 +1021,15 @@ void finish_attack_damage(BattleContext* ctx, int attacker_id) {
 //    视图被改了也没人重算（2026-09-14 用户发现）。破防在早退出口已先行（`apply_crit_defense_break`）
 //    → 所以"变威力 + 暴击隔着盔"同样会无视对手双防。
 // ⚠️ 故意**不**跑 ATTACK_DAMAGE 时点桶：技能无效时那些效果本就不该注册（这是"技能效果还是无效"）。
+// ⚠️ R8 勘误（2026-11-07）：门判据 = `variable_power_rewritten_by_effect`（只认效果改写），
+//    不再吃 `variable_power_requested` 的 `combo_view>1` 项——否则静态连击技（引擎打底
+//    N>1，效果零参与）miss 也被放行全额重结算（K424 记档：拍打 0/20 vs 手工 combo 界
+//    20/20）。miss 官方语义 = 无攻击伤害；72/136 族「若Miss则…」模板是仅有的补偿通道，
+//    且都注册在 SKILL_INVALID 分支（skills.h:346），佐证"miss 趟默认零伤害"。
 void run_attack_damage_from_invalid_skill(BattleContext* ctx, int attacker_id) {
-    if (!variable_power_requested(ctx, attacker_id)) {
-        return;   // 没有"靠后的变威力"改写 → 无效就是无效，零伤害
+    if (!variable_power_rewritten_by_effect(ctx, attacker_id)) {
+        return;   // 没有"靠后的变威力"效果改写 → 无效就是无效，零伤害
+                  // （R8 勘误：静态连击基数 combo_view>1 不算改写——miss 趟不再全额重结算）
     }
     stage_simple_attack_damage(ctx, attacker_id);   // 第一次公式
     finish_attack_damage(ctx, attacker_id);         // 里面会按标记做第二次（推翻第一次）
@@ -1002,8 +1043,9 @@ void run_invalid_skill_damage_hooks(BattleContext* ctx, int attacker_id) {
     if (!ctx || ctx->invalid_skill_damage_hooks.empty()) {
         return;
     }
-    if (variable_power_requested(ctx, attacker_id)) {
+    if (variable_power_rewritten_by_effect(ctx, attacker_id)) {
         return;   // 变威力路径已接管（run_attack_damage_from_invalid_skill 已结算过）
+                  // （R8：守卫与上面同源窄化——静态连击基数不再"接管"，钩子照常被询问）
     }
     for (auto& hook : ctx->invalid_skill_damage_hooks) {
         if (hook && hook(ctx, attacker_id)) {

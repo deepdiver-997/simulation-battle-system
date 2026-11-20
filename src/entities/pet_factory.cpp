@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <entities/pet_factory.h>
 
+#include <db/type_audit.h>
 #include <effects/effect.h>
 #include <effects/effect_meta.h>
 #include <entities/common_trait.h>
@@ -255,7 +256,14 @@ bool PetFactory::initialize_runtime_data(const std::string& db_path) {
     }
 
     // 加载官方克制表（types_relation）到 ElementalAttributes 矩阵。
+    // （loadElementalAttributes 同时全量拷入 J322 复合属性映射 typeComponents，
+    //   并触发 skill_types/types_relation 的未知引用记账。）
     ElementalAttributes().loadElementalAttributes();
+
+    // J322 未知属性引用审计·记账段（2026-11-05）：moves.type_id / monsters.type
+    // 全量校验（skill_types/types_relation 的记账已在上面两步发生）。判定统一在
+    // 本函数末尾，与撞号审计并排——启动期一次把数据完整性报干净。
+    official_data::OfficialDataStore::instance().repository().audit_type_references();
 
     // 构建效果元数据目录（effect_info 模板启发式分类 + 覆盖表）。
     // 失败不阻断启动：元数据缺失时相关查询返回"未知"，引擎主体不受影响。
@@ -281,6 +289,17 @@ bool PetFactory::initialize_runtime_data(const std::string& db_path) {
     if (!collision_report.empty()) {
         std::cerr << "[WARN] [registry] 效果 id 撞号审计（已备案存量，不阻断启动）：\n"
                   << collision_report << std::endl;
+    }
+
+    // ── 未知属性引用审计（J322，2026-11-05）────────────────────────────
+    // 判定点 = 所有记账源就位之后（skill_types 映射 / types_relation 矩阵 /
+    // moves、monsters 全量校验都已跑完）。有未备案的未知 id/名字 → 抛异常停进程
+    // （响亮：报告里一眼看到哪个 id/名字没映射）；⚠️ 与撞号审计同样，场景测试也走
+    // 本路径——数据一脏全部场景启动期即失败，这是有意的。
+    const std::string type_audit_report = type_audit::audit_now();
+    if (!type_audit_report.empty()) {
+        std::cerr << "[WARN] [type_audit] 未知属性引用审计（全部已备案，不阻断启动）：\n"
+                  << type_audit_report << std::endl;
     }
     return true;
 }

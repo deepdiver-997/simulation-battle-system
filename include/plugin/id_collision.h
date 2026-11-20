@@ -6,7 +6,7 @@
 // ## 为什么需要（三个真实事故）
 //  ① **同 id 两处实现**：注册表按 id 索引（`program_cache_[id] = nodes`），
 //     后注册者**静默覆盖**先注册者——不报错、不警告，行为被无声改写。2026-10-21 夜跑
-//     就有多个族是"双载体同族"（645=K267/K282、610=K277/K281 等），而**手写 id**
+//     就有同一官方行被重复实现（645=K267/K282、610=K277/K281 等），而**手写 id**
 //     （1001/1002/1004/1005/1006）直接撞上官方 effect_id 行 → 六只真实宠物误触发旧程序。
 //  ② **撞官方 id 空间**：官方 effect_id 空间在 1~3000 段（DB effect_icon.effect_id），
 //     自定义 id 必须避开（私有段 9xxxx 段是约定）。
@@ -40,9 +40,9 @@
 // （tools/check_storage_keys.py），不在本文件范围。
 //
 // ## 开关
-//  编译期 `SBS_ID_COLLISION_CHECK`（CMake 选项，默认 ON）：关掉后宿主侧不记账、不报错
-//  （插件侧的来源采集仍编译进去，体积可忽略）。
-//  `SBS_ID_COLLISION_STRICT`（默认 OFF）：连已备案存量也失败（干净门）。
+//  编译期 `SBS_ID_COLLISION_CHECK`（CMake 选项，默认 ON）：关闭且非STRICT时，宿主侧
+//  不记账、不报错（插件侧的来源采集仍编译进去，体积可忽略）。
+//  `SBS_ID_COLLISION_STRICT`（默认 OFF）：强制启用检查，连已备案存量也失败（干净门）。
 //
 // ## 用法
 //  插件作者**不需要改任何代码**：只要用标准的 SOUL_MARK / SOUL_PROGRAM / SKILL_EFFECT
@@ -54,6 +54,19 @@
 #include <vector>
 
 namespace id_collision {
+
+// STRICT 蕴含 CHECK：不能用 CHECK=OFF 绕过严格门。未定义宏与显式定义为 0 等价。
+#if (defined(SBS_ID_COLLISION_CHECK) && SBS_ID_COLLISION_CHECK) || \
+    (defined(SBS_ID_COLLISION_STRICT) && SBS_ID_COLLISION_STRICT)
+inline constexpr bool kCheckEnabled = true;
+#else
+inline constexpr bool kCheckEnabled = false;
+#endif
+#if defined(SBS_ID_COLLISION_STRICT) && SBS_ID_COLLISION_STRICT
+inline constexpr bool kStrict = true;
+#else
+inline constexpr bool kStrict = false;
+#endif
 
 // 注册类别 = 真实的注册表 map（撞号只在同类别内判定——各 map 的 id 空间彼此独立）。
 enum class Category : int {
@@ -98,39 +111,31 @@ struct Collision {
     std::string first_source;
     std::string second_source;
     int count = 2;   // 出现次数（>2 时为多处）
-    bool acknowledged = false;   // 已在白名单里（存量已处置，见下）
+    bool acknowledged = false;   // 本次注册次数仍在备案豁免内（不代表实现已修复）
     std::string note;            // 处置结论（白名单条目自带）
+    std::vector<std::string> sources;  // 包括第三次及以后的全部来源，不丢新增证据
 };
 
 // ── 已知撞号白名单（存量处置结论）────────────────────────────────────────
 // 机制存在的意义是**挡住新增撞号**，而不是被存量淹没：存量每一条都带着"为什么撞、
 // 怎么处置"的结论记在这里；判定时**只对不在白名单的新撞号失败**。
 //
-// ⚠️ 白名单按 (类别, id) 匹配——同一 id 再撞（第三处）仍会被记为 count>2 并报告。
-// 处置结论类型：
-//   "同族双载体" —— 官方**同 effect_id 的不同行**（不同宠各一行，同族效果）；
-//                  引擎 id 空间只有一套 → 后者覆盖前者 = 其中一族的实现从未生效
-//                  （待拆分：需要 id + 行 分离机制，或把两族迁到不同 id）。
-//   "实验遗留"   —— 同一效果在两个实验文件里各写一遍（后者覆盖前者），
-//                  属历史冗余，待收敛到单一实现。
-//   "死代码"     —— 后者与前者语义不同，同 id 只能是笔误（后者应为另一个 id）。
+// 白名单匹配 (类别, id, 次键) 并限制注册次数：只容忍已备案的两处，第三处必须失败。
+// 同一官方行重复实现应合并；多行共享参数程序并不需要重复注册。真正不同形态的
+// 程序分流才属于 T8，不能用它掩盖同行重复开发。
 struct KnownCollision {
     Category category;
     int id;
     const char* note;
+    int secondary = 0;
+    int max_count = 2;
 };
 
 // 2026-10-22 首次全量审计结果（32 处）——逐条处置结论见 docs_local/docs/02-效果系统/
 // 「效果 id 撞号审计-2026-10-22.md」。**新增撞号不在表里 = 必须报**。
 inline const std::vector<KnownCollision>& known_collisions() {
     static const std::vector<KnownCollision> table = {
-        // ── 魂印程序 6 处（全部是 SOUL_PROGRAM 程序链路，同 id 两族互盖）──
-        {Category::SoulMarkProgram, 610, "同族双载体（K277/K281 同 effect 610 不同行）"},
-        {Category::SoulMarkProgram, 645, "同族双载体（K267/K282 同 effect 645 不同行）"},
-        {Category::SoulMarkProgram, 618, "同族双载体（K278/K285 同 effect 618 不同行）"},
-        {Category::SoulMarkProgram, 659, "同族双载体（K283/K289 同 effect 659 不同行）"},
-        {Category::SoulMarkProgram, 655, "同族双载体（K312/K335 同 effect 655 不同行）"},
-        {Category::SoulMarkProgram, 221, "死代码（K221 死亡复仇 vs K163 免疫窗——同 id 两语义）"},
+        // 2026-11-06：六处魂印同行重复实现已收敛并销账，不再豁免。
         // ── 技能效果 26 处（实验批次遗留，同一效果在两文件各写一遍）──
         {Category::SkillEffect, 1469, "实验遗留（batch_b/batch_c）"},
         {Category::SkillEffect, 881, "死代码（priority_when_dropped vs weak_priority）"},
@@ -167,16 +172,21 @@ public:
     // 记一条注册；返回 true = 与既有条目撞号（已记入 collisions_）。
     // 绝不抛异常——**判定统一在末尾做**（见 finalize）。
     bool record(Category category, int id, const std::string& source, int secondary = 0) {
+        if (!kCheckEnabled) {
+            return false;
+        }
         for (const Entry& e : entries_) {
             if (e.category == category && e.id == id && e.secondary == secondary) {
                 for (Collision& c : collisions_) {
                     if (c.category == category && c.id == id && c.secondary == secondary) {
                         ++c.count;
+                        c.sources.push_back(source);
+                        mark_acknowledged(c);
                         return true;
                     }
                 }
-                collisions_.push_back(
-                    Collision{category, id, secondary, e.source, source, 2});
+                collisions_.push_back(Collision{category, id, secondary, e.source, source,
+                                                2, false, {}, {e.source, source}});
                 mark_acknowledged(collisions_.back());
                 return true;
             }
@@ -185,12 +195,17 @@ public:
         return false;
     }
 
-    // 查白名单：已备案的撞号标 acknowledged（默认放行，但报告里仍可见）。
+    // 每次增加注册都重新判断，已备案的第二次不能替第三次背书。
     static void mark_acknowledged(Collision& c) {
+        c.acknowledged = false;
+        c.note.clear();
         for (const KnownCollision& k : known_collisions()) {
-            if (k.category == c.category && k.id == c.id) {
-                c.acknowledged = true;
+            if (k.category == c.category && k.id == c.id && k.secondary == c.secondary) {
                 c.note = k.note ? k.note : "";
+                c.acknowledged = c.count <= k.max_count;
+                if (!c.acknowledged) {
+                    c.note += "（备案仅允许 " + std::to_string(k.max_count) + " 次注册）";
+                }
                 return;
             }
         }
@@ -227,9 +242,16 @@ public:
             if (!c.acknowledged) {
                 ++new_count;
                 out += "  ⚠️ 【新增】[" + std::string(category_name(c.category)) +
-                       " id=" + std::to_string(c.id) + "] 出现 " +
-                       std::to_string(c.count) + " 次：\n      首次：" + c.first_source +
-                       "\n      再次：" + c.second_source + "\n";
+                       " id=" + std::to_string(c.id) + " secondary=" +
+                       std::to_string(c.secondary) + "] 出现 " +
+                       std::to_string(c.count) + " 次：\n";
+                for (std::size_t i = 0; i < c.sources.size(); ++i) {
+                    out += "      来源 " + std::to_string(i + 1) + "：" +
+                           (c.sources[i].empty() ? "<未提供来源>" : c.sources[i]) + "\n";
+                }
+                if (!c.note.empty()) {
+                    out += "      备案：" + c.note + "\n";
+                }
             }
         }
         if (new_count == 0) {
@@ -238,8 +260,12 @@ public:
         for (const Collision& c : collisions_) {
             if (c.acknowledged) {
                 out += "  · [已备案 " + std::string(category_name(c.category)) +
-                       " id=" + std::to_string(c.id) + "] " + c.note +
+                       " id=" + std::to_string(c.id) + " secondary=" +
+                       std::to_string(c.secondary) + "] " + c.note +
                        "（出现 " + std::to_string(c.count) + " 次）\n";
+                for (const std::string& source : c.sources) {
+                    out += "      " + (source.empty() ? "<未提供来源>" : source) + "\n";
+                }
             }
         }
         return out;
@@ -298,11 +324,6 @@ inline Registry& instance() {
 //
 // ⚠️ 幂等：重复调用安全（账本只增不减，判定结果一致）。
 inline std::string audit_now() {
-#ifdef SBS_ID_COLLISION_STRICT
-    constexpr bool kStrict = true;
-#else
-    constexpr bool kStrict = false;
-#endif
     return instance().finalize(kStrict);
 }
 

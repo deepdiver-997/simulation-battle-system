@@ -1,0 +1,16 @@
+# 构建上下文只保留内核构建所需——build/、.git/、test/、docs*、web/ 等全排除，
+# 否则 docker 会把几百 MB 的本地构建产物打进 context。
+build/
+.git/
+.github/
+.vscode/
+test/
+docs/
+docs_local/
+web/
+scripts
+reference
+deploy/
+*.md
+LICENSE
+.gitignore

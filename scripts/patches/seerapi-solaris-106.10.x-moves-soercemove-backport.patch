@@ -1,0 +1,29 @@
+--- /opt/homebrew/lib/python3.14/site-packages/solaris/parse/parsers/moves.py	2026-09-19 11:33:58
++++ /tmp/k450_probe/moves_10610_fixed.py	2026-11-10 00:53:33
+@@ -22,6 +22,7 @@
+     priority: int
+     side_effect: list[int]
+     side_effect_arg: list[int]
++    soercemove: int
+     type: int
+     info: str
+     ordinary: int
+@@ -105,6 +106,7 @@
+                             'priority': 0,
+                             'side_effect': [],
+                             'side_effect_arg': [],
++                            'soercemove': 0,
+                             'type': 0,
+                             'info': '',
+                             'ordinary': 0,
+@@ -146,6 +148,10 @@
+                             move_item['side_effect_arg'] = [
+                                 reader.ReadSignedInt() for _ in range(count)
+                             ]
++
++                        # 读取 soercemove（2026-11-06 布局新增：side_effect_arg
++                        # 之后、type 之前的一个 int；语义=变体/联动源技能 id）
++                        move_item['soercemove'] = reader.ReadSignedInt()
+ 
+                         # 完成剩余字段
+                         move_item['type'] = reader.ReadSignedInt()

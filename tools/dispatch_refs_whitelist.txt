@@ -1,0 +1,17 @@
+# check_dispatch_refs.py 外部引用白名单（R6 分诊清缴 2026-11-06）。
+#
+# 格式：每行 `<prefix|basename> <token> <理由与依据>`，`#` 开头为注释行。
+#   prefix   —— 路径引用以该前缀开头时按外部条目处理（最长前缀优先）；
+#   basename —— 裸文件名引用精确等于该 token 时按外部条目处理。
+# 命中即报 warning「外部产物/语料/拟建（白名单，不核验存在性）」，存在性检查被跳过：
+# 主检出常带未跟踪的 build/、reference/ 等目录，白名单先行保证同一 commit 的
+# 两个检出得到同一份 lint 结果。理由必须给出库内可查的文档/命令依据，逐条可回放；
+# 禁止「全路径放行」式偷懒条目。
+
+prefix build/          构建产物目录（cmake 构建树、night 回归与 registry dump 产物），不入库；依据：tools/check_wiki_citations.py 头注「worktree 常缺 reference/（不入库）与 build/registry.json（需构建 dump）」、tools/coverage_scan.py REGISTRY="build/registry.json"
+prefix reference/      外部抓取语料目录（4399 图鉴、B 站专栏 scrape），不入库；依据：tools/check_wiki_citations.py 头注「worktree 常缺 reference/（不入库）」、docs_local/docs/03-数据与数据库/官方数据关联查找指南.md 的 reference/scrape_4399/out/ 用法、主检出该目录未跟踪且存有语料本体（git ls-files reference 为空）
+prefix DB/             官方数据库导出/调研现查区，从未入库（git log --all -- DB 为空，主检出与 worktree 均无此目录）；依据：docs_local/docs/05-任务清单/已收官/S组魂印机制调研工单.md S6 行「一律现查 DB/场景断言/registry.json」、docs_local/docs/06-交接/夜跑晨报-2026-11-03-a08-orch.md:31
+basename registry.json build/registry.json 构建产物（sim_server --dump-registry-exit 的导出目标，coverage 工具与 check_wiki_citations 的 registry 参数），不入库；依据：docs_local/docs/00-组件导航/常识与工具速查.md §四「registry 导出」行、tools/coverage_scan.py、tools/coverage_recompute.py
+basename hunyin.jsonl  4399 图鉴抓取语料，未入库（语料本体在主检出未跟踪的 reference/scrape_4399/out/）；依据：docs_local/docs/03-数据与数据库/官方数据关联查找指南.md:7「reference/scrape_4399/out/hunyin.jsonl」、docs_local/docs/06-交接/魂印与技能机制-交接.md:12
+basename all_posts_final.jsonl B 站机制专栏抓取语料，未入库；依据：docs_local/docs/05-任务清单/待做-变威力与增减伤时点.md §0「素材来源：reference/scrape/out/all_posts_final.jsonl」
+basename j_nature_blessing.cpp 1296 调研报告 §4.3 的拟建插件名（原文自述「供立单，不是本次实现」；J318 板行确认 1296 自然庇佑记档停、未实现）；依据：docs_local/docs/05-任务清单/1296自然庇佑建模调研-2026-11-05.md §4.3、docs_local/docs/05-任务清单/已收官/J组批量效果工单.md J318 行

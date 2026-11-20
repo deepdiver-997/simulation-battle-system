@@ -14,7 +14,7 @@ set(CMAKE_CXX_STANDARD 20)
 # 合法，fuzz 探针已证）。fuzz oracle 只认统一消毒下的真红。
 if(SBS_FUZZ_SANITIZERS)
     add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined
-                        -fno-omit-frame-pointer -g)
+                        -fno-omit-frame-pointer -g -DSBS_FUZZ_AUDIT=1)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
@@ -203,11 +203,11 @@ option(SBS_FUZZ_SANITIZERS "Fuzz 构建变体：本目录所有目标加 ASan+UB
 
 # ── 效果 id 撞号审计（2026-10-22）────────────────────────────────────────
 # 同 id 两处实现 = 后者**静默覆盖**前者（不报错、行为被无声改写）。实测事故：
-#   · 魂印 id 221 被两个文件同时注册（"对手体力变一致" + "登场回血 1/10"）→ 一子句从未生效；
+#   · 魂印 id 221 的登场免疫被重复实现，early与授票来源不同，不能视为无害覆盖；
 #   · 手写 id 1001/1002/1004/1005/1006 直接撞官方 effect_id 行 → 六只真实宠物误触发旧程序。
 # 机制：注册宏带来源（文件:行）→ 宿主（sim_core，唯一账本）合并时比对 → registry
-# dump 时点（每次启动必跑）出报告。插件不链接 sim_core，故账本只能在宿主侧。
-# SBS_ID_COLLISION_STRICT=ON → 撞号即非零退出（门禁用；默认只报告不失败）。
+# 初始化末尾（所有插件flush完）统一出报告。插件不链接 sim_core，故账本只能在宿主侧。
+# 默认拒绝新增撞号，仅放行备案次数内的存量；STRICT连存量也拒绝，并蕴含CHECK。
 option(SBS_ID_COLLISION_CHECK "效果 id 撞号审计（注册来源采集 + 宿主侧比对）" ON)
 option(SBS_ID_COLLISION_STRICT "撞号即失败（严格模式，门禁用）" OFF)
 
@@ -216,6 +216,24 @@ if(SBS_ID_COLLISION_CHECK)
 endif()
 if(SBS_ID_COLLISION_STRICT)
     add_compile_definitions(SBS_ID_COLLISION_STRICT)
+endif()
+
+# 账本开关矩阵独立于sim_core编译，避免同进程混用不同inline定义；真实入口另测。
+if(BUILD_SMOKE_TEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/test_id_collision.cpp)
+    foreach(check_flag RANGE 0 1)
+        foreach(strict_flag RANGE 0 1)
+            set(audit_test sim_id_collision_check${check_flag}_strict${strict_flag})
+            add_executable(${audit_test} test/test_id_collision.cpp)
+            target_include_directories(${audit_test} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+            target_compile_definitions(${audit_test} PRIVATE
+                SBS_ID_COLLISION_TEST_CHECK=${check_flag}
+                SBS_ID_COLLISION_TEST_STRICT=${strict_flag})
+        endforeach()
+    endforeach()
+endif()
+if(BUILD_SMOKE_TEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/test_id_collision_registration.cpp)
+    add_executable(sim_id_collision_registration test/test_id_collision_registration.cpp)
+    target_link_libraries(sim_id_collision_registration PRIVATE sim_core)
 endif()
 
 # fuzz 夜跑工具链（POSIX alarm/SIGALRM/unsetenv）明确不移植 Windows（任务书既定口径），
@@ -228,7 +246,7 @@ if(NOT WIN32 AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/fuzz/fuzz_battle.cpp)
     target_include_directories(sim_fuzz_battle PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
-    target_link_libraries(sim_fuzz_battle PRIVATE sim_core)
+    target_link_libraries(sim_fuzz_battle PRIVATE sim_core sbs_rand)  # 驱动决策流同走 MINSTD（进程内单一状态，D15 契约）
 endif()
 
 # ── 插件段：源码为**本地维护**（.gitignore 排除，见 docs_local/多agent协作工作流.md），

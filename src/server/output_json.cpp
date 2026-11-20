@@ -87,6 +87,8 @@ const char* event_type_name(int event_type) {
         case EventType::EVENT_STAT_REMOVED: return "EVENT_STAT_REMOVED";
         case EventType::EVENT_SKILL_USED: return "EVENT_SKILL_USED";
         case EventType::EVENT_STAT_BOOSTS_LOST: return "EVENT_STAT_BOOSTS_LOST";
+        case EventType::EVENT_ANOMALY_ATTACH_LOW_CHANCE:
+            return "EVENT_ANOMALY_ATTACH_LOW_CHANCE";
     }
     return "EVENT_UNKNOWN";
 }
