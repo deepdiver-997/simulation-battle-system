@@ -29,7 +29,13 @@ option(BATTLE_FSM_VERBOSE_DEFAULT "Enable verbose FSM trace by default" OFF)
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 # 认证数据层：离线编码效果程序(JSON)加载器依赖 nlohmann::json（header-only）。
-find_path(NLOHMANN_INCLUDE_DIR nlohmann/json.hpp)
+# 优先用仓库内置单头（third_party/nlohmann，MIT）：外部贡献者/CI/Windows 零系统依赖；
+# 内置缺失时回退系统安装。
+find_path(NLOHMANN_INCLUDE_DIR nlohmann/json.hpp
+    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/third_party NO_DEFAULT_PATH)
+if(NOT NLOHMANN_INCLUDE_DIR)
+    find_path(NLOHMANN_INCLUDE_DIR nlohmann/json.hpp)
+endif()
 
 # ── 引擎自有确定性 RNG（2026-10-25，决策 D13→D15）──────────────────────────
 # 全工程源码级替换 std::rand/srand（sed 机械迁移），编为 SHARED：宿主 exe 与插件 DLL
