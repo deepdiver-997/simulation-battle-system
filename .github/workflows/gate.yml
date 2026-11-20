@@ -27,7 +27,11 @@ jobs:
       - uses: actions/checkout@v4
       - id: meta
         run: |
-          SHA=$(curl -sfL https://api.github.com/repos/SeerAPI/seer-unity-assets/commits/HEAD \
+          # 带 runner token：未认证 60 次/h/IP 在共享 Azure 出口池经常被打空（2026-11-21
+          # dispatch 实证，curl -sf 静默吞 403 → python 吃空输入报 JSONDecodeError）；
+          # GITHUB_TOKEN 对公开仓的 REST 配额是按安装 1000+/h。
+          SHA=$(curl -sfL -H "Authorization: Bearer ${{ github.token }}" \
+                https://api.github.com/repos/SeerAPI/seer-unity-assets/commits/HEAD \
                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "镜像 HEAD：$SHA"
