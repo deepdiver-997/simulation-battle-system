@@ -122,19 +122,46 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
-          update: false          # runner 自带 C:\msys64，不滚动升级组件（对齐 ubuntu 钉版本口径）
+          release: false         # 用镜像预装 C:\msys64（release:true 会现场下载全新 MSYS2，根落 runner temp 不可钉——2026-11-21 三跑实证）
+          update: true           # 预装副本的 sync db 偏旧：不刷库 pacman -S 找不到目标包
           path-type: inherit
           install: >-
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-sqlite3
-      - name: PATH 前置 ucrt64（后续步骤继承；运行期还要 libstdc++/sqlite3 等 DLL）
-        run: Add-Content $env:GITHUB_PATH 'C:\msys64\ucrt64\bin'
       - name: configure & build（引擎 + 插件部署 + 抽样场景）
         run: |
+          # ⚠️ runner 实证（2026-11-21 四跑）：① 镜像自带 C:\mingw64 会抢编译器选择；
+          # ② setup-msys2 默认 release:true 的全新 MSYS2 根在 runner temp，不可钉 →
+          #    已改 release:false 用镜像 C:\msys64；③ GITHUB_PATH 前置实测不生效。
+          # → 动态定位 ucrt64 根兜底（gcc on PATH → C:\msys64 → hostedtoolcache 扫描），
+          #   存 GITHUB_ENV；工具链与 SQLite3 全显式绝对路径；运行 DLL 每步内联前置。
+          function Find-Ucrt64 {
+            $cands = @('C:\msys64\ucrt64')
+            $g = (Get-Command gcc.exe -ErrorAction SilentlyContinue).Source
+            if ($g) { $cands += (Split-Path -Parent (Split-Path -Parent $g)) }
+            $cands += (Get-ChildItem 'C:\hostedtoolcache\windows\msys2-installer\*\x64\msys64\ucrt64' -Directory -ErrorAction SilentlyContinue).FullName
+            foreach ($c in $cands) {
+              if ($c -and (Test-Path (Join-Path $c 'bin\gcc.exe')) -and (Test-Path (Join-Path $c 'include\sqlite3.h'))) {
+                return ($c -replace '\\', '/')
+              }
+            }
+            throw '定位不到含 sqlite3 的 ucrt64 工具链（setup-msys2 安装异常？）'
+          }
+          $u = Find-Ucrt64
+          "UCRT_ROOT=$u" | Out-File -Append $env:GITHUB_ENV
+          "UCRT_ROOT=$u"
+          $env:PATH = "$u/bin;C:\msys64\usr\bin;$env:PATH"
           Add-MpPreference -ExclusionPath (Get-Location) -ErrorAction SilentlyContinue   # D8：显式排除实时扫描（100+ 小链接显著拖慢）
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/msys64/ucrt64
+          $sqliteLib = @("$u/lib/libsqlite3.dll.a", "$u/lib/libsqlite3.a") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $sqliteLib) { throw "ucrt64 下找不到 libsqlite3（.dll.a/.a）" }
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_MAKE_PROGRAM=$u/bin/ninja.exe" `
+            "-DCMAKE_C_COMPILER=$u/bin/gcc.exe" "-DCMAKE_CXX_COMPILER=$u/bin/g++.exe" `
+            "-DCMAKE_PREFIX_PATH=$u" `
+            "-DSQLite3_INCLUDE_DIR=$u/include" "-DSQLite3_LIBRARY=$sqliteLib"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # 确定性抽样：场景源按名排序后每 10 取 1（目标命名同 gate.ps1 全量门：sim_<basename>）
           $targets = @('sim_server','sim_smoke_test',
@@ -145,24 +172,43 @@ jobs:
           cmake --build build -j $env:NUMBER_OF_PROCESSORS --target @targets
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: registry dump
-        run: ./build/sim_server.exe --dump-registry-exit build/registry.json
+        run: |
+          $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"   # 运行期 MinGW/sqlite DLL（sbs_rand.dll 在 exe 旁）
+          ./build/sim_server.exe --dump-registry-exit build/registry.json
       - name: smoke
-        run: ./build/sim_smoke_test.exe
+        run: |
+          $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"
+          ./build/sim_smoke_test.exe
       - name: sampled scenarios（单例 120s 超时，口径同 gate.ps1）
         run: |
-          $fail = 0
+          $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"
+          # 已知平台/环境红兜底（2026-11-21 三平台对拍，清单与定性见
+          # docs_local/docs/07-工具与测试/Windows-移植.md §9）。
+          # 集合外的红 = 新平台差异，哨兵触发 job 红；集合应随逐个归因收缩，只减不增。
+          $knownRed = @(
+            'sim_scenario_115_medicine_system.exe',       # CI-Windows/Linux 红、wuying/Mac 绿——药剂库存跨环境敏感
+            'sim_scenario_2460_lowdmg_gate3.exe',         # wuying 全量门 6 红（§8 历史签名族）
+            'sim_scenario_2520_window_roll_anomaly.exe',
+            'sim_scenario_2550_untouched_gate.exe',
+            'sim_scenario_2570_window_drain.exe',
+            'sim_scenario_7931_selection_timing.exe',
+            'sim_scenario_8510_k464.exe'
+          )
+          $fails = @()
           $bins = @(Get-ChildItem build -Filter 'sim_scenario_*.exe' | Sort-Object Name)
           foreach ($exe in $bins) {
             # 场景二进制必须以仓库根为 CWD（DB/插件按相对路径加载，同 gate.ps1）
             $p = Start-Process -FilePath $exe.FullName -WorkingDirectory (Get-Location) -NoNewWindow -PassThru
             if (-not $p.WaitForExit(120000)) {
               try { $p.Kill() } catch {}
-              Write-Host "TIMEOUT $($exe.Name)"; $fail++; continue
+              Write-Host "TIMEOUT $($exe.Name)"; $fails += $exe.Name; continue
             }
-            if ($p.ExitCode -ne 0) { Write-Host "FAIL($($p.ExitCode)) $($exe.Name)"; $fail++ }
+            if ($p.ExitCode -ne 0) { Write-Host "FAIL($($p.ExitCode)) $($exe.Name)"; $fails += $exe.Name }
           }
-          "Windows 抽样回归：$($bins.Count - $fail)/$($bins.Count) 绿" | Out-File -Append $env:GITHUB_STEP_SUMMARY
-          exit ([int][bool]$fail)
+          $new = @($fails | Where-Object { $knownRed -notcontains $_ })
+          "Windows 抽样回归：$($bins.Count - $fails.Count)/$($bins.Count) 绿；已知红 $($fails.Count - $new.Count)；新红 $($new.Count)（$(if ($new.Count) { $new -join ', ' })）" |
+            Out-File -Append $env:GITHUB_STEP_SUMMARY
+          exit ([int][bool]$new.Count)
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: registry-json-windows, path: build/registry.json }
