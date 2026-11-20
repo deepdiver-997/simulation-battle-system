@@ -1087,7 +1087,10 @@ def import_battle_items(conn: sqlite3.Connection) -> int:
     # 官方 Battleitem 快照（hash 文件名不跨版本稳定 → glob 取最新一份）。
     snaps = sorted((ROOT / "data" / "raw" / "official").glob("Battleitem_*.json"))
     if not snaps:
-        raise FileNotFoundError("data/raw/official/Battleitem_*.json 不存在，先抓官方快照")
+        # CI/新环境没有手工重建的官方快照 → 跳过该表（battle_items 为空，
+        # 药剂族功能不可用），其余表正常入库。本地表不受影响。
+        print("[WARN] data/raw/official/Battleitem_*.json 不存在——跳过 battle_items（药剂表为空，本地环境请补快照）")
+        return 0
     items = json.loads(snaps[-1].read_text(encoding="utf-8"))["Items"]["Item"]
     cur = conn.cursor()
     n = 0
