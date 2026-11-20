@@ -122,7 +122,8 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
-          update: false          # runner 自带 C:\msys64，不滚动升级组件（对齐 ubuntu 钉版本口径）
+          release: false         # 用镜像预装 C:\msys64（release:true 会现场下载全新 MSYS2，根落 runner temp 不可钉——2026-11-21 三跑实证）
+          update: true           # 预装副本的 sync db 偏旧：不刷库 pacman -S 找不到目标包
           path-type: inherit
           install: >-
             mingw-w64-ucrt-x86_64-gcc
@@ -131,16 +132,15 @@ jobs:
             mingw-w64-ucrt-x86_64-sqlite3
       - name: configure & build（引擎 + 插件部署 + 抽样场景）
         run: |
-          # ⚠️ 三条 runner 实证（2026-11-21）：① 镜像自带 C:\mingw64 会抢编译器选择；
-          # ② setup-msys2 默认 release:true = 现场下载全新 MSYS2（根在 hostedtoolcache，
-          #    不是镜像的 C:\msys64）；③ GITHUB_PATH 前置实测不生效。
-          # → 动态定位 ucrt64 根（gcc on PATH → C:\msys64 → hostedtoolcache 扫描），
-          #   存入 GITHUB_ENV；工具链与 SQLite3 全显式绝对路径；运行 DLL 每步内联前置。
+          # ⚠️ runner 实证（2026-11-21 四跑）：① 镜像自带 C:\mingw64 会抢编译器选择；
+          # ② setup-msys2 默认 release:true 的全新 MSYS2 根在 runner temp，不可钉 →
+          #    已改 release:false 用镜像 C:\msys64；③ GITHUB_PATH 前置实测不生效。
+          # → 动态定位 ucrt64 根兜底（gcc on PATH → C:\msys64 → hostedtoolcache 扫描），
+          #   存 GITHUB_ENV；工具链与 SQLite3 全显式绝对路径；运行 DLL 每步内联前置。
           function Find-Ucrt64 {
-            $cands = @()
+            $cands = @('C:\msys64\ucrt64')
             $g = (Get-Command gcc.exe -ErrorAction SilentlyContinue).Source
             if ($g) { $cands += (Split-Path -Parent (Split-Path -Parent $g)) }
-            $cands += 'C:\msys64\ucrt64'
             $cands += (Get-ChildItem 'C:\hostedtoolcache\windows\msys2-installer\*\x64\msys64\ucrt64' -Directory -ErrorAction SilentlyContinue).FullName
             foreach ($c in $cands) {
               if ($c -and (Test-Path (Join-Path $c 'bin\gcc.exe')) -and (Test-Path (Join-Path $c 'include\sqlite3.h'))) {
