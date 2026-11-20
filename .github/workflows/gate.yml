@@ -4,7 +4,8 @@ name: gate
 # commit 缓存（见 db-refresh.yml 同一缓存键）。
 # ⚠️ runner 钉住 ubuntu-24.04（不追 latest）：构建可复现性依赖钉住的系统依赖世界，
 # latest 被 GitHub 滚动升级时会无预警破坏构建。升级 runner = 显式改动 + 跑全量门。
-# 政策（2026-11-20）：不承诺多发行版；Windows 走 MinGW（M2 已验收）；macOS 由维护者本机全量门覆盖。
+# 政策（2026-11-20）：不承诺多发行版；Windows 走 MinGW（M2 已验收，nightly 抽样门 = windows-nightly
+# job，全量对拍走 wuying 云电脑）；macOS 由维护者本机全量门覆盖。
 on:
   pull_request:
   push:
@@ -97,6 +98,70 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: registry-json, path: build/registry.json }
+
+  # Windows 门（移植决策 D1/D2 口径：MSYS2 UCRT64 MinGW + PowerShell/pwsh）。
+  # 只在 nightly 与手动触发跑，与 ubuntu build-test 并行（同 needs: db，public runner 免费）。
+  # 范围 = sim_server + smoke + 三插件部署 + 抽样场景（排序后每 10 取 1 ≈ 100 个）——
+  # 全量 982 场景对拍走 wuying 云电脑（docs_local/docs/07-工具与测试/Windows-移植.md §6），不烧 runner。
+  windows-nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: db
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: seer-db, path: scripts/data/processed }
+      - name: toolchain（MSYS2 UCRT64 MinGW-w64）
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false          # runner 自带 C:\msys64，不滚动升级组件（对齐 ubuntu 钉版本口径）
+          path-type: inherit
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-sqlite3
+      - name: PATH 前置 ucrt64（后续步骤继承；运行期还要 libstdc++/sqlite3 等 DLL）
+        run: Add-Content $env:GITHUB_PATH 'C:\msys64\ucrt64\bin'
+      - name: configure & build（引擎 + 插件部署 + 抽样场景）
+        run: |
+          Add-MpPreference -ExclusionPath (Get-Location) -ErrorAction SilentlyContinue   # D8：显式排除实时扫描（100+ 小链接显著拖慢）
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/msys64/ucrt64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # 确定性抽样：场景源按名排序后每 10 取 1（目标命名同 gate.ps1 全量门：sim_<basename>）
+          $targets = @('sim_server','sim_smoke_test',
+                       'moves_plugin_deploy','soul_plugin_deploy','suit_plugin_deploy')
+          $srcs = @(Get-ChildItem test/scenario -Filter 'scenario_*.cpp' | Sort-Object Name)
+          for ($i = 0; $i -lt $srcs.Count; $i += 10) { $targets += "sim_$($srcs[$i].BaseName)" }
+          "Windows nightly：抽样 $($targets.Count - 5)/$($srcs.Count) 场景" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          cmake --build build -j $env:NUMBER_OF_PROCESSORS --target @targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: registry dump
+        run: ./build/sim_server.exe --dump-registry-exit build/registry.json
+      - name: smoke
+        run: ./build/sim_smoke_test.exe
+      - name: sampled scenarios（单例 120s 超时，口径同 gate.ps1）
+        run: |
+          $fail = 0
+          $bins = @(Get-ChildItem build -Filter 'sim_scenario_*.exe' | Sort-Object Name)
+          foreach ($exe in $bins) {
+            # 场景二进制必须以仓库根为 CWD（DB/插件按相对路径加载，同 gate.ps1）
+            $p = Start-Process -FilePath $exe.FullName -WorkingDirectory (Get-Location) -NoNewWindow -PassThru
+            if (-not $p.WaitForExit(120000)) {
+              try { $p.Kill() } catch {}
+              Write-Host "TIMEOUT $($exe.Name)"; $fail++; continue
+            }
+            if ($p.ExitCode -ne 0) { Write-Host "FAIL($($p.ExitCode)) $($exe.Name)"; $fail++ }
+          }
+          "Windows 抽样回归：$($bins.Count - $fail)/$($bins.Count) 绿" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          exit ([int][bool]$fail)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: registry-json-windows, path: build/registry.json }
 
   classify:
     if: github.event_name == 'pull_request'
