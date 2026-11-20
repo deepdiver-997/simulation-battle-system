@@ -129,12 +129,25 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-sqlite3
-      - name: PATH 前置 ucrt64（后续步骤继承；运行期还要 libstdc++/sqlite3 等 DLL）
-        run: Add-Content $env:GITHUB_PATH 'C:\msys64\ucrt64\bin'
       - name: configure & build（引擎 + 插件部署 + 抽样场景）
         run: |
+          # runner 镜像自带 C:\mingw64 会抢编译器、GITHUB_PATH 前置实测不生效（2026-11-21
+          # 首跑实证）→ 工具链一律显式绝对路径，运行 DLL 在每步内联前置 PATH。
+          $u = 'C:/msys64/ucrt64'
+          $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
           Add-MpPreference -ExclusionPath (Get-Location) -ErrorAction SilentlyContinue   # D8：显式排除实时扫描（100+ 小链接显著拖慢）
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/msys64/ucrt64
+          if (-not (Test-Path "$u/include/sqlite3.h")) {
+            Get-ChildItem "$u/lib" -Filter '*sqlite*' -ErrorAction SilentlyContinue | Select-Object -First 5
+            throw "缺 $u/include/sqlite3.h（setup-msys2 的 pacman 安装未生效？）"
+          }
+          $sqliteLib = @("$u/lib/libsqlite3.dll.a", "$u/lib/libsqlite3.a") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $sqliteLib) { throw "ucrt64 下找不到 libsqlite3（.dll.a/.a）" }
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_MAKE_PROGRAM=$u/bin/ninja.exe" `
+            "-DCMAKE_C_COMPILER=$u/bin/gcc.exe" "-DCMAKE_CXX_COMPILER=$u/bin/g++.exe" `
+            "-DCMAKE_PREFIX_PATH=$u" `
+            "-DSQLite3_INCLUDE_DIR=$u/include" "-DSQLite3_LIBRARY=$sqliteLib"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # 确定性抽样：场景源按名排序后每 10 取 1（目标命名同 gate.ps1 全量门：sim_<basename>）
           $targets = @('sim_server','sim_smoke_test',
@@ -145,11 +158,16 @@ jobs:
           cmake --build build -j $env:NUMBER_OF_PROCESSORS --target @targets
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: registry dump
-        run: ./build/sim_server.exe --dump-registry-exit build/registry.json
+        run: |
+          $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"   # 运行期 MinGW/sqlite DLL（sbs_rand.dll 在 exe 旁）
+          ./build/sim_server.exe --dump-registry-exit build/registry.json
       - name: smoke
-        run: ./build/sim_smoke_test.exe
+        run: |
+          $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
+          ./build/sim_smoke_test.exe
       - name: sampled scenarios（单例 120s 超时，口径同 gate.ps1）
         run: |
+          $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
           $fail = 0
           $bins = @(Get-ChildItem build -Filter 'sim_scenario_*.exe' | Sort-Object Name)
           foreach ($exe in $bins) {
