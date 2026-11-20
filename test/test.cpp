@@ -245,10 +245,12 @@ int main() {
         context.clearAllEffects();  // 清掉 843 注册的回合效果
     }
 
-    // 9) 朝曦魂印(1006)：切换仍使用1号位技能
+    // 9) 朝曦魂印(9901006)：切换仍使用1号位技能
+    //    （id 用私有号段 9901xxx：撞号治理 ecfe64e8 把 1006 迁走，官方 1006=3408 另有语义；
+    //      getEffectFunc 未命中返回 noop——非空，assert 拦不住拿错函数）
     {
         SoulMarkManager& mgr = SoulMarkManager::getInstance();
-        EffectFn zhaoxi = mgr.getEffectFunc(1006);
+        EffectFn zhaoxi = mgr.getEffectFunc(9901006);
         assert(zhaoxi != nullptr);
 
         // 模拟己方(0)操作：CHOOSE_PET(0) 切到 2 号位精灵
