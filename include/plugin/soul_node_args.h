@@ -74,7 +74,8 @@ EffectResult soul_node_shim(BattleContext* ctx, const EffectArgs& bound) {
         return ::soul_node_shim<fn>(ctx, bound);                                           \
     }                                                                                      \
     [[maybe_unused]] const bool kSoulMarkTypedReg_##fn =                                   \
-        ::plugin_reg::add_soul_mark((id), &soul_mark_typed_shim_##fn);                     \
+        ::plugin_reg::add_soul_mark((id), &soul_mark_typed_shim_##fn,                       \
+            ::id_collision::source_of(__FILE__, __LINE__, "SOUL_MARK_TYPED"));             \
     }
 
 #endif  // SOUL_NODE_ARGS_H

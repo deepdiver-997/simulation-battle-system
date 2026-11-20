@@ -1,0 +1,13 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M5/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:31:48
+@@ -331,8 +331,8 @@
+     register_round_effect(ctx, State::BATTLE_ROUND_START, self, /*effect_id=*/1442, rounds,
+                           {self, pct}, &k482_1442_dodge_tick);
+     // 回退窗：ROUND_END InRounds ×rounds，同折起点（折算值进 payload 供 tick 门）。
+-    register_round_effect(ctx, State::BATTLE_ROUND_END, self, /*effect_id=*/1442, rounds,
+-                          {self, opp, pct2, anomaly, start}, &k482_1442_fallback_tick);
++    register_round_effect(ctx, State::BATTLE_ROUND_END, self, /*effect_id=*/1442, rounds + 1,
++                          {self, opp, pct2, anomaly, start}, &k482_1442_fallback_tick);  // M5
+     // miss-watcher：EVENT_SKILL_INVALID（1466/1023 通道）——register_round=折算起点
+     // + duration={0} → 恰覆盖 [start, start+{0}-1]；ON_STAGE + 实参 epoch
+     // （K461:384：默认 0 会被首 cleanup 摘除）。重施放摘旧挂新（无同源去重）。

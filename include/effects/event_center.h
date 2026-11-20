@@ -27,7 +27,16 @@ enum class EventType {
     EVENT_SHIELD_BROKEN,     // 护盾被击破（护盾消失时触发）
     EVENT_ENTER_STAGE,       // 上场
     EVENT_SWAP,              // 换宠
-    EVENT_OPPONENT_DEFEATED, // 击败对手
+    // **击败对手**（defeat_pet 死亡漏斗 DEFEATED 路径 emit，J323 2026-11-05 补——
+    // 此前全库零 emit，S14/S18 两轮复核）：与 EVENT_DEATH **同点成对**发出——
+    // DEATH 是"倒下方视角"，本条是"击败方视角"（互补信号面，同一次死亡两条）。
+    // 载荷：actor = 击败方、target = 被击败方（**side 0/1**，与 EVENT_DEATH 同口径）、
+    // slot = 槽位、cause = 成因（DefeatCause）、state = 当时 FSM 时点。
+    // ⚠️ 归因：actor = -1 = 无归因致死（异常/反伤/对账兜底直写）；actor == target =
+    // 自毁类（自爆族）——击败族监听方按 `actor == 自己 && actor != target` 过滤。
+    // 用途：官方击败族 9 条效果（187/201/218/273/345/349/362/380/525，
+    // effect_des 落档见 S18）后续批产注册本事件监听。
+    EVENT_OPPONENT_DEFEATED,
     EVENT_SKILL_INVALID,     // 技能无效/未命中（Skills::execute 中 emit，target = 对方）
     // E13 状态窗口族（2026-09-29）：
     EVENT_SKILL_USED,        // 技能**使用**即发（Skills::execute 起点 emit，miss/被封也算
@@ -157,6 +166,18 @@ enum class EventType {
     // 回合类」的检测点。注意次数型票挡一段只发一次；窗口/永久票每段都发。
     EVENT_DAMAGE_IMMUNED,
 
+    // **低概率异常附加"执行"**（apply_anomaly_impl [2.2] 与随机附加池 ② 两处裁定点，
+    // 2026-11-06 梅赫维特永沐线）：施加方**申报过概率**（chance_pct ≥ 0，闸门管道的
+    // 结构性前提）且闸门改写后的**实际概率 ≤50%** 即发——官方口径「不论这个控场是否
+    // 触发，只要对手打了带有不高于 50% 的控场效果就必定给对手挂曝」，处理发生在
+    // 裁定阶段、与是否掷中无关。载荷：actor = 施加方、target = 被施加方、
+    // amount = 改写后实际概率、chance_source = 申报来源（ChanceSource 整数值；
+    // 永沐按 source_mask 去 Trait 过滤，同亮节票形）。未申报（chance_pct < 0）不发：
+    // "闸门一概不问"是本管道的既有契约，事件面与其对齐。典型用途：永沐
+    // 「自身位于出战背包时，若对方精灵执行概率不高于 50% 的异常状态附加效果则为
+    // 对手附加曝」（K421 / chance_gate grant_yongmu 的检测锚点）。
+    EVENT_ANOMALY_ATTACH_LOW_CHANCE,
+
 };
 
 /**
@@ -213,6 +234,11 @@ struct BattleEvent {
     // 用途：前端事件带"谁使用了哪个技能"与命中动画的技能名标注。非该族事件为 -1/空。
     int skill_id = -1;
     std::string skill_name;
+    // ── 概率裁定族（2026-11-06 梅赫维特永沐线，追加在末尾——遵守本 struct 的追加纪律）──
+    // EVENT_ANOMALY_ATTACH_LOW_CHANCE 专用：申报来源（ChanceSource 的整数值
+    // Skill=0/SoulMark=1/Trait=2/Suit=3）。监听方按它做 source_mask 过滤
+    // （永沐排除 Trait 的特性主动毒/被动毒，与亮节票的 source_mask 同语义）。
+    int chance_source = -1;
     static constexpr int kNoEventState = -999;
 };
 

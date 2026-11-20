@@ -1,0 +1,5 @@
+# M1: 通道·回满量折半（denom 1→2）：T8660.a 回满断言必红
+--- baseline
++++ mutated
+- const int healed = rolled ? heal_max_hp_fraction(c, owner, /*denom=*/1) : 0;
++ const int healed = rolled ? heal_max_hp_fraction(c, owner, /*denom=*/2) : 0;

@@ -1,0 +1,8 @@
+# M7: 生命周期·536 重武装不摘旧 watcher：T8666.a 回调恰=1 必红（双投=2）
+--- baseline
++++ mutated
+-     const int old_watcher = pet_storage_int(pet, k536WatcherIdKey);
+    if (old_watcher > 0) {
+        ctx->event_center_.remove_watcher(old_watcher);
+    }
++     (void)pet_storage_int(pet, k536WatcherIdKey);

@@ -1,0 +1,11 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M3/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:30:56
+@@ -190,7 +190,7 @@
+ constexpr int k1442AuditBase = 1014420000;   // 10^9 + 1442×10^4
+ constexpr int k109AuditBase  = 1001090000;   // 10^9 + 109×10^4
+ 
+-inline int audit_key_of(int base, int owner, int slot) { return base + owner * 16 + slot; }
++inline int audit_key_of(int base, int owner, int slot) { return base + owner * 8 + slot; }  // M3
+ 
+ int storage_int_local(BattleContext* ctx, int key, int def = 0) {
+     const auto it = ctx->plugin_storage.find(key);

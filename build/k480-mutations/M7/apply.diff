@@ -1,0 +1,2 @@
+-        const int j = i + (sbs_rand() % (static_cast<int>(pool.size()) - i));
++        const int j = sbs_rand() % (static_cast<int>(pool.size()));   // MUT M7: 有放回（去重失效）

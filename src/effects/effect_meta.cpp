@@ -57,10 +57,12 @@ constexpr MetaOverride kMetaOverrides[] = {
     {1795, EffectCategory::Combo, -1, -1, "override: 动态连击 每层堕恶神祇+{1}（未实现）"},
     {1863, EffectCategory::Combo, -1, -1, "override: 动态连击 每项PP不满+{1}（未实现）"},
     {1930, EffectCategory::Combo, -1, -1, "override: 动态连击 每{0}级先制+{1}/上限{2}（未实现）"},
-    // ☆ 未实现：无参数常量（区间 5-10 写死在文案里，参数表为空）
-    {1608, EffectCategory::Combo, -1, -1, "override: 连击 5-10次（args_num=0，未实现）"},
-    {1609, EffectCategory::Combo, -1, -1, "override: 连击 5-10次（args_num=0，未实现）"},
-    {1610, EffectCategory::Combo, -1, -1, "override: 连击 5-10次（args_num=0，未实现）"},
+    // ☆ 已实现（J326 数据化，2026-11-05）：160x 连击区间 5-10 走 DB——
+    //   载体显式行参 [100,1,5,10] + custom_skill_combo_rules 规则行（tools/db_patches/j4/），
+    //   内核 combo_fixed_range 常量旁路已撤；分类仍为 Combo 不变。
+    {1608, EffectCategory::Combo, -1, -1, "override: 连击 5-10次（J326 数据化：DB 行参+规则表）"},
+    {1609, EffectCategory::Combo, -1, -1, "override: 连击 5-10次（J326 数据化：DB 行参+规则表）"},
+    {1610, EffectCategory::Combo, -1, -1, "override: 连击 5-10次（J326 数据化：DB 行参+规则表）"},
 };
 
 // 可否决性覆盖表：③层命中效果失效时是否跳过该效果。

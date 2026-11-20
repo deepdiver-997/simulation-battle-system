@@ -51,43 +51,19 @@ bool monster_has_skill(const official_data::MonsterRecord& monster, int skill_id
     );
 }
 
-// 连击模板（"1回合做 x~y 次攻击"）：effect_id → （下限参数下标, 上限参数下标）。
-//
-// 官方这一族共 20 条模板 / 158 个技能引用（`effect_info` 实测），本轮只取**静态 x~y 区间**那一层
-// （12 条）。参数位置几乎都是 `{0}-{1}`，只有 1172/1577 是 `{0}回合做{1}-{2}次`（前面多一个回合数）。
-// ⚠️ 只解析**参数下标**、不碰 `effect_info.info` 文本——文本解析是既定的脆弱层，官方换措辞就挂。
-// 认证数据层方向：将来可迁 `custom_effect_overrides(override_type='combo')`，现在先落开关表。
-// 未覆盖（见 docs/05-任务清单/待做-变威力与增减伤时点.md §2）：
+// 连击模板（"1回合做 x~y 次攻击"）的静态规则已数据化（J326，2026-11-05）：
+// 效果号 → 参数下标的 13 条索引规则（原 combo_arg_indices）与 1608/1609/1610 的
+// {5,10} 常量旁路（原 combo_fixed_range，J314）一并迁入 DB 表
+// custom_skill_combo_rules（种子：tools/db_patches/j4/1608_combo_rules.sql），
+// 160x 三载体平铺参数同步规范化 [100,1] → [100,1,5,10]。内核只保留下方 loadSkills
+// 里一条通用取参规则，不再含任何效果 id 开关。
+// 授权来源：数据刀清缴线（用户批方向）+ R4 计划 §2
+//（docs_local/docs/05-任务清单/数据刀清缴线二批计划.md，J326 首选项＝规范化行参＋
+// 通用索引规则表；备选 fixed/args 双分支线未采纳）。
+// ⚠️ 仍未覆盖（见 docs/05-任务清单/待做-变威力与增减伤时点.md §2，勿与本次混淆）：
 //   · 动态加数 484 / 1108 / 1795 / 1863 / 1930（基数固定、靠计数器加）
-//   · 连击上限修正 1500 / 1546 / 1577 / 1593 / 1627 / 1666 / 1685（需"护盾/蓄力/PP/体力/领域/异常"谓词）
-//   · 无参数常量 1608 / 1609 / 1610（区间写死在文案里）
-std::optional<std::pair<int, int>> combo_arg_indices(int effect_id) {
-    switch (effect_id) {
-        case 31:    // （无 effect_info 行的裸连击模板）经典连击族：乱突/疯狂乱抓[2,5]、
-                    // 花瓣舞[2,3]——args[0]=下限 args[1]=上限。2026-09-17 用引用它的 303 个
-                    // 技能逐个核对：全是老连击招，[lo,hi] 就是攻击次数区间
-                    //（交接文档旧表把 31 误记为"消强"——消强是 effect 33，已有实现）。
-                    // 模板本体无文本无动作 → loadSkills 在这里顺路取完连击数后，
-                    // 注册一个 no-op 处理器仅用于消音启动审计（见 moves_lib effect_31_combo_noop）。
-            return std::make_pair(0, 1);
-        case 1172:  // {0}回合做{1}~{2}次攻击，每次攻击都有{3}%的概率令自身{4}
-        case 1577:  // {0}回合做{1}-{2}次攻击，当前技能PP值小于{3}时连击上限为{4}
-        case 1627:  // {0}回合做{1}-{2}次攻击，若本回合攻击次数达到最大则必定秒杀对手
-            return std::make_pair(1, 2);
-        case 1141:  // 1回合做{0}~{1}次攻击，每次攻击{2}%令对手{3}，攻击低于{4}次则…
-        case 1454:  // 1回合做{0}-{1}次攻击，每次攻击有{2}%的概率附加{3}点固定伤害
-        case 1455:  // 1回合做{0}-{1}次攻击，若本回合攻击次数达到最大则…必定秒杀对手
-        case 1500:  // 1回合做{0}-{1}次攻击，自身处于护盾状态下连击上限为{2}
-        case 1546:  // 1回合做{0}-{1}次攻击，自身每存在1层蓄力则连击上限次数额外增加{2}次
-        case 1593:  // 1回合做{0}-{1}次攻击，自身体力低于对手时连击上限为{2}
-        case 1666:  // 1回合做{0}-{1}次攻击，自身处于领域效果下连击上限为{2}
-        case 1685:  // 1回合做{0}-{1}次攻击，对手处于异常状态时连击上限为{2}
-        case 1732:  // 激发古渊灵鱼全部的力量，1回合做{0}-{1}次攻击
-            return std::make_pair(0, 1);
-        default:
-            return std::nullopt;
-    }
-}
+//   · 连击上限修正谓词 1500 / 1546 / 1577 / 1593 / 1627 / 1666 / 1685
+//     （规则表只迁**区间下标**，「护盾/蓄力/PP/体力/领域/异常」谓词句仍是未实现层）
 
 // 效果注册时点（后续数据化：从 effect_info / side_effect 表查 register_state 列）
 State effect_register_state(int effect_id) {
@@ -100,9 +76,10 @@ State effect_register_state(int effect_id) {
             return State::BATTLE_FIRST_ATTACK_DAMAGE;
         case 2020:  // 末法迪知 "若自身处于异常状态则先制+3"：先制计算时点判定
             return State::BATTLE_FIRST_MOVE_RIGHT;
-        // （1491 的选择期路由走 loadSkills 的 selection_effects_ 硬编码表——2020 的
+        // （1491 的选择期路由走 loadSkills 的 selection_effects_ 路由表（J327 起 DB
+        //   custom_skill_selection_routes 驱动，原硬编码表已撤）——2020 的
         //   effect_register_state 路由注册进的是用技期分支，赶不上首回合先制判定，
-        //   J66 实测勘误：条件先制族须走 2298/779/1860 同款表，勿再加 case。）
+        //   J66 实测勘误：条件先制族须走选择期路由（DB 加行），勿再加 case。）
         case 168:   // J289 "若对手处于睡眠状态，则威力翻倍"：
                     // 睡眠在 ON_SKILL_HIT 的 anomaly_on_attack_hit_hook 里被清除
                     // （先于 SKILL_EFFECT，K2 口径）→ 必须注册在 ON_SKILL_HIT 桶：
@@ -203,6 +180,16 @@ State effect_register_state(int effect_id) {
                     // "未击败"与伤害量都要在伤害落地后判（1218/1533 同款归位）；
                     // 裸伤读台账，未击败 = 对手 hp>0
             return State::BATTLE_FIRST_AFTER_ACTION;
+        case 2592:  // 镇世神岳·玄武 4995 帕诺·七星阵列 38550：「未造成攻击伤害时附加
+                    // 自身防御值的固定伤害」（K451，2026-11-10；内核表项授权 = a31-orch，
+                    // 本 id 独占）。"未造成攻击伤害"判据读裸伤台账 ws.raw_attack_damage
+                    // （2440 家族同口径），台账在 ATTACK_DAMAGE 收尾才写入 → 必须
+                    // AFTER_ACTION 归位（SKILL_EFFECT 桶在管线前，台账恒 0）。
+                    // ⚠️ 建模选择记档：台账=公式值（挡伤/锁伤/护盾吸收不改它）——
+                    //   "护盾全吸收是否算未造成攻击伤害"**未官方实测**，当前按
+                    //   2440 家族口径建模（吸收不算），场景 8380 TD 已锁该选择并标注
+                    //   待官方仲裁。实现 moves_lib/k451_xuanwu_2592_2593.cpp。
+            return State::BATTLE_FIRST_AFTER_ACTION;
         default:
             return State::BATTLE_FIRST_SKILL_EFFECT;
     }
@@ -242,15 +229,43 @@ SkillExecResult default_branch_for_effect(int effect_id) {
         case 2501:
         case 2126:  // 烬灭神咒剑：技能无效时消除对手回合类/能力提升 + 焚烬
         case 136:   // 灵魂之歌：若Miss则自己恢复1/4体力
+        case 72:    // 无为·魂切：若没有命中对手则自己失去全部体力（K423 记档续单 J335；
+                    //  136 的同族反相——"没有命中"条件天然只在 miss/被封趟成立，
+                    //  语义归属 SKILL_INVALID 单桶，命中趟不注册；自灭体 =
+                    //  moves_lib/j335_miss_self_destruct.cpp）
         case 2418:  // 大赤殓：技能无效时获得对手最大体力1/3的护盾、护罩
         case 2175:  // 混色神·虚之彩：技能无效时随机附加2种非限制类异常（D27 涂蝶 4861，
                     // 实现 moves_lib/d5_D27.cpp；池 = 全池⊖限制类）
+        case 2593:  // 镇世神岳·玄武 4995 记忆铭刻 38548：「技能无效时，消除对手回合类
+                    // 效果并令对手石化」（K451，2026-11-10；内核表项授权 = a31-orch，
+                    // 本 id 独占）。整个效果就是"无效时才执行"→ SKILL_INVALID 单桶：
+                    // execute 的无效趟每次都注册本分支（registerSkillEffects=true），
+                    // **首次使用即无效也当场执行**——无 2269/1803 事件桥的"首用漏触发"
+                    // 缺口（工单明令禁桥）。命中趟不注册、插件无需判趟别。
+                    // 实现 moves_lib/k451_xuanwu_2592_2593.cpp。
+        case 2570:  // 万霆神律·雷伊 4946 雷·裂阳圣耀 38536 / 承影 38624+38630：
+                    // 「技能无效时，消除对手回合类效果并恢复自身所有体力」（args_num=0；
+                    //  K448，2026-11-10 内核表项授权 = a31-orch，本文件当前唯一获准写者）。
+                    // 2593 同款 SKILL_INVALID 单桶：无效趟每次注册 → 首次 MISS/SEALED
+                    // 也当场执行，无事件桥首用缺口。消回合=break_round_effects 真原语
+                    // （免断/NO_EFFECTS/事件由原语负责），回满=heal_amount(max) 与消除
+                    // 并列独立（免断不挡回血/封回血不挡消回合）。实现同文件。
             return SkillExecResult::SKILL_INVALID;
         case 2086:  // 空元之诗·渍：「**若技能无效**，则消除对手回合类效果、能力提升效果…」
                     // 它的整个条件就是"技能无效"→ 必须挂在 SKILL_INVALID 分支上，
                     // 否则技能 miss/被盔时该效果根本不注册（那条正是它唯一的用武之地）。
                     // 时点仍是额外行动（见 effect_register_state）——分支决定"哪一趟注册"，
                     // 时点决定"哪一趟执行"，两者正交。
+            return SkillExecResult::SKILL_INVALID;
+        // J325（2026-11-05；内核+db_patch 双授权 = a24-orch 担保延续）：case 900001 ——
+        // 「技能无效时减少对手所有技能PP1点」是 1526 后缀子句的**私有拆分 id**（数据刀
+        // 拆分范式首例：后缀迁 side_effect 表私有段 900000+、moves 链尾追加、插件
+        // SKILL_EFFECT(900001) 承接，见 tools/db_patches/j3/1526_split_900001.sql）。
+        // 纯语义天然桶位：整个效果就是"无效时才执行"→ SKILL_INVALID 单桶，命中趟
+        // 不注册、插件无需判趟别（ws.skill_exec_result 机制随之对本 id 不需要）。
+        // 历史注：1526 本体的 case → INHERENT（J321）随拆分回退默认 HIT（主句只需
+        // 命中趟，J316 原口径）；J321 双趟桶方案完成使命退役。
+        case 900001:
             return SkillExecResult::SKILL_INVALID;
         // 空元之诗·镀/柱/烙/均（2087~2090）：**固有效果**（用户 2026-09-20 口径）——
         // 只因"封效果"类机制不触发；被封属 / 打在盔上 / miss（都走 SKILL_INVALID 补偿趟）
@@ -262,6 +277,16 @@ SkillExecResult default_branch_for_effect(int effect_id) {
         case 2089:
         case 2090:
             return SkillExecResult::INHERENT;
+        // ws.skill_exec_result 机制**保留**（J325 记档）：它是趟别判读的通用能力，
+        // 1526 只是第一个被数据刀拆掉"混合"二字的，不代表机制退役。
+        // ⚠️ J328（2026-11-06）勘误：本注释曾把 2087~2090 空元之诗也概括成"两趟注册、
+        //    插件按趟别分支行为的混合效果、继续依赖 ws 结果槽"——实查
+        //    kongyuan_zhishi.cpp 与 soul_lib/vanish_kongyuan.cpp 全文
+        //    `skill_exec_result` 均为 **0 次**：四个 body 按各自条件判（镀=控制类异常 /
+        //    柱=回合类效果 / 烙=先手 / 均=体力上限比较），魂印侧读的是注册桶
+        //    （kongyuan_poem_node_registered），不读该字段。该槽的真实读者是
+        //    j_hit_all_down_window / j_combo_escalating 等"命中门"插件
+        //    （ws.skill_exec_result==HIT）。不要以此为由拆四诗或删 INHERENT。
         default:
             return SkillExecResult::HIT;
     }
@@ -476,20 +501,58 @@ bool Skills::loadSkills() {
     }
     // 解析器的分支指针指向 parsed_units_ 内元素，reserve 足量防 realloc 悬垂。
     parsed_units_.reserve(rawEffectRecords.size() * 3 + 4);
+    // 连击静态规则数据化（J326，2026-11-05）：全量装载 custom_skill_combo_rules
+    // （repository 按连接生命周期缓存）。**fail-closed**——表缺失（旧库未打 j4 迁移）、
+    // 未知 schema_version、非法下标都显式报错，绝不静默退单击。
+    // 授权来源：数据刀清缴线（用户批方向）+ R4 计划 §2（docs_local/docs/05-任务清单/
+    // 数据刀清缴线二批计划.md）。
+    if (!store.repository().load_combo_rules()) {
+        throw std::runtime_error(
+            "Skills::loadSkills: custom_skill_combo_rules 装载失败（缺 j4 迁移补丁或规则行非法，"
+            "部署须绑定 tools/db_patches/j4/1608_combo_rules.sql）: "
+            + store.repository().last_error());
+    }
+    // 选择期路由数据化（J327，2026-11-06）：全量装载 custom_skill_selection_routes
+    // （repository 按连接生命周期缓存）。**fail-closed**——表缺失（旧库未打迁移）、
+    // 未知 schema_version、phase/state/adapter 越出首版白名单都显式报错，绝不静默
+    // 回硬编码或把选择期效果当普通 HIT 分支。
+    // 授权来源：数据刀清缴线（用户批方向）+ R4 计划 §3（docs_local/docs/05-任务清单/
+    // 数据刀清缴线二批计划.md）。
+    if (!store.repository().load_selection_routes()) {
+        throw std::runtime_error(
+            "Skills::loadSkills: custom_skill_selection_routes 装载失败（缺迁移补丁或路由行非法，"
+            "部署须绑定 tools/db_patches/j4/selection_routes_29.sql）: "
+            + store.repository().last_error());
+    }
+    // 连击基数先归零再解析（与上方 usabilityEffects.clear() 同理）：同一 Skills 对象
+    // 被重载数据时上一轮的 5~10 不得残留。
+    combo_min = 1;
+    combo_max = 1;
 
     for (const auto& effect_record : rawEffectRecords) {
-        // 连击（"1回合做 x~y 次攻击"）：从本效果自己的参数里取下/上限，填技能静态基数。
+        // 连击（"1回合做 x~y 次攻击"）：查规则行（DB custom_skill_combo_rules，J326
+        // 自 combo_arg_indices/combo_fixed_range 数据化迁移）→ 从本效果自己的参数切片
+        // 取下/上限，max(1,参数) 钳制后排序写技能静态基数。1608/1609/1610 的 [5,10]
+        // 已是载体显式行参（j4 补丁 [100,1]→[100,1,5,10]），内核无 {5,10} 常量。
         // ⚠️ **不 continue**——这些模板的其余子句（如 1172 的"每次攻击X%概率令自身Y"）现在由
         //    下方注册/解析路径部分覆盖着，跳过会回归。这里只是"顺路取个数"。
-        if (const auto combo_idx = combo_arg_indices(effect_record.effect_id)) {
+        if (const official_data::ComboRuleRecord* rule =
+                store.repository().find_combo_rule(effect_record.effect_id)) {
             const auto& a = effect_record.args;
-            const std::size_t hi = static_cast<std::size_t>(combo_idx->second);
-            if (a.size() > hi) {
-                const int lo = std::max(1, a[static_cast<std::size_t>(combo_idx->first)]);
-                const int up = std::max(1, a[hi]);
-                combo_min = std::min(lo, up);
-                combo_max = std::max(lo, up);
+            const std::size_t hi = static_cast<std::size_t>(rule->max_arg_index);
+            // 已声明规则但切片不够 = 数据/补丁不一致（如 arg_count 被清洗改回 0）。
+            // 旧内核静默跳过（单击）——J326 起 fail-closed 响亮报错（R4 §2.2）。
+            if (a.size() <= hi) {
+                throw std::runtime_error(
+                    "Skills::loadSkills: 连击规则 effect "
+                    + std::to_string(effect_record.effect_id) + " 声明下标越界（max_arg_index="
+                    + std::to_string(rule->max_arg_index) + "，实际切片 " + std::to_string(a.size())
+                    + "）——检查 j4 补丁与官方数据的 arg_count 一致性");
             }
+            const int lo = std::max(1, a[static_cast<std::size_t>(rule->min_arg_index)]);
+            const int up = std::max(1, a[hi]);
+            combo_min = std::min(lo, up);
+            combo_max = std::max(lo, up);
         }
         // 穿透类效果（697"无视伤害限制"/699"无视攻击免疫"）→ 并入本技能穿透凭证，
         // 不注册普通分支。理由：穿透在 query_usage 门判定（效果注册之前）就消费，
@@ -510,98 +573,42 @@ bool Skills::loadSkills() {
                 continue;
             }
         }
-        // 选择期先制效果 → selection_effects_（on_selected 统一注册到 MOVE_RIGHT 桶，
-        // 先手权比较前生效）。与基值先制同族——**必须在选技时决定**，注册到 SKILL_EFFECT
-        // 等执行期时点就太晚了（先手权早已结算完）。
-        //   2000 大雪纷飞/烬灭神咒剑：若对手处于能力提升状态则先制+1且必定命中
-        //   610  璨灵圣光：遇到天敌时先制+{0}
-        //   954  「若当前体力低于对手则先制+1」（协议I·激 37354 等 36 技通用模板）
-        //   1848 王·御影神罚族：对手处于能力下降状态时先制+2（神觉·米斯蒂克）
-        //   881  神火剑阵 37221：若自身处于能力下降状态则先制+3（2026-09-20 烧伤三精灵线）
-        // 一般化的"选择期效果路由"（按 EffectMeta 分类而非硬编码 id）留数据驱动后续。
-        //   1532 神游·浩渺星河：对手不存在神印则攻击必定致命一击（2026-09-22 启灵线）——
-        //        必暴写 ws.must_crit，而暴击掷点在 query_usage ①.5（ON_SKILL_HIT），
-        //        执行期桶（SKILL_EFFECT 及以后）写必暴只惠及下次攻击；MOVE_RIGHT 是
-        //        掷点前最后一个可执行时点（且其效果体运行时本轮所有提交均已应用 →
-        //        神印发布槽为新鲜值）。PP 归零半边由效果体自延后到自身行动期
-        //        （见 qiling_skills.cpp：先/后手各挂一格、只在自己那格执行）。
-        if (effect_record.effect_id == 2000 || effect_record.effect_id == 610
-            || effect_record.effect_id == 954 || effect_record.effect_id == 1848
-            || effect_record.effect_id == 881 || effect_record.effect_id == 1532
-        //   2298/779 盖亚武道：不处于能力提升状态时/对手处于能力提升状态时先制+2
-        //   （2026-10-02 J11 线：与 881 同为条件先制，点击期判定——用技后注册的
-        //   MOVE_RIGHT 节点首回合吃不到加成，选择期路由才是正位）
-        //   1860 天奔零式系：自身不处于能力提升状态时先制+1且必定命中（2026-10-02
-        //   J29 线：2298 同款选择期路由——必中写 ws.must_hit_grant 供 query_usage 消费）
-        //   454/1484/1487 条件先制族（2026-10-02 J53 线）：低体 1/{0}/半血/护盾状态
-        //   → 先制+N（881/1860 同款选择期条件先制；判据在插件 hp×denom<max /
-        //   shield_bank_.total()>0）
-            || effect_record.effect_id == 2298 || effect_record.effect_id == 779
-            || effect_record.effect_id == 1860
-            || effect_record.effect_id == 454 || effect_record.effect_id == 1484
-            || effect_record.effect_id == 1487
-        //   1491 遇到天敌时先制+1（2026-10-03 J66 线：2298 同款选择期路由——选择期判
-        //   is_predator 直加先制，本回合当次生效）
-            || effect_record.effect_id == 1491
-        //   750/1508 先出手时无视伤害限制/攻击免疫（2026-10-03 J114 线）：穿透凭证须在
-        //   query_usage 物化前就位，而"先出手"在 MOVE_RIGHT 桶（先手权比较前）判定不了
-        //   ——插件路由体在此注册 FIRST/SECOND_ACTION_START 一次性 tick，先手域 tick 内
-        //   判 acting_side_is_first 再 grant_penetration 当回合窗口（两桶对称、后手 no-op）
-            || effect_record.effect_id == 750 || effect_record.effect_id == 1508
-        //   747 自身处于能力下降时先制+{0}（2026-10-03 J74 线：2298 同款选择期路由——
-        //   条件先制族须走本表，effect_register_state case 赶不上首回合先制判定）
-            || effect_record.effect_id == 747
-        //   1527/1465 后手必暴/先手概率暴（2026-10-04 J136 线）：暴击掷点在 query_usage
-        //   ①.5 先于 SKILL_EFFECT，而先后手在 MOVE_RIGHT 桶判不了——路由体注册
-        //   SECOND/FIRST_ACTION_START 一次性 tick，先后手域内判 acting_side_is_first
-        //   再写 ws.must_crit（J114 750/1508 两级注册同构）
-            || effect_record.effect_id == 1527 || effect_record.effect_id == 1465
-        //   1243 对手处于能力下降状态时先制+1（2026-10-03 J91 线：2298 同款选择期路由，
-        //   J74 747 孪生——条件先制族须走本表）
-            || effect_record.effect_id == 1243
-        //   539 对手处于能力提升状态时先制额外+1且威力翻倍（2026-10-03 J103 线：
-        //   2298 同款选择期路由——先制半在选择期判，威力半由 body 自挂当回合
-        //   SKILL_EFFECT 节点）
-            || effect_record.effect_id == 539
-        //   958 对手处于{0}状态则先制+{1}（2026-10-03 J115 线：2298 同款选择期路由——
-        //   条件=has_active_anomaly(对手, 指定码)）
-        //   1174/1081 自身/对手处于能力提升状态则先制+2/+1（2026-10-03 J115 线：
-        //   2298/779 孪生——正槽判据 ability_levels 直读；条件先制族须走本表）
-        //   1956 若对手不处于异常状态则先制+1 / 1292 自身体力低于对手时先制+{0}
-        //   （2026-10-23 J312 线：J115 孪生——1956 判据 = 对手**任一**异常
-        //   （has_active_anomaly 扫全集 0..43，J86 同款）；1292 判据 = hp 严格小于
-        //   对手（954 同款），先制量走行参）
-            || effect_record.effect_id == 958
-            || effect_record.effect_id == 1174 || effect_record.effect_id == 1081
-            || effect_record.effect_id == 1956 || effect_record.effect_id == 1292
-        //   95 对手处于睡眠状态时致命一击率提升{0}/16（2026-10-24 J254 线：选择期路由，
-        //   2298 同款——暴击掷点在 query_usage ①.5（execute 内、所有桶之前），
-        //   SKILL_EFFECT/ON_SKILL_HIT 都晚于掷骰（168 威力写赶的是伤害管线不是掷骰），
-        //   路由体在本回合 MOVE_RIGHT 直写 ws.crit_rate_add（每回合 reset，无跨回合
-        //   泄漏）；睡眠判据 g_core->has_active_anomaly(opp,8)，J289 168 同款）
-            || effect_record.effect_id == 95) {
-            Effect sel = clone_effect(effect_record.effect_id, build_effect_args_for_skill(effect_record));
-            if (sel.logic) {
-                selection_effects_.push_back(
-                    SkillEffectNode(std::move(sel), State::BATTLE_FIRST_MOVE_RIGHT));
-            }
-            continue;
-        }
-        // 选择期"**微弱**对手则…"一族（用户 2026-09-14 定口径）：
-        //   785  若**自身**攻击对手时克制关系为微弱 → 先制+2   （判**精灵**系别）
-        //   2030 若**本次技能**微弱对手     → 先制+1   （判**技能**系别）
-        //   2490 此技能微弱对手时 → 先制+3、获得本系加成并以神灵系结算（判**技能**系别）
-        // 全族 args_num=0 → 先制数写死在文案里，插件侧是常量。
-        // ★ 判"**此技能**是否微弱"的两条（2030/2490）必须用**技能槽位的静态系别**，不能读
-        //   `ws.skill_element_view`——视图会被"以XX系别进行伤害结算"这类效果改写，读视图等于
-        //   把改写后的系别喂回判定。插件拿不到 core 内部的 `resolve_executing_skill`，
-        //   所以**把技能静态系别追加进 args**（args[2]/args[3]）由 core 喂过去，不必开 CoreApi 新槽。
-        //   785 判的是"**自身（精灵）**是否微弱"，系别在运行时从精灵系别视图取（`ws.view_elementalAttributes`），
-        //   不需要额外参数（精灵系别会被"属性反转"这类效果改，读视图才对）。
-        if (effect_record.effect_id == 785 || effect_record.effect_id == 2030
-            || effect_record.effect_id == 2490) {
+        // ── 选择期路由（J327，2026-11-06）：DB 驱动 ─────────────────────
+        // 原两段 id 开关表已数据化迁移到 custom_skill_selection_routes（27 plain +
+        // 微弱族 2030/2490 两条 skill_static_elements；种子见
+        // tools/db_patches/j4/selection_routes_29.sql）。路由行只描述"何时装槽、
+        // 如何喂参"，**不预先算死条件结果**：本处只装节点，条件判定仍由插件体在
+        // MOVE_RIGHT 桶运行时执行（不变量：on_selected → MOVE_RIGHT 桶 → 先手比较；
+        // R4 §3.3 首回合五步时序零改动）。
+        //   plain                  → 沿用本效果参数切片（[owner,target]+行参，如 610/95 的
+        //                            {0}、958 的 {0,1}；2298/2490 这类缺 side_effect 定义行
+        //                            的走 effect_info.args_num 兜底）；
+        //   skill_static_elements  → 额外注入**技能静态系别双槽** [element[0],element[1]]
+        //                            （2030/2490 判"**此技能**是否微弱"——不能读
+        //                            ws.skill_element_view，视图会被"以XX系别进行伤害结算"
+        //                            这类效果改写，读视图等于把改写后的系别喂回判定。
+        //                            插件拿不到 core 内部的 resolve_executing_skill，所以把
+        //                            技能静态系别追加进 args[2]/args[3] 由 core 喂过去，不必
+        //                            开 CoreApi 新槽。785 判"**自身（精灵）**是否微弱"，
+        //                            系别在运行时从精灵系别视图取（ws.view_elementalAttributes，
+        //                            "属性反转"这类改系别效果计入），保持 plain。）
+        // 无路由行的效果保持既有执行分支（下方 custom program / 普通注册路径）；
+        // custom program 查询仍发生在本路由**之后**（优先级不变，防插件被离线程序截走）。
+        if (const official_data::SelectionRouteRecord* route =
+                store.repository().find_selection_route(effect_record.effect_id)) {
             EffectArgs sel_args = build_effect_args_for_skill(effect_record);
-            if (effect_record.effect_id == 2030 || effect_record.effect_id == 2490) {
+            if (route->arg_adapter == official_data::kSelectionRouteAdapterStaticElements) {
+                // 首版严格仅用于零参效果（R4 §3.2）：args 固定 [owner,target,e0,e1]，
+                // 不在此解析成组件、也不读 ws.skill_element_view。
+                // 声明 static 而切片非零 = 数据/补丁不一致，fail-closed 报错。
+                if (effect_record.arg_count != 0) {
+                    throw std::runtime_error(
+                        "Skills::loadSkills: 选择期路由 effect "
+                        + std::to_string(effect_record.effect_id)
+                        + " 声明 skill_static_elements 但切片非零（arg_count="
+                        + std::to_string(effect_record.arg_count)
+                        + "）——检查 j4 补丁与官方数据的 arg_count 一致性");
+                }
                 if (sel_args.owned_int_args.size() < 4) {
                     sel_args.owned_int_args.resize(4, 0);
                 }
@@ -609,11 +616,25 @@ bool Skills::loadSkills() {
                 sel_args.owned_int_args[3] = element[1];
                 sel_args.refresh_views();
             }
+            // plain：原样切片（owner/target +2 前缀与本效果行参照旧）。
             Effect sel = clone_effect(effect_record.effect_id, std::move(sel_args));
-            if (sel.logic) {
-                selection_effects_.push_back(
-                    SkillEffectNode(std::move(sel), State::BATTLE_FIRST_MOVE_RIGHT));
+            if (!sel.logic) {
+                if (!EffectFactory::getInstance().registered_effect_ids().empty()) {
+                    // 插件层已加载（注册表非空）仍无实现 = 数据/部署不一致（路由行指向
+                    // 未注册 id）——fail-closed 响亮报错，不静默吞节点（R4 §3.2）。
+                    // ⚠️ 不能用 isInitialized() 判别：getInstance("") 也会置位（2991 实证）。
+                    throw std::runtime_error(
+                        "Skills::loadSkills: 选择期路由 effect "
+                        + std::to_string(effect_record.effect_id)
+                        + " clone 无实现（插件注册表非空但未注册该 id——检查路由行"
+                          "与插件注册一致性）");
+                }
+                // 插件层整体缺席（纯数据探针场景 071/129/2990/2991 的合法构造态）：
+                // 保持既有静默跳过语义（路由已消费、普通注册也不再进入）。
+                continue;
             }
+            selection_effects_.push_back(
+                SkillEffectNode(std::move(sel), State::BATTLE_FIRST_MOVE_RIGHT));
             continue;
         }
         // ── 认证数据层（custom_* 表）──────────────────────────────
@@ -673,8 +694,8 @@ bool Skills::loadSkills() {
         }
         Effect effect = clone_effect(effect_record.effect_id, std::move(effect_args));
         if (!effect.logic) {
-            // 未注册函数：尝试解析模板为条件效果单元（组合语法），成功则注册通用执行器
-            // （args.extra 指向 Skills::parsed_units_ 内单元）。失败维持跳过（现状）。
+            // ⚠️废弃通道（2026-11-05 裁决：保留+标注废弃+冻结扩展，禁止扩语法/新增 pattern）——未注册函数：
+            // 尝试解析模板为条件效果单元（组合语法），成功注册通用执行器（args.extra 指向 parsed_units_ 内单元），失败维持跳过。
             const int unit_idx = parse_effect_unit(effect_record.info, effect_record.args, parsed_units_);
             if (unit_idx >= 0) {
                 // 全参构造（Effect 无默认构造）：left_round=0 → 一次性（本回合有效）。

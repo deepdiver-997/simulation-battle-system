@@ -1,0 +1,28 @@
+# sbs-gateway.service — 控制台网关（对外 8070，token 鉴权）
+# 安装：cp 到 /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now sbs-gateway
+# token：/opt/sbs/sbs-gateway.env 里一行 SBS_AUTH_TOKEN=<openssl rand -hex 16>
+[Unit]
+Description=sbs web gateway (console + catalog)
+After=network.target sbs-sim.service
+Wants=sbs-sim.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sbs
+EnvironmentFile=-/opt/sbs/sbs-gateway.env
+Environment=SBS_SIM_HOST=127.0.0.1
+Environment=SBS_SIM_PORT=4399
+Environment=SBS_DB=/opt/sbs/scripts/data/processed/seer_unity.sqlite
+Environment=SBS_PETS_JSONL=/opt/sbs/reference/scrape_4399/out/pets_full.jsonl
+Environment=SBS_HUNYIN_JSONL=/opt/sbs/reference/scrape_4399/out/hunyin.jsonl
+Environment=SBS_REGISTRY_JSON=/opt/sbs/build/registry.json
+Environment=SBS_SIM_BIN=/opt/sbs/sim_server
+# --auth-token 缺省读 SBS_AUTH_TOKEN 环境变量（app.py 参数默认值）
+ExecStart=/opt/sbs/venv/bin/python -m web.gateway.app --host 0.0.0.0 --port 8070
+Restart=always
+RestartSec=2
+MemoryMax=350M
+CPUWeight=80
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+--- /tmp/k483_mut/pristine.cpp	2026-11-19 01:10:29
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/resources/moves_lib/k483_burn_branch_fatigue_elem_paralyze.cpp	2026-11-19 01:12:07
+@@ -200,12 +200,12 @@
+         return false;
+     }
+     for (int i = 0; i < 2; ++i) {
+-        const int ea = ctx->ws.view_elementalAttributes[a][i];
++        const int ea = ctx->getPet(a).elementalAttributes[i];
+         if (ea <= 0) {
+             continue;   // 0/负 = 空槽哨兵，不参与"相同"判定
+         }
+         for (int j = 0; j < 2; ++j) {
+-            const int eb = ctx->ws.view_elementalAttributes[b][j];
++            const int eb = ctx->getPet(b).elementalAttributes[j];
+             if (eb > 0 && ea == eb) {
+                 return true;
+             }

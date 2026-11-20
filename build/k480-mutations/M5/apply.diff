@@ -1,0 +1,2 @@
+-        EventType::EVENT_STAT_BOOSTS_LOST, self, ctx->roundCount,
++        EventType::EVENT_STAT_REMOVED, self, ctx->roundCount,   // MUT M5: 通道置换

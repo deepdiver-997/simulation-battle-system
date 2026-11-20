@@ -1,0 +1,152 @@
+{
+  "task": "R7",
+  "format": "可执行审计契约；replay.py 读取本文件并校验产物，不是消费层实现",
+  "baseline_commit": "82d03357",
+  "authority": [
+    "〔源: docs_local/docs/05-任务清单/已收官/R组修复工单.md:43〕",
+    "〔源: docs_local/docs/05-任务清单/1296自然庇佑建模调研-2026-11-05.md:174-178〕",
+    "〔源: docs_local/docs/05-任务清单/1296自然庇佑建模调研-2026-11-05.md:304-310〕",
+    "〔源: docs_local/docs/05-任务清单/1470天赋威力调研-2026-11-05.md:235-239〕"
+  ],
+  "handoff": {
+    "document_role": "R7 最终交接契约：方法、全量统计、完整附录入口、逐项判据、待裁决与消费层建议均在本文件及引用产物中；同时作为 replay.py 的可执行验收输入",
+    "completed": "全量数据分诊、保留合法 soul 项、添加 namespace 与 moves 自动预填排除旁路；未修改实现",
+    "not_completed_by_design": "网关/前端消费层修复、运行时战斗验证、全库 moves 无效生成器、S4 用户裁决均非本单已完成事项",
+    "decision_boundary": "已确证的是证据空间归属及整效果预填与明确有效子句冲突；这不是用户批准 S4 的 A/B/C，也不替未标注的 moves 子句拍板",
+    "method": [
+      {
+        "step": "冻结原始清单与已有注册快照、记录 DB/SHA256；工具连接强制 mode=ro 与 query_only=ON，调用原 soul_effects_dump --all，再与独立 SELECT 的 2149 行逐字段比对",
+        "sources": ["〔源: docs_local/data/r7-boss-prefill-2026-11-06/replay.py:38-46〕", "〔源: docs_local/data/r7-boss-prefill-2026-11-06/replay.py:75-111〕", "〔源: docs_local/data/r7-boss-prefill-2026-11-06/replay.py:211-230〕"]
+      },
+      {
+        "step": "用真正的效果主键和两条技能 JSON 数组精确成员做全量 join；模板保留 info/analyze，soul 保留全部版本行 tips，不拿子串、行号或载体名称冒充效果身份",
+        "sources": ["〔源: docs_local/data/r7-boss-prefill-2026-11-06/replay.py:231-244〕", "〔源: src/db/official_data_repository.cpp:929-953〕"]
+      },
+      {
+        "step": "全扫 resources 注册声明、解析同文件/相对头文件常量，按宏区分注册空间并对照既有 registry；预填范围内 moves 770、soul 211 项的声明/快照差集均为零，不能把全库注册缺席解释为行为无效",
+        "sources": ["〔源: docs_local/data/r7-boss-prefill-2026-11-06/index.json:6415-6441〕"]
+      },
+      {
+        "step": "每个原 id 输出一行证据与 verdict；452 项有明确有效子句、925 项同号但语义未定、20 项本轮无 moves 同号；统计载体与注册只是附加维度，不混计为误禁总量",
+        "sources": ["〔源: docs_local/data/r7-boss-prefill-2026-11-06/replay.py:257-292〕", "〔源: docs_local/data/r7-boss-prefill-2026-11-06/index.json:798-820〕"]
+      }
+    ],
+    "appendix_navigation": {
+      "all_1397_rows": "entries.jsonl，每行一个原始 id；完整 moves 模板、全部 soul 行原文、普通/伙伴技能引用、注册来源和判词",
+      "collision_1377": "index.json -> partitions.collision_ids",
+      "confirmed_wrong_452": "index.json -> partitions.confirmed_wrong_move_prefill_ids；其中 389 末尾标记与 63 中间子句标记单列",
+      "reachable_426_and_registered_330": "index.json -> partitions.reachable_wrong_move_prefill_ids / registered_reachable_wrong_move_prefill_ids",
+      "unknown_925": "index.json -> partitions.unknown_moves_semantics_ids，不与 S4 词义裁决混同",
+      "legal_soul_1397": "index.json -> partitions.legal_soul_retained_ids；每项判据在 entries.jsonl.soul_rows.evidence",
+      "s4_pending_four": "index.json -> s4_pending；policy.json -> s4；用户决定为 null，原四项 membership 和标签不动",
+      "citation_excerpts": "source_citations.jsonl，逐个保存经 sed 核实的实际引用原文"
+    },
+    "soul_retention_caveat": {
+      "text": "1397 项对应 1506 条 soul 行，其中 1496 行有明确无效文字；21 个 id 同一行同时含有效/无效文字，7 个 id 至少一个版本行没有无效文字，均完整保留，绝不自动整枚禁用",
+      "sources": ["〔源: docs_local/data/r7-boss-prefill-2026-11-06/index.json:811-820〕", "〔源: docs_local/data/r7-boss-prefill-2026-11-06/index.json:6277-6314〕"]
+    }
+  },
+  "scope": {
+    "network": false,
+    "database": "mode=ro + PRAGMA query_only=ON；不改库；不把二进制 SQLite 伪装成可引行号的文本",
+    "source_edits": false,
+    "rebuild_or_cpp_gate": false,
+    "runtime_or_official_battle_claim": false,
+    "registry": "registry_snapshot.json 是 hub build/registry.json 的既有快照，非 R7 新构建；注册缺席不等于行为无效或未实现",
+    "source_scan": "去掉注释/字符串后读取注册宏，沿相对 include 解析简单整数常量/别名；按宏而非所在目录判空间；不把静态扫描包装成 C++ 预处理或运行测试"
+  },
+  "expected_counts": {
+    "prefill": 1397,
+    "soul_retained": 1397,
+    "collision": 1377,
+    "explicit_moves_valid": 452,
+    "unknown_moves_semantics": 925,
+    "soul_only_in_audited_move_sources": 20,
+    "collisions_with_carriers": 1314,
+    "explicit_moves_valid_with_carriers": 426,
+    "explicit_moves_valid_with_carriers_and_registry": 330,
+    "affected_distinct_moves": 6682,
+    "affected_references": 8697
+  },
+  "definitions": {
+    "collision": "原预填 ids 与 moves 空间证据的交集；moves 证据取 effect_info.id、side_effect.id、moves 两条效果数组精确成员、moves 注册快照及注册宏的并集，不能拿 moves.id 当效果 id",
+    "confirmed_wrong_prefill": "452 个同号 moves 模板 analyze 至少一个子句明确写 (boss有效)，且无无效/免疫/仅boss/对战中冲突措辞；整体摘除必然丢掉有效子句，所以判整效果自动预填误禁，不声称整条所有子句都有效或全部已有载体/handler",
+    "valid_marker_scope": "389 项有模板末尾有效标记，63 项标记在中间子句/附注之前（完整子集在 index.json）；63 项如 736/781 的消强/消回合有效，但其后封属等子句并未因此获判有效，必须继续按子句取证，不能把排除旁路当整体永远放行表",
+    "reachable_wrong_prefill": "426 个确定误判有 moves.side_effect 或 friend_side_effect 载体，故可沿明细预填路径勾入；其中 330 个同时存在 moves 注册快照和注册宏，96 个无快照注册，不把这 96 个一概判为未实现",
+    "unknown": "925 个同号模板没有上述明确有效尾注；不把无标注、未收录或未注册推成有效，也不把 soul 无效尾注推成 moves 无效",
+    "soul_only": "20 个原 ids 在本轮核对的 moves 表/数组/注册材料均未出现；限定本快照，不宣称永远不碰撞",
+    "soul_retained": "1397 个原 ids 均至少有一条同 effect_icon.effect_id 的 tips 含 boss无效，故保留作为 soul 行/子句证据索引；不等于所有版本行或整枚魂印均无效",
+    "counts_not_additive": "注册数、载体数、同号数是交叉维度；相同技能含多个错误效果，不能把引用次数当技能数"
+  },
+  "evidence_locations": {
+    "statistics": "〔源: docs_local/data/r7-boss-prefill-2026-11-06/index.json:798-820〕",
+    "nonterminal_valid_clause_full_list": "〔源: docs_local/data/r7-boss-prefill-2026-11-06/index.json:3055-3122〕",
+    "registration_comparison": "〔源: docs_local/data/r7-boss-prefill-2026-11-06/index.json:6415-6441〕",
+    "implemented_example_and_soul_row_variants": "〔源: docs_local/data/r7-boss-prefill-2026-11-06/entries.jsonl:1〕",
+    "moves1296_vs_soul1296": "〔源: docs_local/data/r7-boss-prefill-2026-11-06/entries.jsonl:502〕",
+    "moves1470_vs_soul1470": "〔源: docs_local/data/r7-boss-prefill-2026-11-06/entries.jsonl:632〕"
+  },
+  "classification": {
+    "normalization": "NFKC + lower + 去空白；不删除原文，原文完整保存在 entries.jsonl",
+    "explicit_valid_marker_regex": "\\(boss有效\\)",
+    "whole_template_validity_inferred": false,
+    "conflict_terms": ["boss无效", "boss免疫", "仅boss", "boss对战中"],
+    "soul_invalid_evidence_term": "boss无效",
+    "unknown_is_valid": false,
+    "whole_soul_disable_from_evidence_id": false,
+    "manual_disable_allowed": true,
+    "s4_pending_ids": [357, 360, 644, 738]
+  },
+  "retention_and_generator_rules": [
+    {
+      "rule": "原 ids 全部保留，但显式标 namespace=soul、粒度为证据索引；452 项只进入 moves 自动预填排除旁路，不从 soul 集合删除，不设某个数字永远放行",
+      "sources": ["〔源: resources/boss_invalid_effects.json:1-5〕", "〔源: src/entities/pet_factory.cpp:526-558〕"]
+    },
+    {
+      "rule": "未来生成器必须输出 namespace + effect_id + effect_icon 行主键/版本/子句 + 原文与来源指纹；soul 用 effect_id，不用 effect_icon.id；moves 用 effect_info.id，不能继承同号 soul 标签",
+      "sources": ["〔源: tools/soul_effects_dump.py:31-52〕", "〔源: src/db/official_data_repository.cpp:929-953〕", "〔源: include/plugin/plugin_interface.h:418-437〕"]
+    },
+    {
+      "rule": "纯无效子句才准进入对应空间的自动禁用候选；有效/无效混写、同号多行差异、残缺或免疫尾注都保留原文并送复核；同一子句所有节点保持一致，不把 1397 个证据 id 转为整枚魂印禁用集",
+      "sources": ["〔源: include/plugin/plugin_interface.h:46-50〕", "〔源: src/entities/soul_mark_manager.cpp:447-458〕", "〔源: src/entities/soul_mark_manager.cpp:525-535〕", "〔源: src/entities/pet_factory.cpp:545-558〕"]
+    },
+    {
+      "rule": "本轮分类器只审既有 1397 项，不是恢复历史生成器；朴素全文命中的额外项不自动补入，清单外与未标注均未知。旧 note 的 custom_effect_overrides 纠偏不能充当已经实现的 boss 空间过滤",
+      "sources": ["〔源: docs_local/docs/06-交接/boss免疫尾注口径裁决-证据包-v2-2026-11-05.md:52-65〕", "〔源: src/entities/skills.cpp:661-688〕"]
+    }
+  ],
+  "consumer_patch_proposal": {
+    "status": "本单未实现；现有预填误禁路径仍在，新增元数据和旁路不会被现有前端自动采用",
+    "source_of_truth": "gateway 的 REPO_ROOT 来自 app.py 所在 checkout，固定读 REPO_ROOT/resources/boss_invalid_effects.json；本单只改该源码数据，不盲改 deploy/out/resources 的打包快照，也不部署",
+    "sources": ["〔源: web/gateway/app.py:39〕", "〔源: web/gateway/app.py:223-233〕", "〔源: web/frontend/src/components/PetPicker.vue:137-142〕", "〔源: deploy/Dockerfile:31-36〕", "〔源: deploy/systemd/sbs-gateway.service:11-21〕"],
+    "gateway": "app.py:223-233 返回有版本的 spaces.moves 与 spaces.soul。moves.invalidIds 仅来自同空间明确无效证据/已批准覆盖；有有效子句时不能整体禁用，未知子句也不能据此获判有效，必要时另开子句粒度实现单。soul.evidenceIds 和行/子句证据单列。绝不能把旧 ids 减去 452 项就当剩下 945 项（925 同号未定 +20 无同号）均为 moves 无效；本轮没有完成全库 moves 无效白名单生成",
+    "frontend": "PetPicker.vue:137-142 分开解析 moves 无效集与 soul 证据集；旧响应缺 namespace 时不把 ids 回退成 moves 自动候选。178-188 只遍历当前技能 effects 与 moves.invalidIds 的交集，并排除有当前明确有效证据的项；标识与预填共用同空间判据",
+    "catalog": "catalog.py:273-289 把普通/伙伴两条效果数组都放进明细，本轮载体统计覆盖二者，未来 UI 回归不得漏伙伴链",
+    "manual": "保留 PetPicker.vue:145-150 手动 skillEffects 与 151-165 手动 soulMarks；自动预填只能增加有证据的候选，不清除用户已有手动禁用。Skills::loadSkills 继续尊重手动传入列表；不在 src 硬编码 1296/1470 或 452 项永远放行",
+    "soul": "bossChallenge 仍走 soul_mark_manager 的 boss_invalid 节点过滤；不可把 soul.evidenceIds 直接抄到 disabledEffects.soulMarks 整枚摘除。行版本、有效/无效子句和 owner/target 语义需单独遵守既有选择与裁决",
+    "regression_contract_not_executed": [
+      "1296/1470：仅开 bossChallenge 与点击预填分开验证；自动预填不加入这两个 moves 项，合法 soul 证据仍保留",
+      "手动禁用 moves1296/1470 仍可提交并由装配摘除；已有手动禁用不被自动排除表撤销",
+      "对全部 452 个已确认项验证自动候选排除，测试至少一项已注册且有载体的 moves114；其余 925 项不因缺尾注自动宣称有效",
+      "一个编号同时存在 moves/soul、同一 soul 多版本行、有效/无效混合子句、伙伴效果链、旧 API 响应均做正反对照",
+      "S4 四项 pending 状态、清单 membership 和现有插件标签不因消费层 namespace 修复被顺手改变"
+    ],
+    "behavior_sources": ["〔源: web/gateway/catalog.py:273-289〕", "〔源: web/frontend/src/components/PetPicker.vue:137-165〕", "〔源: web/frontend/src/components/PetPicker.vue:178-189〕", "〔源: src/entities/skills.cpp:477-492〕", "〔源: src/entities/soul_mark_manager.cpp:484-492〕"]
+  },
+  "s4": {
+    "decision_status": "待用户裁决；S4 收官仅指证据包完成，B 是倾向而非批准",
+    "user_decision": null,
+    "ids": [357, 360, 644, 738],
+    "change_policy": "不新增到 ids、不删其他项、不改任何插件标签；无词义统一裁决，也无 owner/target 或双方过滤新裁决",
+    "observed_current_tags_not_approval": {"357": [true, true], "360": [false], "644": [false], "738": null},
+    "sources": ["〔源: docs_local/docs/05-任务清单/已收官/S组魂印机制调研工单.md:18〕", "〔源: docs_local/docs/06-交接/boss免疫尾注口径裁决-证据包-v2-2026-11-05.md:3-6〕", "〔源: docs_local/docs/06-交接/boss免疫尾注口径裁决-证据包-v2-2026-11-05.md:186-219〕", "〔源: resources/soul_lib/k257_statdrop_paralyze.cpp:169-179〕", "〔源: resources/soul_lib/k321_pp_suppress_all.cpp:53-57〕", "〔源: resources/soul_lib/k275_immune_all_anomaly.cpp:95-100〕"]
+  },
+  "replay": {
+    "default": "python3 -I docs_local/data/r7-boss-prefill-2026-11-06/replay.py --check",
+    "write_evidence": "python3 -I docs_local/data/r7-boss-prefill-2026-11-06/replay.py --write-evidence",
+    "json_contract": "python3 -I docs_local/data/r7-boss-prefill-2026-11-06/replay.py --check --check-resource",
+    "wiki_gate": "python3 tools/check_wiki_citations.py > /tmp/r7_check.log 2>&1; echo rc=$?",
+    "gate_scope": "wiki 脚本默认只检查 10-游戏百科；本目录 JSON/JSONL 的引注、数据重放和资源 diff 由 replay.py 另外校验，不冒称默认脚本审了新产物",
+    "sources": ["〔源: tools/check_wiki_citations.py:26-40〕"]
+  }
+}

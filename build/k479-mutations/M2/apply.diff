@@ -1,0 +1,5 @@
+# M2: 回退分支·落地判据翻转（掷中也回退/掷歪不回退）：T8660.a/b 双红
+--- baseline
++++ mutated
+- if (healed <= 0) {
++ if (healed > 0) {

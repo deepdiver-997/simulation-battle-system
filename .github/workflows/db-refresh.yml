@@ -1,0 +1,43 @@
+name: db-refresh
+
+# 每日重建官方镜像数据库并刷新缓存（gate.yml 按同一镜像 commit 键命中）。
+# 数据不入库：sqlite 只活在 Actions 缓存与 artifact 里。
+on:
+  schedule:
+    - cron: '0 20 * * *'   # 04:00 +08:00，在镜像 30 分钟同步节奏之后
+  workflow_dispatch:
+
+concurrency:
+  group: db-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          SHA=$(curl -sfL https://api.github.com/repos/SeerAPI/seer-unity-assets/commits/HEAD \
+                | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: scripts/data/processed
+          key: seer-db-${{ steps.meta.outputs.sha }}
+      - if: steps.cache.outputs.cache-hit == 'true'
+        run: echo "镜像无更新（${{ steps.meta.outputs.sha }}），缓存仍新鲜，跳过"
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install seerapi-solaris
+          python3 scripts/fetch_seer_unity_bytes.py
+          python3 scripts/decode_seer_bytes.py
+          python3 scripts/import_seer_unity_sqlite.py
+          tools/db_patches/apply_all.sh
+          ls -lh scripts/data/processed/seer_unity.sqlite
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seer-db-${{ steps.meta.outputs.sha }}
+          path: scripts/data/processed/seer_unity.sqlite
+          retention-days: 14

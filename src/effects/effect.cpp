@@ -271,7 +271,10 @@ bool EffectFactory::roll_percent(int percent) {
     return (sbs_rand() % 100) < percent;
 }
 
-void EffectFactory::registerEffect(int effectId, EffectFn effect) {
+void EffectFactory::registerEffect(int effectId, EffectFn effect,
+                                   const std::string& source) {
+    id_collision::instance().record(id_collision::Category::SkillEffect, effectId,
+        source.empty() ? "EffectFactory::registerEffect [manual]" : source);
     std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
     effect_cache_[effectId] = effect;
 }
@@ -295,10 +298,8 @@ void EffectFactory::registerSoulMarkProgram(
 
 void EffectFactory::registerSkillEffect(int effect_id, EffectFn effect_fn,
                                     const std::string& source) {
-    // id 撞号审计（2026-10-22）：同 id 两处实现 = 后者**静默覆盖**前者。
-    id_collision::instance().record(id_collision::Category::SkillEffect, effect_id,
-                                    source);
-    registerEffect(effect_id, effect_fn);
+    // 标准、手动与批量入口统一在 registerEffect 记账，转发只计一次。
+    registerEffect(effect_id, effect_fn, source);
 }
 
 void EffectFactory::registerSoulMarks(
@@ -309,9 +310,8 @@ void EffectFactory::registerSoulMarks(
 
 void EffectFactory::registerSkillEffects(
     const std::vector<std::pair<int, EffectFn>>& effects) {
-    std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
     for (const auto& [id, fn] : effects) {
-        effect_cache_[id] = fn;
+        registerEffect(id, fn, "EffectFactory::registerSkillEffects [batch]");
     }
 }
 

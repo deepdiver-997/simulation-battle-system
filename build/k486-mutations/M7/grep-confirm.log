@@ -1,0 +1,1 @@
+inline int audit_key_of(int base, int owner, int slot) { return base + owner * 8 + slot; }   // M7 变异：步长减半

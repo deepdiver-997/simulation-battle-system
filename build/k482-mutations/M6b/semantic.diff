@@ -1,0 +1,20 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M6b/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:32:35
+@@ -317,7 +317,7 @@
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 2), pct2);
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 3), anomaly);
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 4), start);
+-    set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 5), start + rounds - 1);
++    set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 5), start + rounds);  // M6b
+     // 本次窗观测基线复位（旗=0 未触发；计数清零可区分"没窗"）。
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 7), 0);
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 8), -1);
+@@ -343,7 +343,7 @@
+     }
+     const int handle = ctx->event_center_.register_watcher(
+         EventType::EVENT_SKILL_INVALID, /*owner=*/self, /*register_round=*/start,
+-        /*duration_rounds=*/rounds, /*once=*/false,
++        /*duration_rounds=*/rounds + 1, /*once=*/false,
+         [self, opp, pct](BattleContext* c, const BattleEvent& ev) {
+             if (!c || ev.actor != opp || ev.target != self) {
+                 return;   // 只认对手技能 MISS 打到自己

@@ -1,0 +1,5 @@
+# M5: 概率·0% 关闸档翻转（0 必掷歪→必掷中）：T8660.b 必红
+--- baseline
++++ mutated
+-         const int rolled = roll_percent(pct) ? 1 : 0;
++         const int rolled = (pct <= 0 ? true : roll_percent(pct)) ? 1 : 0;

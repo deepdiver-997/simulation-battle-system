@@ -1,0 +1,11 @@
+# M9: 存活门·536 删除（亡语同波死亡者也复活）：T8665.b 必红
+--- baseline
++++ mutated
+-         // 存活门（K453 T8413 同判）：击败方被亡语同波击倒 → 官方「击败」=未死者触发
+        ElfPet& armed = c->getPet(owner);
+        if (armed.hp <= 0) {
+            set_storage_int_local(c, audit_key_of(k536AuditBase, owner, 4), 1);
+            return;
+        }
++         ElfPet& armed = c->getPet(owner);
+        (void)armed;

@@ -17,10 +17,15 @@ Decode Seer Unity .bytes configs into JSON using seerapi-solaris.
 
 用法：
     python decode_seer_bytes.py
+
+K450（2026-11-10）：moves.bytes 2026-11-06 布局变更（+soercemove int）由本仓库
+vendored 双布局解析器处理（scripts/solaris_overrides/moves.py，兼容新旧两代
+数据）；外部安装包修复方式见 scripts/patches/README.md。
 """
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from solaris import parse
@@ -30,6 +35,39 @@ SRC = ROOT / "data" / "raw" / "unity_bytes"
 OUT = ROOT / "data" / "raw" / "unity_json"
 
 
+def _apply_overrides(parsers: list) -> list:
+    """用仓库内 solaris_overrides 替换官方解析器（K450）。
+
+    官方包对新布局滞后时（如 moves.bytes 2026-11-06 布局），本仓库 vendored
+    副本优先——见 scripts/solaris_overrides/moves.py 头注。覆盖按
+    source_config_filename 匹配，替换后不产生重名输出文件。
+    """
+    sys.path.insert(0, str(ROOT))
+    try:
+        from solaris_overrides import get_parser_overrides
+    except ImportError as e:
+        print(f"  WARN solaris_overrides 加载失败（继续用官方解析器）: {e}")
+        return parsers
+    overrides = get_parser_overrides()
+    replaced = {}
+    out = []
+    for cls in parsers:
+        try:
+            fname = cls.source_config_filename()
+        except Exception:
+            out.append(cls)
+            continue
+        if fname in overrides:
+            new_cls = overrides.pop(fname)
+            replaced[fname] = (cls.__name__, new_cls.__name__)
+            out.append(new_cls)
+        else:
+            out.append(cls)
+    for fname, (old, new) in replaced.items():
+        print(f"  override {fname}: {old} -> {new}")
+    return out
+
+
 def main() -> int:
     if not SRC.is_dir():
         print(f"源目录不存在: {SRC}，先运行 fetch_seer_unity_bytes.py")
@@ -37,6 +75,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
 
     parsers = parse.import_parser_classes()
+    parsers = _apply_overrides(parsers)
     parsed_data = {}
     ran, failed = 0, 0
     for cls in parsers:

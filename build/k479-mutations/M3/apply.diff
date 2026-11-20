@@ -1,0 +1,8 @@
+# M3: 门·1436 归因过滤删除：T8660.d 被击败腿必红（对手击败事件也接）
+--- baseline
++++ mutated
+-         if (ev.actor != owner || ev.target != 1 - owner) {
+            return;
+        }
+        set_storage_int_local(c, audit_key_of(k1436AuditBase, owner, 0),
++         set_storage_int_local(c, audit_key_of(k1436AuditBase, owner, 0),

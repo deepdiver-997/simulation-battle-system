@@ -1,0 +1,11 @@
+--- /tmp/k483_mut/pristine.cpp	2026-11-19 01:10:29
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/resources/moves_lib/k483_burn_branch_fatigue_elem_paralyze.cpp	2026-11-19 01:12:36
+@@ -160,7 +160,7 @@
+ constexpr int k151AuditBase = 1001510100;   // 10^9 + 151×10^4 + 0100 子块（soul 151 已实现 K164）
+ constexpr int k121AuditBase = 1001210000;   // 10^9 + 121×10^4（soul 121 官方数据零行）
+ 
+-inline int audit_key_of(int base, int owner, int slot) { return base + owner * 16 + slot; }
++inline int audit_key_of(int base, int owner, int slot) { return base + owner * 8 + slot; }
+ 
+ int storage_int_local(BattleContext* ctx, int key, int def = 0) {
+     const auto it = ctx->plugin_storage.find(key);

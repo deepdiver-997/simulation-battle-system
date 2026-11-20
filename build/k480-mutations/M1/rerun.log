@@ -1,0 +1,1393 @@
+Initializing official data store with scripts/data/processed/seer_unity.sqlite
+db status: 1
+[WARN] [registry] 效果 id 撞号审计（已备案存量，不阻断启动）：
+  （无新增撞号；以下为已备案存量）
+  · [已备案 技能效果 id=1469 secondary=0] 实验遗留（batch_b/batch_c）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/batch_b_skills.cpp:2880 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/batch_c_skills.cpp:1916 [SKILL_EFFECT]
+  · [已备案 技能效果 id=881 secondary=0] 死代码（priority_when_dropped vs weak_priority）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/artemis_skills.cpp:420 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/burn_trio_skills.cpp:1564 [SKILL_EFFECT]
+  · [已备案 技能效果 id=2198 secondary=0] 实验遗留（artemis/burn_trio）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/artemis_skills.cpp:417 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/burn_trio_skills.cpp:1593 [SKILL_EFFECT]
+  · [已备案 技能效果 id=840 secondary=0] 实验遗留（d5_D16/d5_D17）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/d5_D16.cpp:243 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/d5_D17.cpp:163 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1709 secondary=0] 实验遗留（d5_D16/d5_D26）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/d5_D16.cpp:244 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/d5_D26.cpp:189 [SKILL_EFFECT]
+  · [已备案 技能效果 id=631 secondary=0] 实验遗留（j_amp_gates/j_cure_next_amp）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_amp_gates.cpp:102 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_cure_next_amp.cpp:68 [SKILL_EFFECT]
+  · [已备案 技能效果 id=949 secondary=0] 实验遗留（j_low_damage_gates2/j_lowdmg_gate3）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_low_damage_gates2.cpp:102 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_lowdmg_gate3.cpp:253 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1041 secondary=0] 实验遗留（j_low_damage_gates2/j_lowdmg_gate3）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_low_damage_gates2.cpp:103 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_lowdmg_gate3.cpp:254 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1027 secondary=0] 实验遗留（j_cond_fixed/j_noboost_window_fixed）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_cond_fixed.cpp:138 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_noboost_window_fixed.cpp:70 [SKILL_EFFECT]
+  · [已备案 技能效果 id=844 secondary=0] 实验遗留（j_crit_miss_drain/j_noncrit_drain）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_crit_miss_drain.cpp:51 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_noncrit_drain.cpp:97 [SKILL_EFFECT]
+  · [已备案 技能效果 id=853 secondary=0] 实验遗留（j_order_pink/j_pink_window2）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_order_pink.cpp:135 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_pink_window2.cpp:108 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1000 secondary=0] 实验遗留（j_hit_roll_fallback/j_prob_fallback4）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_hit_roll_fallback.cpp:121 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_prob_fallback4.cpp:108 [SKILL_EFFECT]
+  · [已备案 技能效果 id=903 secondary=0] 实验遗留（j_amp_gates/j_ramp_pink）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_amp_gates.cpp:101 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_ramp_pink.cpp:144 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1132 secondary=0] 实验遗留（j_ramp_pink/j_rand_heal_power）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_ramp_pink.cpp:145 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_rand_heal_power.cpp:76 [SKILL_EFFECT]
+  · [已备案 技能效果 id=70 secondary=0] 实验遗留（j_rand_heal_power/j_random_power）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_rand_heal_power.cpp:77 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_random_power.cpp:62 [SKILL_EFFECT]
+  · [已备案 技能效果 id=61 secondary=0] 实验遗留（j_random_power/j_randpower_untouched）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_random_power.cpp:61 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_randpower_untouched.cpp:115 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1675 secondary=0] 实验遗留（j_detect_drain3/j_reversal_healblock）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_detect_drain3.cpp:140 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_reversal_healblock.cpp:55 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1201 secondary=0] 实验遗留（j_prob_fallback4/j_second_misc_gates）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_prob_fallback4.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_second_misc_gates.cpp:215 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1318 secondary=0] 实验遗留（j_prob_fallback5/j_second_misc_gates）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_prob_fallback5.cpp:173 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_second_misc_gates.cpp:216 [SKILL_EFFECT]
+  · [已备案 技能效果 id=552 secondary=0] 实验遗留（j_status_gate_damage/j_status_gate_output）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_status_gate_damage.cpp:108 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_status_gate_output.cpp:87 [SKILL_EFFECT]
+  · [已备案 技能效果 id=194 secondary=0] 实验遗留（j_status_gate_damage/j_status_gate_output）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_status_gate_damage.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_status_gate_output.cpp:88 [SKILL_EFFECT]
+  · [已备案 技能效果 id=819 secondary=0] 实验遗留（j_randpower_untouched/j_untouched_gate）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_randpower_untouched.cpp:116 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_untouched_gate.cpp:196 [SKILL_EFFECT]
+  · [已备案 技能效果 id=725 secondary=0] 实验遗留（j_pink_window2/j_window_drain）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_pink_window2.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_window_drain.cpp:116 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1462 secondary=0] 实验遗留（j_skill_window3/j_window_fixed）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_skill_window3.cpp:199 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_window_fixed.cpp:103 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1007 secondary=0] 实验遗留（j_prob_fallback5/j_window_roll_anomaly）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_prob_fallback5.cpp:172 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/j_window_roll_anomaly.cpp:137 [SKILL_EFFECT]
+  · [已备案 技能效果 id=760 secondary=0] 死代码（damage_modifier vs 格劳瑞技能组）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/damage_modifier.cpp:429 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/resources/moves_lib/shengguang_gelaorui_skills.cpp:246 [SKILL_EFFECT]
+
+  [T8670-pre] 10 载体实际加载器切片核验 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用清穹煌明阵 对 1号机器人对手 造成红伤=3 固定伤害=0 百分比伤害=0 hp:99999->99996
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.a] 1557 正测 {0}=2 镜像锁槽 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人恒暴 使用清穹煌明阵 对 1号机器人对手 造成红伤=6 固定伤害=0 百分比伤害=0 hp:99999->99993
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.b] 1557 暴击门闭负测 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用星河幻灭冲 对 1号机器人对手 造成红伤=3 固定伤害=0 百分比伤害=0 hp:99999->99996
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.c] 1557 {0}=1 差分+探针过期 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人全槽 使用清穹煌明阵 对 1号机器人对手 造成红伤=3 固定伤害=0 百分比伤害=0 hp:99999->99996
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.d] 1557 {0}=5 全槽遍历+钳零/无限/幂等 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用清穹煌明阵 对 1号机器人对手 造成红伤=3 固定伤害=0 百分比伤害=0 hp:99999->99996
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用清穹煌明阵 对 1号机器人对手 造成红伤=3 固定伤害=0 百分比伤害=0 hp:99999->99996
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.e] 1557 同种子复现 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主0 使用清穹煌明阵 对 1号机器人印主1 造成红伤=3 固定伤害=0 百分比伤害=0 hp:99999->99996
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人印主1 使用清穹煌明阵 对 0号机器人印主0 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99999->99997
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.f] 1557 镜像 per-owner 分账 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用裂土极冲 对 1号机器人消强手 造成红伤=325 固定伤害=0 百分比伤害=0 hp:99999->99674
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人消强手 使用冰凌之光 对 0号机器人印主 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99999->99997
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用拍打 对 1号机器人消强手 造成红伤=124 固定伤害=0 百分比伤害=0 hp:99674->99550
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人消强手 使用冰凌之光 对 0号机器人印主 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99997->99995
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用拍打 对 1号机器人消强手 造成红伤=61 固定伤害=0 百分比伤害=0 hp:99550->99489
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.h] 711 正测 tick 交付强制暴+窗过期 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用裂土极冲 对 1号机器人消强手 造成红伤=325 固定伤害=0 百分比伤害=0 hp:99999->99674
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用拍打 对 1号机器人消强手 造成红伤=101 固定伤害=0 百分比伤害=0 hp:99674->99573
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.h] 711 未消基线对照 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用裂土极冲 对 1号机器人消强手 造成红伤=322 固定伤害=0 百分比伤害=0 hp:99999->99677
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人消强手 使用冰凌之光 对 0号机器人印主 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99999->99997
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用拍打 对 1号机器人消强手 造成红伤=61 固定伤害=0 百分比伤害=0 hp:99677->99616
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.i] 711 施放当回合消除负测 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用裂土极冲 对 1号机器人吸取手 造成红伤=320 固定伤害=0 百分比伤害=0 hp:99999->99679
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人吸取手 使用光震粉碎机 对 0号机器人印主 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99999->99997
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主 使用拍打 对 1号机器人吸取手 造成红伤=62 固定伤害=0 百分比伤害=0 hp:99679->99617
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.j] 711 kind 甄别（吸取不触发） 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人窗界 使用裂土极冲 对 1号机器人消强手 造成红伤=317 固定伤害=0 百分比伤害=0 hp:99999->99682
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人消强手 使用冰凌之光 对 0号机器人窗界 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99999->99997
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人窗界 使用拍打 对 1号机器人消强手 造成红伤=122 固定伤害=0 百分比伤害=0 hp:99682->99560
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人消强手 使用冰凌之光 对 0号机器人窗界 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99997->99995
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人窗界 使用拍打 对 1号机器人消强手 造成红伤=102 固定伤害=0 百分比伤害=0 hp:99560->99458
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人消强手 使用冰凌之光 对 0号机器人窗界 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99995->99993
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人窗界 使用拍打 对 1号机器人消强手 造成红伤=67 固定伤害=0 百分比伤害=0 hp:99458->99391
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.k] 711 窗界 {0}=1 override 双边界 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人消强手 使用拍打 对 1号机器人印主 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99999->99997
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人印主 使用裂土极冲 对 0号机器人消强手 造成红伤=317 固定伤害=0 百分比伤害=0 hp:99999->99682
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人消强手 使用冰凌之光 对 1号机器人印主 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99997->99995
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人印主 使用裂土极冲 对 0号机器人消强手 造成红伤=426 固定伤害=0 百分比伤害=0 hp:99682->99256
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(1,1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人印主 使用拍打 对 0号机器人消强手 造成红伤=62 固定伤害=0 百分比伤害=0 hp:99256->99194
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.l] 711 同回合直写交付 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主0 使用裂土极冲 对 1号机器人印主1 造成红伤=311 固定伤害=0 百分比伤害=0 hp:99999->99688
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人印主1 使用裂土极冲 对 0号机器人印主0 造成红伤=308 固定伤害=0 百分比伤害=0 hp:99999->99691
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主0 使用冰凌之光 对 1号机器人印主1 造成红伤=102 固定伤害=0 百分比伤害=0 hp:99688->99586
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人印主1 使用裂土极冲 对 0号机器人印主0 造成红伤=450 固定伤害=0 百分比伤害=0 hp:99691->99241
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,2) p1=(1,1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主0 使用拍打 对 1号机器人印主1 造成红伤=95 固定伤害=0 百分比伤害=0 hp:99586->99491
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人印主1 使用冰凌之光 对 0号机器人印主0 造成红伤=99 固定伤害=0 百分比伤害=0 hp:99241->99142
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主0 使用裂土极冲 对 1号机器人印主1 造成红伤=442 固定伤害=0 百分比伤害=0 hp:99491->99049
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.m] 711 镜像 双交付路径+per-owner 分账 通过
+DEBUG: Game Start.
+DEBUG: Operation: Enter/Exit Stage.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,0) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主A 使用裂土极冲 对 1号机器人消强手 造成红伤=206 固定伤害=0 百分比伤害=0 hp:99999->99793
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(0,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(3,-1) p1=(1,0)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second Before Skill Hit.
+DEBUG: Battle: Second On Skill Hit.
+DEBUG: Battle: Second Skill Effect.
+DEBUG: Battle: Second Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 1号机器人消强手 使用冰凌之光 对 0号机器人印主A 造成红伤=2 固定伤害=0 百分比伤害=0 hp:99999->99997
+DEBUG: Battle: Second After Action.
+DEBUG: Battle: Second Action End.
+DEBUG: Battle: Second After Action End.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+[2026-11-18 03:52:50] [INFO] [battle] round choices ready: p0=(1,1) p1=(3,-1)
+DEBUG: Operation: Enter Stage.
+DEBUG: Battle round start.
+DEBUG: Battle: Determine First Move Right.
+DEBUG: Preemptive right determined by speed: player0 wins.
+DEBUG: Battle: First Action Start.
+DEBUG: Battle: First Before Skill Hit.
+DEBUG: Battle: First On Skill Hit.
+DEBUG: Battle: First Skill Effect.
+DEBUG: Battle: First Attack Damage.
+[2026-11-18 03:52:50] [INFO] [battle] 0号机器人印主A 使用拍打 对 1号机器人消强手 造成红伤=59 固定伤害=0 百分比伤害=0 hp:99793->99734
+DEBUG: Battle: First After Action.
+DEBUG: Battle: First Action End.
+DEBUG: Battle: First After Action End.
+DEBUG: Battle: First Extra Action.
+DEBUG: Battle: First Mover Death.
+DEBUG: Battle: Second Action Start.
+DEBUG: Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+DEBUG: Battle: Second Extra Action.
+DEBUG: Battle: Round End.
+DEBUG: Battle: Second Mover Death.
+DEBUG: Battle: Old Round End 1.
+DEBUG: Battle: Round Reduction All Round Minus.
+DEBUG: Battle: Round Reduction New Round End.
+DEBUG: Battle: Old Round End 2.
+DEBUG: Battle: Death Timing.
+DEBUG: Battle: Defeat Status.
+DEBUG: Battle: Opponent Defeat Status.
+DEBUG: Battle: New Defeat Mechanism.
+DEBUG: Operation: Protection Mechanism 2.
+DEBUG: Battle: After Defeated.
+DEBUG: Battle: After Defeating Opponent.
+DEBUG: Battle: Round Completion.
+  [T8670.n] 711 离场清理 通过
+scenario_8670 全部块通过
+SBS_SCENARIO_CHECKS=173

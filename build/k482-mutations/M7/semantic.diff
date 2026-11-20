@@ -1,0 +1,13 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M7/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:33:01
+@@ -421,8 +421,8 @@
+         EventType::EVENT_TAKE_DAMAGE, /*owner=*/self, /*register_round=*/start,
+         /*duration_rounds=*/rounds, /*once=*/false,
+         [self, opp, pct, start, hi](BattleContext* c, const BattleEvent& ev) {
+-            if (!c || ev.actor != self || ev.target != opp) {
+-                return;   // 只认自己给对手造成的伤害（对手打我/自扣/异常 tick 均非）
++            if (!c || ev.target != opp) {  // M7：actor 过滤删除
++                return;
+             }
+             if (ev.amount <= 0) {
+                 return;   // "造成伤害" = 真落地（amount=护盾/钳制后实扣，事件面内生）

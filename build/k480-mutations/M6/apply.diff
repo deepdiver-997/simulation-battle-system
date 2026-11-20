@@ -1,0 +1,2 @@
+-    if (crit) {
++    if (!crit) {   // MUT M6: 暴击门取反

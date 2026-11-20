@@ -1,0 +1,3 @@
+[CHECK_EQ FAILED] audit_int(ctx, k1557Base + 0 * 16 + 0, -1)=24  vs  mask_of(picks)=20
+  T8670.a mask=镜像预测槽（选槽可复现）
+  at /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/test/scenario/scenario_8670_k480.cpp:261

@@ -1,0 +1,2 @@
+284:    const ApplyAnomalyResult r = g_core->apply_anomaly_ancient_checked(
+285:        ctx, opp, static_cast<int>(AbnormalStatusId::Paralysis), random_anomaly_duration(),

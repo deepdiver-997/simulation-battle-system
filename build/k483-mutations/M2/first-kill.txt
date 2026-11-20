@@ -1,0 +1,3 @@
+[CHECK_EQ FAILED] end_round(ctx, 1, kFatigue)=2  vs  1=1
+  T8700.a 对手疲惫落地（end_round=rc+1=1——duration=1 直证，M-时长杀点：误用随机 2 回合则此值=2）
+  at /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/test/scenario/scenario_8700_k483.cpp:283

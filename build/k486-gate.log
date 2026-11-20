@@ -1,0 +1,171 @@
+[0;34m[gate][0m 拿到全局构建锁，进全量门（tools/night/build.sh）
+[night] 拿到构建槽 1/2（在飞≤2，本槽 -j6）
+[night] 开始构建 k486（-j6）
+[night] 构建通过，跑全量场景回归…
+Initializing official data store with scripts/data/processed/seer_unity.sqlite
+db status: 1
+[WARN] [registry] 效果 id 撞号审计（已备案存量，不阻断启动）：
+  （无新增撞号；以下为已备案存量）
+  · [已备案 技能效果 id=1469 secondary=0] 实验遗留（batch_b/batch_c）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/batch_b_skills.cpp:2880 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/batch_c_skills.cpp:1916 [SKILL_EFFECT]
+  · [已备案 技能效果 id=881 secondary=0] 死代码（priority_when_dropped vs weak_priority）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/artemis_skills.cpp:420 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/burn_trio_skills.cpp:1564 [SKILL_EFFECT]
+  · [已备案 技能效果 id=2198 secondary=0] 实验遗留（artemis/burn_trio）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/artemis_skills.cpp:417 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/burn_trio_skills.cpp:1593 [SKILL_EFFECT]
+  · [已备案 技能效果 id=840 secondary=0] 实验遗留（d5_D16/d5_D17）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D16.cpp:243 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D17.cpp:163 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1709 secondary=0] 实验遗留（d5_D16/d5_D26）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D16.cpp:244 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D26.cpp:189 [SKILL_EFFECT]
+  · [已备案 技能效果 id=631 secondary=0] 实验遗留（j_amp_gates/j_cure_next_amp）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_amp_gates.cpp:102 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_cure_next_amp.cpp:68 [SKILL_EFFECT]
+  · [已备案 技能效果 id=949 secondary=0] 实验遗留（j_low_damage_gates2/j_lowdmg_gate3）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_low_damage_gates2.cpp:102 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_lowdmg_gate3.cpp:253 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1041 secondary=0] 实验遗留（j_low_damage_gates2/j_lowdmg_gate3）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_low_damage_gates2.cpp:103 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_lowdmg_gate3.cpp:254 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1027 secondary=0] 实验遗留（j_cond_fixed/j_noboost_window_fixed）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_cond_fixed.cpp:138 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_noboost_window_fixed.cpp:70 [SKILL_EFFECT]
+  · [已备案 技能效果 id=844 secondary=0] 实验遗留（j_crit_miss_drain/j_noncrit_drain）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_crit_miss_drain.cpp:51 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_noncrit_drain.cpp:97 [SKILL_EFFECT]
+  · [已备案 技能效果 id=853 secondary=0] 实验遗留（j_order_pink/j_pink_window2）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_order_pink.cpp:135 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_pink_window2.cpp:108 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1000 secondary=0] 实验遗留（j_hit_roll_fallback/j_prob_fallback4）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_hit_roll_fallback.cpp:121 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback4.cpp:108 [SKILL_EFFECT]
+  · [已备案 技能效果 id=903 secondary=0] 实验遗留（j_amp_gates/j_ramp_pink）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_amp_gates.cpp:101 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_ramp_pink.cpp:144 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1132 secondary=0] 实验遗留（j_ramp_pink/j_rand_heal_power）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_ramp_pink.cpp:145 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_rand_heal_power.cpp:76 [SKILL_EFFECT]
+  · [已备案 技能效果 id=70 secondary=0] 实验遗留（j_rand_heal_power/j_random_power）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_rand_heal_power.cpp:77 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_random_power.cpp:62 [SKILL_EFFECT]
+  · [已备案 技能效果 id=61 secondary=0] 实验遗留（j_random_power/j_randpower_untouched）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_random_power.cpp:61 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_randpower_untouched.cpp:115 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1675 secondary=0] 实验遗留（j_detect_drain3/j_reversal_healblock）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_detect_drain3.cpp:140 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_reversal_healblock.cpp:55 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1201 secondary=0] 实验遗留（j_prob_fallback4/j_second_misc_gates）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback4.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_second_misc_gates.cpp:215 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1318 secondary=0] 实验遗留（j_prob_fallback5/j_second_misc_gates）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback5.cpp:173 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_second_misc_gates.cpp:216 [SKILL_EFFECT]
+  · [已备案 技能效果 id=552 secondary=0] 实验遗留（j_status_gate_damage/j_status_gate_output）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_damage.cpp:108 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_output.cpp:87 [SKILL_EFFECT]
+  · [已备案 技能效果 id=194 secondary=0] 实验遗留（j_status_gate_damage/j_status_gate_output）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_damage.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_output.cpp:88 [SKILL_EFFECT]
+  · [已备案 技能效果 id=819 secondary=0] 实验遗留（j_randpower_untouched/j_untouched_gate）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_randpower_untouched.cpp:116 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_untouched_gate.cpp:196 [SKILL_EFFECT]
+  · [已备案 技能效果 id=725 secondary=0] 实验遗留（j_pink_window2/j_window_drain）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_pink_window2.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_window_drain.cpp:116 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1462 secondary=0] 实验遗留（j_skill_window3/j_window_fixed）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_skill_window3.cpp:199 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_window_fixed.cpp:103 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1007 secondary=0] 实验遗留（j_prob_fallback5/j_window_roll_anomaly）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback5.cpp:172 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_window_roll_anomaly.cpp:137 [SKILL_EFFECT]
+  · [已备案 技能效果 id=760 secondary=0] 死代码（damage_modifier vs 格劳瑞技能组）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/damage_modifier.cpp:429 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/shengguang_gelaorui_skills.cpp:246 [SKILL_EFFECT]
+
+[INFO] [server] 注册表已导出 build/registry.json（moves=1601 soul=415 suit=4）
+[WARN] [server] 效果 id 撞号：新增 0 处 / 已备案存量 26 处——同 id 被多处注册，后者会静默覆盖前者：
+  （无新增撞号；以下为已备案存量）
+  · [已备案 技能效果 id=1469 secondary=0] 实验遗留（batch_b/batch_c）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/batch_b_skills.cpp:2880 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/batch_c_skills.cpp:1916 [SKILL_EFFECT]
+  · [已备案 技能效果 id=881 secondary=0] 死代码（priority_when_dropped vs weak_priority）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/artemis_skills.cpp:420 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/burn_trio_skills.cpp:1564 [SKILL_EFFECT]
+  · [已备案 技能效果 id=2198 secondary=0] 实验遗留（artemis/burn_trio）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/artemis_skills.cpp:417 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/burn_trio_skills.cpp:1593 [SKILL_EFFECT]
+  · [已备案 技能效果 id=840 secondary=0] 实验遗留（d5_D16/d5_D17）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D16.cpp:243 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D17.cpp:163 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1709 secondary=0] 实验遗留（d5_D16/d5_D26）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D16.cpp:244 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/d5_D26.cpp:189 [SKILL_EFFECT]
+  · [已备案 技能效果 id=631 secondary=0] 实验遗留（j_amp_gates/j_cure_next_amp）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_amp_gates.cpp:102 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_cure_next_amp.cpp:68 [SKILL_EFFECT]
+  · [已备案 技能效果 id=949 secondary=0] 实验遗留（j_low_damage_gates2/j_lowdmg_gate3）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_low_damage_gates2.cpp:102 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_lowdmg_gate3.cpp:253 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1041 secondary=0] 实验遗留（j_low_damage_gates2/j_lowdmg_gate3）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_low_damage_gates2.cpp:103 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_lowdmg_gate3.cpp:254 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1027 secondary=0] 实验遗留（j_cond_fixed/j_noboost_window_fixed）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_cond_fixed.cpp:138 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_noboost_window_fixed.cpp:70 [SKILL_EFFECT]
+  · [已备案 技能效果 id=844 secondary=0] 实验遗留（j_crit_miss_drain/j_noncrit_drain）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_crit_miss_drain.cpp:51 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_noncrit_drain.cpp:97 [SKILL_EFFECT]
+  · [已备案 技能效果 id=853 secondary=0] 实验遗留（j_order_pink/j_pink_window2）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_order_pink.cpp:135 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_pink_window2.cpp:108 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1000 secondary=0] 实验遗留（j_hit_roll_fallback/j_prob_fallback4）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_hit_roll_fallback.cpp:121 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback4.cpp:108 [SKILL_EFFECT]
+  · [已备案 技能效果 id=903 secondary=0] 实验遗留（j_amp_gates/j_ramp_pink）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_amp_gates.cpp:101 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_ramp_pink.cpp:144 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1132 secondary=0] 实验遗留（j_ramp_pink/j_rand_heal_power）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_ramp_pink.cpp:145 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_rand_heal_power.cpp:76 [SKILL_EFFECT]
+  · [已备案 技能效果 id=70 secondary=0] 实验遗留（j_rand_heal_power/j_random_power）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_rand_heal_power.cpp:77 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_random_power.cpp:62 [SKILL_EFFECT]
+  · [已备案 技能效果 id=61 secondary=0] 实验遗留（j_random_power/j_randpower_untouched）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_random_power.cpp:61 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_randpower_untouched.cpp:115 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1675 secondary=0] 实验遗留（j_detect_drain3/j_reversal_healblock）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_detect_drain3.cpp:140 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_reversal_healblock.cpp:55 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1201 secondary=0] 实验遗留（j_prob_fallback4/j_second_misc_gates）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback4.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_second_misc_gates.cpp:215 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1318 secondary=0] 实验遗留（j_prob_fallback5/j_second_misc_gates）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback5.cpp:173 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_second_misc_gates.cpp:216 [SKILL_EFFECT]
+  · [已备案 技能效果 id=552 secondary=0] 实验遗留（j_status_gate_damage/j_status_gate_output）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_damage.cpp:108 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_output.cpp:87 [SKILL_EFFECT]
+  · [已备案 技能效果 id=194 secondary=0] 实验遗留（j_status_gate_damage/j_status_gate_output）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_damage.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_status_gate_output.cpp:88 [SKILL_EFFECT]
+  · [已备案 技能效果 id=819 secondary=0] 实验遗留（j_randpower_untouched/j_untouched_gate）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_randpower_untouched.cpp:116 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_untouched_gate.cpp:196 [SKILL_EFFECT]
+  · [已备案 技能效果 id=725 secondary=0] 实验遗留（j_pink_window2/j_window_drain）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_pink_window2.cpp:109 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_window_drain.cpp:116 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1462 secondary=0] 实验遗留（j_skill_window3/j_window_fixed）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_skill_window3.cpp:199 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_window_fixed.cpp:103 [SKILL_EFFECT]
+  · [已备案 技能效果 id=1007 secondary=0] 实验遗留（j_prob_fallback5/j_window_roll_anomaly）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_prob_fallback5.cpp:172 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/j_window_roll_anomaly.cpp:137 [SKILL_EFFECT]
+  · [已备案 技能效果 id=760 secondary=0] 死代码（damage_modifier vs 格劳瑞技能组）（出现 2 次）
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/damage_modifier.cpp:429 [SKILL_EFFECT]
+      /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k486/resources/moves_lib/shengguang_gelaorui_skills.cpp:246 [SKILL_EFFECT]
+扫描 945 个源文件，533 个（容器, 基础键）组合。
+✓ 无跨文件同键。
+[night] ALL PASS：1018 个场景回归 + 5 个注册审计单测 + registry dump + 存储槽键扫描 OK

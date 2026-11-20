@@ -150,10 +150,12 @@ void BattleContext::init_battle() {
     install_common_trait_effects(this);
     // 死亡归因初值 -1（"无来源"）。不能靠零初始化：0 是合法方 id，会被误读成"第 0 方击杀"。
     // clearAllEffects 也复位它（连续对局复用同一 context 的场景）。落血记录一并复位。
+    // 低段抗性惩罚一并清零（曝印记线：印记插件负责战斗中写，这里只管对局复位）。
     for (int side = 0; side < 2; ++side) {
         for (int slot = 0; slot < 6; ++slot) {
             last_damage_actor[side][slot] = -1;
             last_landed_hit[side][slot] = {};
+            anomaly_resist_low_penalty[side][slot] = 0;
         }
     }
     // 套装激活（2026-09-19 套装线接手收口）：把 active_suits 的程序展开为套装桶的

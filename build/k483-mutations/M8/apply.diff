@@ -1,0 +1,11 @@
+--- /tmp/k483_mut/pristine.cpp	2026-11-19 01:10:29
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/resources/moves_lib/k483_burn_branch_fatigue_elem_paralyze.cpp	2026-11-19 01:12:51
+@@ -281,7 +281,7 @@
+     if (!same_elem) {
+         return EffectResult::kOk;   // 门闭：不调原语（slot4 缺席 vs ROLL_FAILED 分档）
+     }
+-    const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
++    const ApplyAnomalyResult r = g_core->apply_anomaly_ancient_checked(
+         ctx, opp, static_cast<int>(AbnormalStatusId::Paralysis), random_anomaly_duration(),
+         self, chance, ChanceSource::Skill);
+     set_storage_int_local(ctx, audit_key_of(k121AuditBase, self, 1),

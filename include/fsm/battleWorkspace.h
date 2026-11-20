@@ -531,6 +531,33 @@ public:
     int  guard_detect_damage[2]{};
     bool guard_detect_happened[2]{};
 
+    //========== 本回合被攻击实扣累计（回合累计查询面，K443 2026-11-09）==========
+    // 由 core 在攻击技能伤害落地收口（battleFsm.cpp `apply_resolved_damage`，正常出口与
+    // 技能无效出口都经 `finish_attack_damage` 汇到这里——**全引擎唯一写入点**）逐笔累加：
+    // 该方在本回合被攻击**实际扣掉的 HP**（护盾吸收后、钳 0 后的净掉血），多段/多次攻击
+    // 累计（+= 连加，不做链首单笔覆盖——与上面 guard_detect_damage 的"最后一笔快照"
+    // 口径刻意区分）。
+    // 用途：「反弹已受伤量」一族（929 克制族「先制-N；反弹{0}倍的伤害给对手并使自身
+    // 恢复等量体力」——出招时点**回看**本回合已受攻击实扣总量；EVENT_TAKE_DAMAGE
+    // 前看窗口只能看未来、guard_detect_damage 只有链首单笔，均不适用，见 K441 排除记档）。
+    // 口径裁决（K443 头注同款，留官方实测仲裁口子）：
+    //   · **实扣后累计**：只有真实落体力的部分入账——护盾吸收部分**不计入**（模板只说
+    //     「受到的伤害」，按实扣 HP 记）；过量击杀以钳 0 后净掉血为准。
+    //   · **"被攻击" = 攻击技能结算落地**：经 `apply_resolved_damage` 的红伤/真伤/固伤
+    //     变体都算（那是"这次攻击"本身的伤害，命中判定已在其上游）；效果侧直调
+    //     deal_damage/deal_pink_damage（附加固伤、异常扣血、弹伤反敬、属性直伤、
+    //     force_hp_to_zero 秒杀）**不在攻击结算收口上**，一律不入账。
+    //   · **按方索引**（defender side）：同回合内换宠只能经换宠操作（该方当回合不再出手），
+    //     所以"执行 929 的精灵"必是本回合全程在场的那只——方累计 ≡ 在场精灵累计；
+    //     被击杀后替补上场时 accumulator 已被新回合 reset 清零，不会把前任的血账
+    //     带给替补（回合窗语义）。
+    // ⚠️ **唯一写者 = 内核**（apply_resolved_damage）；插件层只读，禁自写绕开查询面
+    //    （效果实现套路目录 §零"禁止私造等价机制"）。
+    // ⚠️ 清零口径：全成员 NSDMI `{}` → `ws.reset()`（handle_BattleRoundStart →
+    //    resetWorkspace）每回合归零，与既有回合窗（round_effect_start_round / InRounds）
+    //    的回合边界一致；跨回合不保留。
+    int  round_taken_attack_damage[2]{};
+
     // 本次攻击**强行获得本系加成**（"获得本系属性加成"，effect 2490）。
     // ⚠️ `calculateDamage` 里 `involve()` 读的是**技能真实系别 `skill.element`**（刻意的设计：
     //    改系别只改克制、不改本系）→ "改了系别就自动吃本系加成"是**拿不到**的，故另开这个显式开关。
@@ -569,7 +596,14 @@ public:
         if (index < 0 || index >= 6) {
             throw std::out_of_range("Index out of range");
         }
-        const int level_eff = (pierce_boost && level[index] > 0) ? 0 : level[index];
+        // ★ 读端钳制（night fuzz seed 279564 首曝，#9）：等级越界此前在读端 throw
+        //   std::out_of_range——伤害结算路径的一个**读取**把整场对局（服务端则是
+        //   战斗线程）炸死。越界本身是写入侧契约破坏（应修写端），但读端钳到 ±6
+        //   保证任何越界残留只造成数值偏差、不掀桌。官方等级域 [-6,6]。
+        const int raw_level = level[index];
+        const int level_eff =
+            (pierce_boost && raw_level > 0) ? 0
+            : (raw_level < -6 ? -6 : (raw_level > 6 ? 6 : raw_level));
         // ⚠️ **体力（HP）没有能力等级**：官方能力提升状态只有 6 种（双攻双防速命中），
         //    不含体力。原实现在这里读 `view_levels[owner][5]`，而槽 5 是**命中** →
         //    等价于"体力值被命中等级缩放"，是纯粹的口径错误。
@@ -577,9 +611,6 @@ public:
         //    SPECIAL_ATTACK），所以它一直是死分支——但仍必须堵上，免得将来有人踩。
         if (i == NumericalPropertyIndex::HP) {
             return battle_attrs[owner][NumericalPropertyIndex::HP];
-        }
-        if (level[index] < -6 || level[index] > 6) {
-            throw std::out_of_range("Level out of range");
         }
         if (level_eff >= 0) {
             return static_cast<int>(battle_attrs[owner][i] * ((level_eff + 2) / 2.0));

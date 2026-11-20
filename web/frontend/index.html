@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>sbs 对战调试台</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      // 白屏排查横幅（2026-09-28）：任何未捕获错误直接显示在页面上，
+      // 避免 Safari 等浏览器运行时异常只能看到白屏、无法反馈错误内容。
+      (function () {
+        function show(msg) {
+          var el = document.getElementById('sbs-boot-error') ||
+                   document.body.appendChild(document.createElement('pre'));
+          el.id = 'sbs-boot-error';
+          el.style.cssText = 'position:fixed;inset:auto 8px 8px 8px;z-index:99999;' +
+            'background:#1a1a1a;color:#ff6b6b;padding:10px;border-radius:6px;' +
+            'font:12px/1.5 monospace;white-space:pre-wrap;max-height:40vh;overflow:auto;';
+          el.textContent += '[错误] ' + msg + '\n';
+        }
+        window.addEventListener('error', function (e) {
+          // ResizeObserver loop：el-table 监听尺寸的固有良性告警（通知下一帧才
+          // 投递完，浏览器自会重试），不影响功能——白屏横幅跳过，避免误导。
+          if (e.message && e.message.indexOf('ResizeObserver loop') === 0) return;
+          show((e.message || '未知错误') + ' @ ' + (e.filename || '') + ':' + (e.lineno || 0));
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          show('未处理的 Promise 拒绝: ' + (e.reason && (e.reason.stack || e.reason.message) || e.reason));
+        });
+      })();
+    </script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

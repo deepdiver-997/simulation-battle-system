@@ -1,0 +1,2 @@
+-        auto ce = std::make_unique<ContinuousEffect>(probe, st, self, /*duration=*/1,
++        auto ce = std::make_unique<ContinuousEffect>(probe, st, self, /*duration=*/9,   // MUT M8: 探针续命

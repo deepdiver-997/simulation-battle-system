@@ -1,10 +1,8 @@
+# ── 构建产物 / 本地环境 ──
 .vscode/
 .github/skills/
 .claude/
-build/
-# 测试全部本地维护（场景用例 + 基架在 docs_local/test/scenario/），不入库
-test/
-.gitignore
+build*/
 .DS_Store
 .git/
 !README.md
@@ -13,13 +11,28 @@ scripts/data/
 
 node_modules/
 .venv/
-# 游戏知识/参考资料（时点图、机制笔记、专栏数据、提示词），不追踪
-reference/
-# 效果插件（技能/魂印效果实现），只在本地维护，不入库
-resources/
-# 本地机制文档（官方机制理解、数据管线、效果知识库），不入库
-docs_local/
+__pycache__/
 *.dylib
-*.json*
-# clangd 索引缓存（本地生成，不追踪）
 .cache/
+
+# ── 数据库与本地脚本（机器相关，不入库）──
+# 管线 .py 已入库（2026-10-01 收窄）；data/ 大件仍忽略（见上 scripts/data/）
+
+# 前端构建产物（web/frontend/dist 由 vite 生成）
+web/frontend/dist/
+
+# ⚠️ 历史教训（2026-09-27）：
+# 本文件曾 ignore test/、resources/、docs_local/、*.json*，而这些目录**实际上全量入库**——
+# 结果新增场景/工单文档被 git add 静默跳过，两次事故（场景 137、批产工单漏提交）。
+# 规约：想忽略某目录前先 `git ls-files <dir> | wc -l` 确认它不在跟踪集里；
+# .gitignore 不再自忽略（本文件自身的改动要在 git status 里可见）。
+deploy/out/
+web/.stats.json
+web/stats.py
+
+# agent-workspace-kit 项目级个人参数（母本 .example 入库，本地副本不入库）
+tools/agents/agents.env
+tools/agents/harnesses.conf.local
+
+# agent-workspace-kit 身份文件（new-worktree 播种，永不入库）
+.agent-env

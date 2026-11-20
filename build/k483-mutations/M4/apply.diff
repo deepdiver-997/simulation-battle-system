@@ -1,0 +1,11 @@
+--- /tmp/k483_mut/pristine.cpp	2026-11-19 01:10:29
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/resources/moves_lib/k483_burn_branch_fatigue_elem_paralyze.cpp	2026-11-19 01:11:52
+@@ -272,7 +272,7 @@
+         set_storage_int_local(ctx, audit_key_of(k121AuditBase, self, 9), 1);
+         return EffectResult::kOk;
+     }
+-    const bool same_elem = k483_same_element(ctx, self, opp);
++    const bool same_elem = !k483_same_element(ctx, self, opp);
+     set_storage_int_local(ctx, audit_key_of(k121AuditBase, self, 0), same_elem ? 1 : 0);
+     set_storage_int_local(ctx, audit_key_of(k121AuditBase, self, 2), ctx->roundCount);
+     set_storage_int_local(ctx, audit_key_of(k121AuditBase, self, 3), chance);

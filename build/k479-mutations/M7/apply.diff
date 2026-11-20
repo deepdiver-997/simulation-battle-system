@@ -1,0 +1,11 @@
+# M7: 生命周期·536 窗 1→2（跨回合携带）：T8664.e 跨回合击败腿必红
+--- baseline
++++ mutated
+-         /*duration_rounds=*/1, /*once=*/false, std::move(on_defeated),
+        WatcherScope::ON_STAGE,
+        /*valid_id=*/ctx->watcher_valid_id[owner]);
+    pet.on_stage_storage[k536WatcherIdKey] = watcher_id;
++         /*duration_rounds=*/2, /*once=*/false, std::move(on_defeated),
+        WatcherScope::ON_STAGE,
+        /*valid_id=*/ctx->watcher_valid_id[owner]);
+    pet.on_stage_storage[k536WatcherIdKey] = watcher_id;

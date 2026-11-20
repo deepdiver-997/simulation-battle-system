@@ -1,0 +1,97 @@
+{
+  "task": "R7",
+  "status": "PASS",
+  "wiki": {
+    "command": "python3 tools/check_wiki_citations.py",
+    "rc": 0,
+    "errors": 0,
+    "warnings": 0,
+    "pending": 37,
+    "scope": "11 existing wiki Markdown files, not the new JSON artifacts",
+    "log": "/tmp/r7_check.log"
+  },
+  "checks": {
+    "replay": {
+      "consumer_fix_implemented": false,
+      "counts": {
+        "affected_distinct_moves": 6682,
+        "affected_references": 8697,
+        "collision": 1377,
+        "collisions_with_carriers": 1314,
+        "explicit_moves_valid": 452,
+        "explicit_moves_valid_with_carriers": 426,
+        "explicit_moves_valid_with_carriers_and_registry": 330,
+        "prefill": 1397,
+        "soul_only_in_audited_move_sources": 20,
+        "soul_retained": 1397,
+        "unknown_moves_semantics": 925
+      },
+      "mode": "check",
+      "resource_checked": true,
+      "soul_dump_rows_verified": 2149,
+      "status": "PASS",
+      "task": "R7",
+      "verified_citations": 1185
+    },
+    "json_structure": {
+      "status": "PASS",
+      "count": 1397,
+      "ids_length": 1397,
+      "moves_exclusions_count": 452,
+      "legacy_keys_unchanged": true,
+      "s4_unchanged": true,
+      "consumer_fix_implemented": false
+    },
+    "independent_sql": {
+      "status": "PASS",
+      "method": "independent SQL json_each joins, not replay classifier",
+      "collision": 1377,
+      "wrong_prefill": 452,
+      "soul_retained": 1397,
+      "reachable_effects": 426,
+      "distinct_moves": 6682,
+      "references": 8697,
+      "friend_references": 1,
+      "db_readonly": true
+    }
+  },
+  "resource_diff": {
+    "old_fields_unchanged": [
+      "source",
+      "note",
+      "count",
+      "ids"
+    ],
+    "old_ids_added": [],
+    "old_ids_removed": [],
+    "added_metadata_keys": [
+      "consumer_migration",
+      "granularity",
+      "moves_prefill_exclusions",
+      "namespace",
+      "pending_user_decision",
+      "schema_version"
+    ],
+    "moves_exclusion_rows": 452,
+    "each_exclusion_verified_against": "entries.jsonl + independent SQL",
+    "s4_ids_unchanged": [
+      357,
+      360,
+      644,
+      738
+    ]
+  },
+  "artifact_sha256": {
+    "docs_local/data/r7-boss-prefill-2026-11-06/baseline_prefill.json": "cea3176fd9d2b52672c2078c599fbc7b82b470a1573f7aebfac4c99ae5b0ea95",
+    "docs_local/data/r7-boss-prefill-2026-11-06/entries.jsonl": "acd4456cd62d70256921745ed3d43cbfe1e3d2aaba01c59f8a93b5bc44c28456",
+    "docs_local/data/r7-boss-prefill-2026-11-06/index.json": "db2a3500090d49fa7e8ecfb9d8fba7bdf4d86767e14dfd75fdd8a7d4511d9e68",
+    "docs_local/data/r7-boss-prefill-2026-11-06/policy.json": "e1cef106efa953acdd1dc93b516a40bfa27f8f9942243eb487ecc0cf86a1f906",
+    "docs_local/data/r7-boss-prefill-2026-11-06/registry_snapshot.json": "91a6103becc595a54b06ca4e95da83a4119b79d68cacdaf3ba343915e4c0d013",
+    "docs_local/data/r7-boss-prefill-2026-11-06/replay.py": "6d6d4f940c1d65b30f5383435be1df138fc8c99c1fa6367da0a2fc8a1ed2e0d1",
+    "docs_local/data/r7-boss-prefill-2026-11-06/source_citations.jsonl": "913e5e86800bf714a5fee8c8945c3f32a455dc325f1cce61d2a194bb043a1823"
+  },
+  "resource_sha256": "59b10dd6bc1dbb5702c364c1b3af3ab130df5fe1e6b4c4ee3cec7b0730058641",
+  "forbidden_source_edits": false,
+  "cpp_gate_run": false,
+  "consumer_fix_implemented": false
+}

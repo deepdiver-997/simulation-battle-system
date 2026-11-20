@@ -1,0 +1,2 @@
+-            if (ev.stat_loss_kind != 0) {
++            if (ev.stat_loss_kind < 0) {

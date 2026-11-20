@@ -244,6 +244,18 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     if (chance_pct >= 0) {
         const int final_pct = ctx->rule_center_.rewrite_anomaly_chance(
             target, actor, chance_pct, ChanceTag::AnomalyAttach, source, ctx->roundCount);
+        // 「低概率附加执行」事件面（2026-11-06，梅赫维特永沐线）：申报过概率（chance_pct
+        // >= 0）且**闸门改写后的实际概率** ≤50% 即发——官方口径「不论这个控场是否触发，
+        // 只要对手打了带有不高于 50% 的控场效果就必定给对手挂曝」（chance_gate_lib.h），
+        // 处理发生在裁定阶段，与是否掷中无关。amount = 改写后实际概率，chance_source =
+        // 申报来源（永沐按 source_mask 去 Trait 过滤，同亮节票形）。未申报（chance_pct
+        // < 0）不发：闸门一概不介入是本管道的结构性契约。
+        if (final_pct <= 50) {
+            BattleEvent low{EventType::EVENT_ANOMALY_ATTACH_LOW_CHANCE, actor, target,
+                            final_pct, static_cast<int>(ctx->currentState)};
+            low.chance_source = static_cast<int>(source);
+            ctx->event_center_.emit(low);
+        }
         if (final_pct <= 0) {
             return ApplyAnomalyResult::ROLL_FAILED;
         }
@@ -312,8 +324,16 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     // ⚠️ 古早施加（主动毒）也**无视异常抗性**（语料主动毒口径）→ Ancient 通道跳过。
     // 抗性成功：直写附加"免疫异常"异常(21, 2回合)——**击穿魂免**（不走免疫检查）；
     // 先走转化（攻击方可预置 conversion[target][21]=Y 把抵抗结果直接转成 Y）。
+    // 低段抗性惩罚（2026-11-06 曝印记线）：目标身上的 `anomaly_resist_low_penalty`
+    // 点数只作用于 **>0 且 ≤50%** 的抗性段（含全免%），曝的官方口径「不高于50%的异常
+    // 抗性减少10%（包含5%全免）」；>50% 的抗性与未配置抗性不受影响。惩罚由印记插件
+    // 维护（挂曝/消逝时刷新），kernel 不认识任何具体印记。
     if (channel == AnomalyChannel::Modern && reflect_depth == 0
-        && pet.resistance.isResistantTo(anomaly_id)) {
+        && pet.resistance.isResistantTo(
+               anomaly_id,
+               ctx->on_stage[target] >= 0 && ctx->on_stage[target] < 6
+                   ? ctx->anomaly_resist_low_penalty[target][ctx->on_stage[target]]
+                   : 0)) {
         const int resolved = resolve_anomaly_conversion(
             ctx, target, static_cast<int>(AbnormalStatusId::AbnormalImmunity));
         ctx->set_abnormal_status_end_round(target, resolved, ctx->roundCount + 2);
@@ -486,6 +506,15 @@ RandomAnomalyResult attach_random_anomalies(BattleContext* ctx,
     //    （已判定过，不能再掷一次，否则一次子句会被掷 N 次）。
     const int gated_pct = ctx->rule_center_.rewrite_anomaly_chance(
         target, actor, probability_pct, ChanceTag::AnomalyAttach, source, ctx->roundCount);
+    // 「低概率附加执行」事件面（整子句一次判定路径，与 [2.2] 同口径同注释）：
+    // 改写后实际概率 ≤50% 即发，与是否掷中无关（本路径 roll 失败时整子句早退，
+    // 事件必须在早退**之前**发）。
+    if (gated_pct <= 50) {
+        BattleEvent low{EventType::EVENT_ANOMALY_ATTACH_LOW_CHANCE, actor, target,
+                        gated_pct, static_cast<int>(ctx->currentState)};
+        low.chance_source = static_cast<int>(source);
+        ctx->event_center_.emit(low);
+    }
     if (gated_pct < 100
         && (gated_pct <= 0 || static_cast<int>(sbs_rand() % 100) >= gated_pct)) {
         return out;
@@ -2145,6 +2174,21 @@ DefeatResult defeat_pet(BattleContext* ctx, int side, int slot, int actor, Defea
     ev.slot = slot;
     ev.cause = static_cast<int>(cause);
     ctx->event_center_.emit(ev);
+    // 击败对手信号（EVENT_OPPONENT_DEFEATED，J323 2026-11-05 补 emit）——与上面
+    // EVENT_DEATH **同点成对**发出：DEATH 是"倒下方视角"，本条是"击败方视角"。
+    // 载荷与 EVENT_DEATH 同口径：actor = 击败方、target = 被击败方（side 0/1）、
+    // slot = 槽位、cause = 成因、state = 当时 FSM 时点。
+    // ⚠️ **零行为变更**（本单硬门）：当前全库零监听者——发出去没人接，只入队不改
+    // 任何流程状态；投递/drain/波次机制对无监听者事件零开销路径。
+    // 归因口径：actor = -1 = 无归因致死（异常/反伤/对账兜底 sync_pending_deaths 等
+    // 直写路径）；actor == target = 自毁类（自爆族同回合双方倒下）。官方击败族
+    // 9 条效果（187/201/218/273/345/349/362/380/525，effect_des 落档见 S18）后续
+    // 批产将注册本事件监听——监听方请按 `actor == 自己 && actor != target` 过滤。
+    BattleEvent opp{EventType::EVENT_OPPONENT_DEFEATED, actor, side, 0};
+    opp.state = ev.state;
+    opp.slot = slot;
+    opp.cause = ev.cause;
+    ctx->event_center_.emit(opp);
     return DefeatResult::DEFEATED;
 }
 

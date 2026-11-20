@@ -1,0 +1,11 @@
+# K486 底本锚定（SHA 双守卫台账，2026-11-19）
+# 底本A（变异轮底本）= baseline_source_pre_annotation.cpp（变异驱动 restore 目标）：
+#   dylib SHA d77657abcdc7914177e2f477be78e56120f4557b4276b4db79a44bf9533fefb6
+#   （build/plugins/moves_lib/liblib_1.dylib == resources/moves_lib 部署件）
+#   M1..M10/M6b 变异 SHA 均≠底本A、还原后 SHA==底本A、rerun rc=0（各 M 目录台账）。
+# 底本B（提交定稿）= final_committed_source.cpp（= A + 头注变异节回写，注释不影响
+#   行为面、场景复跑 rc=0/250 checks）：
+#   dylib SHA 05dd39b1cc59038a4c74a3db71c148cd02a6730b59e15b6c41e1158c6d55bf92
+#   （SHA 漂移来源 = 注释重编嵌入差异，行为面经复跑验证与 A 等价。）
+MOVS=1601 soul=415 suit=4 (was 1599/415/4)
+# 底本C（gate 全量门构建定稿，含句柄键注释清理）: e1e282855403237df8fa9c01882c387c4f5e2f10351de3c12d558f0bde04e317

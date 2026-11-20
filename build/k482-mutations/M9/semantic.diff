@@ -1,0 +1,20 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M9/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:34:03
+@@ -224,7 +224,7 @@
+     if (self < 0 || self > 1) {
+         return EffectResult::kOk;
+     }
+-    ctx->ws.dodge_rate[self] = pct / 100.0f;
++    ctx->ws.dodge_rate[1 - self] = pct / 100.0f;  // M9 写错边
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 6),
+                           storage_int_local(ctx, audit_key_of(k1442AuditBase, self, 6)) + 1);
+     return EffectResult::kOk;
+@@ -305,7 +305,7 @@
+                      "需要 异常码 ∈ [0,43]");
+     // 闪避面首跳：当回合立即生效（426/2067 同相位；后手当回合写 = 折算下的施放
+     // 回合余量，对手已出手 → 无 observable 面）。
+-    ctx->ws.dodge_rate[self] = pct / 100.0f;
++    ctx->ws.dodge_rate[1 - self] = pct / 100.0f;  // M9 写错边
+     // 窗口起点折算（InRounds 默认族：先手 [R,R+{0}-1]、后手顺延 [R+1,R+{0}]）。
+     const EffectWindowKind wk = (g_core && g_core->effect_window_kind)
+         ? g_core->effect_window_kind(/*effect_id=*/1442)

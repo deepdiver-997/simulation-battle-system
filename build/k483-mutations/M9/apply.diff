@@ -1,0 +1,11 @@
+--- /tmp/k483_mut/pristine.cpp	2026-11-19 01:10:29
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/resources/moves_lib/k483_burn_branch_fatigue_elem_paralyze.cpp	2026-11-19 01:13:05
+@@ -188,7 +188,7 @@
+         return false;
+     }
+     return g_core->has_active_anomaly(ctx, target,
+-                                      static_cast<int>(AbnormalStatusId::Burn));
++                                      static_cast<int>(AbnormalStatusId::Poison));
+ }
+ 
+ // ── 属性门：双方**当前视图**有共同真实属性（交集非空）。

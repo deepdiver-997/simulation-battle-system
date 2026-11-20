@@ -1,0 +1,11 @@
+--- /tmp/k483_mut/pristine.cpp	2026-11-19 01:10:29
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/resources/moves_lib/k483_burn_branch_fatigue_elem_paralyze.cpp	2026-11-19 01:11:24
+@@ -240,7 +240,7 @@
+     // "疲惫1回合" = 显式 duration=1（模板带回合数；duration<=0 才回退随机——
+     // battle_primitives [1]，显式 1 原样生效）
+     const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
+-        ctx, opp, static_cast<int>(AbnormalStatusId::Fatigue), /*duration_rounds=*/1,
++        ctx, opp, static_cast<int>(AbnormalStatusId::Fatigue), /*duration_rounds=*/random_anomaly_duration(),
+         self, chance, ChanceSource::Skill);
+     set_storage_int_local(ctx, audit_key_of(k151AuditBase, self, 0), burned ? 1 : 0);
+     set_storage_int_local(ctx, audit_key_of(k151AuditBase, self, 1),

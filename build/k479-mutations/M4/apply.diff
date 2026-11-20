@@ -1,0 +1,8 @@
+# M4: S1 特征·武装即无条件全属性（未击败也给）：T8660.c 门关整段不结算必红
+--- baseline
++++ mutated
+-     pet.on_stage_storage[k1436ArmedSlotKey] = armed_slot;
++     pet.on_stage_storage[k1436ArmedSlotKey] = armed_slot;
+    if (boost != 0) {
+        all_stats_up(ctx, owner, boost);
+    }

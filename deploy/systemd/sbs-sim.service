@@ -1,0 +1,21 @@
+# sbs-sim.service — 对战引擎（仅本机回环，网关是唯一出口）
+# 安装：cp 到 /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now sbs-sim
+[Unit]
+Description=sbs sim_server (battle engine, loopback only)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sbs
+# libsbs_rand.so（D15 SHARED RNG）与 sim_server 同目录、无 RPATH——显式给出搜索路径
+Environment=LD_LIBRARY_PATH=/opt/sbs
+# 1 核机器：战斗线程 1 个（默认 4 是给多核调试台的）
+ExecStart=/opt/sbs/sim_server --port 4399 --threads 1
+Restart=always
+RestartSec=2
+# 内存护栏：保护同机的邮件服务不被我们拖垮（OOM 时先杀我们）
+MemoryMax=400M
+CPUWeight=60
+
+[Install]
+WantedBy=multi-user.target

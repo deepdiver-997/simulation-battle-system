@@ -1,0 +1,12 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M10/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:34:31
+@@ -247,8 +247,7 @@
+     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || owner == opp) {
+         return EffectResult::kOk;
+     }
+-    if (ctx->roundCount < start) {
+-        // 后手施放回合的 ROUND_END 伪进（桶无 start 下界门，K458 缺口记档）。
++    if (false) {  // M10：伪进门删除（K458 sanctioned 下界门）
+         set_storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 15), 4);
+         return EffectResult::kOk;
+     }

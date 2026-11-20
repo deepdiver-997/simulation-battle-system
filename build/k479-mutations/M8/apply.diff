@@ -1,0 +1,5 @@
+# M8: 方向·复活对向翻转（复活自己非对手）：T8664.a 对手复活断言必红
+--- baseline
++++ mutated
+-         const int revived = g_core->revive_pet(c, foe, foe_slot, amount);
++         const int revived = g_core->revive_pet(c, owner, foe_slot, amount);

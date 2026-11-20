@@ -217,21 +217,19 @@ EffectFn SoulMarkManager::getEffectFunc(int soulmarkId) {
     return &SoulMarkManager::noop_effect;
 }
 
-void SoulMarkManager::registerEffect(int soulmarkId, EffectFn effect) {
+void SoulMarkManager::registerEffect(int soulmarkId, EffectFn effect,
+                                      const std::string& source) {
+    id_collision::instance().record(id_collision::Category::SoulMarkEffect, soulmarkId,
+        source.empty() ? "SoulMarkManager::registerEffect [manual]" : source);
     std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
     effect_cache_[soulmarkId] = effect;
 }
 
 void SoulMarkManager::registerSoulMark(int soulmark_id, EffectFn effect_fn,
                                         const std::string& source) {
-    // id 撞号审计（2026-10-22）：同 id 两处实现 = 后者**静默覆盖**前者（不报错、
-    // 不警告、行为被无声改写）——实测 id 221 被两个文件同时注册（"对手体力变一致"
-    // + "登场回血 1/10"），一个子句从未生效。这里记账，末尾统一判定。
-    // ⚠️ 分类 = 真实的 map：单效果表 effect_cache_ 与程序表 program_cache_ 是两张
-    //    独立的表 → 同 id 各注册一次**互不覆盖**，不能并成一个类别（否则误报）。
-    id_collision::instance().record(id_collision::Category::SoulMarkEffect, soulmark_id,
-                                    source);
-    registerEffect(soulmark_id, effect_fn);
+    // 单效果的全部入口统一在 registerEffect 记账，避免转发重复计数。
+    // effect_cache_ 与 program_cache_ 是独立的表，同号各注册一次不算冲突。
+    registerEffect(soulmark_id, effect_fn, source);
 }
 
 void SoulMarkManager::registerSoulMarkProgram(int soulmark_id,
@@ -281,9 +279,8 @@ void SoulMarkManager::registerSkillEffect(int effect_id, EffectFn effect_fn,
 
 void SoulMarkManager::registerSoulMarks(
     const std::vector<std::pair<int, EffectFn>>& soulmarks) {
-    std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
     for (const auto& [id, fn] : soulmarks) {
-        effect_cache_[id] = fn;
+        registerEffect(id, fn, "SoulMarkManager::registerSoulMarks [batch]");
     }
 }
 

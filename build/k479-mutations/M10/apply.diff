@@ -1,0 +1,5 @@
+# M10: 复活量·分母丢弃（半血→回满）：T8664.b 半血断言必红
+--- baseline
++++ mutated
+-         const int amount = max_hp / denom;
++         const int amount = max_hp;

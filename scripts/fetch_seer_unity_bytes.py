@@ -60,6 +60,8 @@ BATTLE_CONFIGS = [
     "mintmark",        # 刻印（培养线 2026-09-26：刻印目录；游戏内系统名 mintmark）
     "mintmarkElevare", # 刻印强化档位（等级 → 数值/描述）
     "nature",          # 性格表（培养线：25 种，五维 ±10% 修正，无体力项；官方 id 0-24）
+    "achievements",    # 成就/称号（2026-11-10 K450 补入管线：rule[].title 全量
+                       # 597 条 → title_stats 表；此前 2026-09-29 曾手工单独拉取）
 ]
 
 

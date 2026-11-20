@@ -1,0 +1,5 @@
+# M6: 键位·owner 步长归零（两侧撞键）：T8662.c 镜像腿必红
+--- baseline
++++ mutated
+- inline int audit_key_of(int base, int owner, int slot) { return base + owner * 16 + slot; }
++ inline int audit_key_of(int base, int owner, int slot) { return base + owner * 0 + slot; }

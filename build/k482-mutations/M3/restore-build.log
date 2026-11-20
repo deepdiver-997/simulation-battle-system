@@ -1,0 +1,18 @@
+[  0%] Built target sbs_rand
+[  0%] Building CXX object CMakeFiles/moves_plugin.dir/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp.o
+In file included from /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp:185:
+In file included from /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/common.h:11:
+In file included from /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/include/fsm/battleContext.h:20:
+/Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/include/fsm/battleWorkspace.h:359:40: warning: braces around scalar initializer [-Wbraced-scalar-init]
+  359 |     int skill_pp_cost_multiplier[2] = {{1}, {1}};
+      |                                        ^~~
+/Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/include/fsm/battleWorkspace.h:359:45: warning: braces around scalar initializer [-Wbraced-scalar-init]
+  359 |     int skill_pp_cost_multiplier[2] = {{1}, {1}};
+      |                                             ^~~
+2 warnings generated.
+[  0%] Linking CXX shared library plugins/moves_lib/liblib_1.dylib
+[100%] Built target moves_plugin
+[  0%] Built target sbs_rand
+[100%] Built target moves_plugin
+[100%] 部署 moves_plugin → resources/moves_lib/liblib_1.dylib
+[100%] Built target moves_plugin_deploy

@@ -1,0 +1,11 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M8/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:33:41
+@@ -445,7 +445,7 @@
+             // {1}% 申报制掷点 → 冻伤(5)（0%/100% 短路不耗 rand；时长=族约定 2）。
+             const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
+                 c, opp, static_cast<int>(AbnormalStatusId::Frostbite),
+-                random_anomaly_duration(), self, pct, ChanceSource::Skill);
++                random_anomaly_duration(), self, 100, ChanceSource::Skill);  // M8
+             set_storage_int_local(c, audit_key_of(k109AuditBase, self, 6),
+                                   k482_anomaly_landed(r) ? 1 : 0);
+             set_storage_int_local(c, audit_key_of(k109AuditBase, self, 7),

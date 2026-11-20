@@ -58,7 +58,12 @@ FINISHED                                   // 战斗结束
 
 //--- 时点覆盖 bitmap 辅助（免疫内核 coverage 用）---
 // State 枚举含 GAME_START = -1，归一化 bit = (int)State + 1。
-// 41 个状态（-1..39）落在 uint64_t 低 40 位内。
+// 42 个状态（-1..40）落在 uint64_t 低 42 位内（bit0..41：GAME_START→bit0、
+// ROUND_COMPLETION→bit40、FINISHED→bit41）。
+// 【勘误 J323 2026-11-05】旧注「41 个状态（-1..39）落低 40 位」为笔误——枚举
+// 实际到 FINISHED=40 共 42 项。勘误依据：S18 编译期 static_assert 钉死三位偏移
+// + 运行时用例实证（test/scenario/scenario_7791_round_end_order_state_bits.cpp
+// C 组：coverage_all 含 bit40/bit41）。
 inline uint64_t state_coverage_bit(State s) {
     return 1ULL << (static_cast<int>(s) + 1);
 }

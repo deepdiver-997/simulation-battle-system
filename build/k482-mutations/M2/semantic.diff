@@ -1,0 +1,13 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M2/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:30:35
+@@ -256,9 +256,7 @@
+         set_storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 15), 3);
+         return EffectResult::kOk;   // 存活门：自身已倒不回退
+     }
+-    if (storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 7)) == 1
+-        && storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 8)) == ctx->roundCount) {
+-        // 触发旗门：本回合闪避已触发（miss 观测）→ 官方「未触发则」不回退。
++    if (false) {  // M2
+         set_storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 15), 2);
+         return EffectResult::kOk;
+     }

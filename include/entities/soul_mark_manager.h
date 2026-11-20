@@ -58,7 +58,7 @@ public:
     void run_pre_battle_patches(BattleContext* ctx, PreBattlePhase phase);
 
     // 手动注册效果（不通过动态库）
-    void registerEffect(int soulmarkId, EffectFn effect);
+    void registerEffect(int soulmarkId, EffectFn effect, const std::string& source = {});
 
     // 查询魂印程序（多时点节点）。未注册程序返回 nullptr（调用方回退单效果链路）。
     const std::vector<SoulMarkNodeRef>* getSoulMarkProgram(int soulmarkId) const;

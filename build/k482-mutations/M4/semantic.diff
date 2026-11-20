@@ -1,0 +1,11 @@
+--- /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/build/k482-mutations/M4/../source-baseline.cpp	2026-11-19 00:29:53
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k482/resources/moves_lib/k482_dodge_fallback_and_damage_frostbite.cpp	2026-11-19 00:31:18
+@@ -271,7 +271,7 @@
+     }
+     // 回退掷点：{2}% 申报制（0%/100% 短路不耗 rand——battle_primitives [2.2]）。
+     const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
+-        ctx, opp, anomaly, random_anomaly_duration(), owner, pct2, ChanceSource::Skill);
++        ctx, opp, anomaly, random_anomaly_duration(), owner, 100, ChanceSource::Skill);  // M4
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 10),
+                           storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 10)) + 1);
+     set_storage_int_local(ctx, audit_key_of(k1442AuditBase, owner, 11),

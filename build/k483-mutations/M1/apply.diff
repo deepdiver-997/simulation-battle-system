@@ -1,0 +1,11 @@
+--- /tmp/k483_mut/pristine.cpp	2026-11-19 01:10:29
++++ /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k483/resources/moves_lib/k483_burn_branch_fatigue_elem_paralyze.cpp	2026-11-19 01:11:09
+@@ -236,7 +236,7 @@
+     }
+     // 烧伤门现判（分支选择器——不是开关：两支都施加，只差概率行参）
+     const bool burned = k483_target_burned(ctx, opp);
+-    const int chance = burned ? burn_pct : clean_pct;
++    const int chance = burned ? clean_pct : burn_pct;
+     // "疲惫1回合" = 显式 duration=1（模板带回合数；duration<=0 才回退随机——
+     // battle_primitives [1]，显式 1 原样生效）
+     const ApplyAnomalyResult r = g_core->apply_anomaly_checked(

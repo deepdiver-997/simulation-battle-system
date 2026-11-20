@@ -1,0 +1,2 @@
+-inline int audit_key_of(int base, int owner, int slot) { return base + owner * 16 + slot; }
++inline int audit_key_of(int base, int owner, int slot) { return base + slot; }   // MUT M10: owner 维度拉平

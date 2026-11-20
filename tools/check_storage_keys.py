@@ -67,6 +67,25 @@ INTENTIONAL_SHARED = {
         "intentional handoff：crawford 减伤桶槽位——moves 侧写 "
         "(kCrawfordPubOppReduceBase+100+owner)、soul 侧读并撤除 "
         "(+100+side)；见 resources/crawford_runtime.h 键约定段。",
+    ("plugin_storage", 4695000):
+        "intentional handoff：回体Ⅰ标记槽（4695000+side=到期回合）——K417 写 "
+        "(k417_debubite_pool.cpp 1970 附加/刷新)、J331 读/写 "
+        "(j331_marker_cond_prio.cpp 2133 门条件读、否则支附加覆写)；"
+        "K417 头注「标记槽键段即消费端对接面」记档的对接落地。",
+    ("plugin_storage", 4696000):
+        "intentional handoff：回能Ⅰ标记槽（4696000+side=到期回合）——K418 写 "
+        "(k418_puluxiutuo_pool.cpp 1944 附加/刷新)、J331 只读 "
+        "(j331_marker_cond_prio.cpp 1940 门条件)；K418 头注对接面记档的对接落地。",
+    ("plugin_storage", 4696010):
+        "intentional handoff：失能Ⅰ标记槽（4696010+side=到期回合）——K418 写 "
+        "(k418_puluxiutuo_pool.cpp 1945 附加/刷新)、J331 只读 "
+        "(j331_marker_cond_prio.cpp 1941 门条件，读对手侧)；K418 头注对接面记档"
+        "的对接落地。",
+    ("plugin_storage", 4697000):
+        "intentional handoff：梅赫维特唱词句数槽（4697000+side=句数，0/缺=无）——"
+        "K419 读 (k419_meiheweite_pool.cpp effect_2376「自身没有唱词时强化效果翻倍」)、"
+        "K421 写 (k421_meiheweite_lyrics.cpp 朝曦/眷颂获得面生产端)；K419 头注"
+        "「kLyricCountBase 槽即其对接面」记档的对接落地。",
 }
 
 RE_CONST = re.compile(

@@ -1,0 +1,3 @@
+[CHECK_EQ FAILED] audit_int(ctx, k711Base + 0 * 16 + 1, 0)=0  vs  1=1
+  T8670.h R2 窗内 kind=0 触发=1
+  at /Users/zhuhongrui/.agent-workspaces/workspaces/sbs-local/k480/test/scenario/scenario_8670_k480.cpp:454

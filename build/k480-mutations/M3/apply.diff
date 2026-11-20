@@ -1,0 +1,2 @@
+-    const int start = ctx->roundCount + 1;
++    const int start = ctx->roundCount;   // MUT M3: InRounds 化（施放当回合入窗）
