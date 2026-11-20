@@ -2,6 +2,9 @@ name: gate
 
 # 构建 + 场景回归 + PR 分类。数据库不入库：现场从社区公开镜像构建并按镜像
 # commit 缓存（见 db-refresh.yml 同一缓存键）。
+# ⚠️ runner 钉住 ubuntu-24.04（不追 latest）：构建可复现性依赖钉住的系统依赖世界，
+# latest 被 GitHub 滚动升级时会无预警破坏构建。升级 runner = 显式改动 + 跑全量门。
+# 政策（2026-11-20）：不承诺多发行版；Windows 走 MinGW（M2 已验收）；macOS 由维护者本机全量门覆盖。
 on:
   pull_request:
   push:
@@ -16,7 +19,7 @@ concurrency:
 
 jobs:
   db:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       mirror_sha: ${{ steps.meta.outputs.sha }}
     steps:
@@ -47,7 +50,7 @@ jobs:
 
   build-test:
     needs: db
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # PR 场景提取需要 diff
@@ -98,7 +101,7 @@ jobs:
   classify:
     if: github.event_name == 'pull_request'
     needs: build-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tier: ${{ steps.out.outputs.tier }}
     steps:
@@ -122,7 +125,7 @@ jobs:
   verdict:
     if: github.event_name == 'pull_request'
     needs: [build-test, classify]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: apply tier policy

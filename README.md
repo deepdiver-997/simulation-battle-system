@@ -51,6 +51,7 @@
 - **数据**：SQLite（只读查询仓库层）、nlohmann/json
 - **并发**：自定义线程池 / IO 线程池
 - **构建**：CMake (>= 3.18)
+- **构建环境承诺**：CI 钉住 ubuntu-24.04 验证（nightly 含 Windows MinGW 计划中）；Windows 原生网络层（WSAPoll）已验收。不承诺其他发行版/工具链——请优先用文档中的管线与工具链。
 
 ## 构建
 

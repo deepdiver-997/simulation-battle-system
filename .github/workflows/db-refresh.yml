@@ -2,6 +2,9 @@ name: db-refresh
 
 # 每日重建官方镜像数据库并刷新缓存（gate.yml 按同一镜像 commit 键命中）。
 # 数据不入库：sqlite 只活在 Actions 缓存与 artifact 里。
+# ⚠️ runner 钉住 ubuntu-24.04（不追 latest）：构建可复现性依赖钉住的系统依赖世界，
+# latest 被 GitHub 滚动升级时会无预警破坏构建。升级 runner = 显式改动 + 跑全量门。
+# 政策（2026-11-20）：不承诺多发行版；Windows 走 MinGW（M2 已验收）；macOS 由维护者本机全量门覆盖。
 on:
   schedule:
     - cron: '0 20 * * *'   # 04:00 +08:00，在镜像 30 分钟同步节奏之后
@@ -13,7 +16,7 @@ concurrency:
 
 jobs:
   refresh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - id: meta
