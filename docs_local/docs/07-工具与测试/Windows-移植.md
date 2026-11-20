@@ -194,3 +194,41 @@ golden 快照用于逐场景定位首个漂移时点，再按实际证据区分 
 | 2026-10-25 | **u64 修复**（64c…：MINSTD 乘法 16807UL*g_ctx 在 Windows 32 位 unsigned long 溢出，序列悄悄变质——D16 快照 610 字段唯 rand 不同当场抓获；坑 14：跨平台位宽敏感算术一律 uint64_t）→ gate **823→850/855**（27 红翻绿）；845 链对比 MATCH=815 | 快照机首战立功：抓住实现级位宽 bug + 修正 D14 的"消费序漂移"误诊（多数差异是序列错误非调用次数） |
 | 2026-10-25 | **剩余 5 红漂移签名**（FULL 全量文本字段级 diff，前时点均零差异）：2460=Windows 多触发 2500 回血（lastHeal）；2520=Windows 无异常+对方全能力-6 vs Mac 有异常不掉能力且 rand 消费 1v2；2550=Windows 多跑 500 粉伤+回血+firstExhaust；2570=纯 rand 消费 3v4（先制判定路径）；179=链已全等仍红→断言读 v1 盲区（std::any 存储/效果注册序）。另 25 条绿场景链有容差内漂移 | 同状态不同分支→条件输入在 v1 盲区（std::any 存储/桶内效果序）——M1.5 下轮靶心：盲区入链 + 按签名读效果实现逐类修 |
 | 2026-10-25 | 用户升配 8C/16G（变配重启，隧道 v2 自动重连实证）；sbs-win 目录 845 链对比完成；**wuying 已按用户指示关机**（下次需无影客户端开机；升配档记得调回 4C/8G） | M1.5 下一轮（盲区入链 + 按签名修效果）需要时再开机 |
+| 2026-11-21 | **全量复测（M1/M2 现状刷新）**：sbs-win-net 擦树重建（archive 同步 main-local@74c8ba1f + DB 13a802c7，**两侧同 DB 口径**；Mac 侧本地门同步全量 1018/1018 绿作基准；场景数已从 982 涨到 1018）；WuyingOpGateNet982 计划任务跑 gate.ps1 全量：2918 步构建约 70 分钟（8C/16G）→ **PASS 1012 / FAIL 6 / 共 1018**，红全为 0xC0000409 abort-on-CHECK；D16 链对拍（fresh vs fresh，1006 链）MATCH=978 / DIFF=28 = 6 终态红 + 22 绿漂移 | Windows 门现状落定；红与漂移清单定性见 §9 |
+| 2026-11-21 | **M3 验收（引擎+网关全栈上 Windows）**：web/up.ps1（编译+registry dump+网关+开浏览器；Python 三级回退 venv→py/python→UCRT64 pacman python-aiohttp；杀旧走 CIM 按 CommandLine 匹配）在 wuying 实测全链绿：pacman 自动装 aiohttp 依赖树 → 双服务拉起（sim_server 4399 + 网关 8070）→ HTTP 200 / health ok / 4399 可达 → 云电脑桌面浏览器打开调试台 | **M3 完成**；M1~M3 全栈收口 |
+| 2026-11-21 | **CI 三平台门**：gate.yml 加 windows-nightly（windows-latest + MSYS2 UCRT64，抽样 102 场景）；四轮迭代实录：① 公开仓文件名含 `?`（idx059_gelaoshi?_59.md）→ windows checkout 直接 128，改名修复；② db 镜像 HEAD 探测被 GitHub API 未认证限流（curl -sf 静默吞 403 → python 空输入炸）→ 带 runner token；③ 镜像自带 C:\mingw64 抢编译器 + GITHUB_PATH 前置实测不生效 + setup-msys2 默认 release:true 把 MSYS2 装进 runner temp（根不可钉）→ release:false/update:true 用镜像 C:\msys64 + 工具链/SQLite3 全显式绝对路径 + 动态定位兜底；④ 抽样踩红 115_medicine_system（CI-Windows/Linux 红、wuying/Mac 绿——跨环境敏感）→ known-failures 兜底，集合外新红才触发哨兵。同日 Ubuntu CI 全量首跑 **11 红平台差异**（§9）；smoke 首跑红 = 撞号治理漏网（1006→9901006 后 test.cpp 还拿旧 id，getEffectFunc 未命中返回 noop 非空断言拦不住）→ 已修 + 夜跑门补 smoke（本地门与 CI 同面） | CI 门就位；windows job 按 §9 known-failures 收缩 |
+
+## 9. 平台差异清单（2026-11-21 三平台全量对拍）
+
+口径：同一 commit（main-local@74c8ba1f 前身，含 smoke 修复）+ **同一 DB**（13a802c7，
+两侧核对一致）。Mac 基线 = 本地门 1018/1018 绿；Windows = wuying gate.ps1 全量；
+Linux = ubuntu-24.04 CI 全量（OSS 线 2026-11-21 首次跑到全量）。golden 链对拍用
+**两侧 fresh 产出**，不与入库 845 链比（引擎一个月变更会满屏假差异）。
+
+### 终态红
+
+| 平台 | 红数 | 场景 |
+|---|---|---|
+| Mac（arm64，基准） | 0 | — |
+| Windows（wuying MinGW UCRT64 GCC16.2） | 6 | 2460_lowdmg_gate3 / 2520_window_roll_anomaly / 2550_untouched_gate / 2570_window_drain（§8 历史 4 红，签名未变）/ **7931_selection_timing / 8510_k464（新增）**；历史第 5 红 179 已绿 |
+| Linux CI（ubuntu-24.04） | 11 | 009_combo_syntax_parser / 010_combo_condition_cancel / 025_lowhp_lock_medicine / 038_round_window_first_second / 074_vanish_family / 115_medicine_system / 136_peiyang_cultivation / 172_title_stats / 5660_potion_backlash / 6150_opp_heal_reaction / 874_suit_pct_panel |
+
+- **两平台红名单零交集**（Linux 红的 Windows 全绿、Windows 红的 Linux 全绿）——
+  不是单一平台偏差，而是各平台各有一组 rand 消费序/条件盲区敏感面。
+- 115_medicine_system 在 Linux 与 **CI-Windows**（windows-latest 的 ucrt64 当前 GCC）
+  红但在 wuying 绿——同一"Windows"面内还存在**编译器小版本/DB 环境差**敏感，
+  CI 与 wuying 不能互相当作同一环境（DB 也不同：CI=镜像昨日缓存，wuying=本地今晨）。
+- 全部终态红都是 abort-on-CHECK 断言（Windows 0xC0000409 / Linux SIGABRT），无挂死。
+
+### 绿但漂移（D16 链 DIFF，断言容差内）
+
+- Mac vs Windows：978/1006 链逐字节一致；DIFF=28 = 6 终态红 + **22 绿漂移**。
+- 抽样签名：2230_hit_roll_fallback 首失配在 First Attack Damage（命中 roll）；
+  320_qiaote_4186 首失配在 After Defeating Opponent（击杀后处理）——与 §8
+  rand 消费序/条件盲区签名同族。定性仍按三分类（移植 bug / 平台差异 / 测试需适配），
+  M1.5 盲区入链后逐个归因；**不能先验归因**（D14 教训）。
+
+### CI known-failures 兜底（gate.yml windows-nightly）
+
+抽样门 `$knownRed` 集合 = {115} ∪ wuying-6；集合外新红才把 job 打红（哨兵不失灵）。
+**只减不增**：M1.5 每修一个就从集合摘一个，摘前先在 wuying/CI 复测确认绿。
