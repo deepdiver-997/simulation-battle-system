@@ -21,10 +21,12 @@ jobs:
                 https://api.github.com/repos/SeerAPI/seer-unity-assets/commits/HEAD \
                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - id: dbpatches
+        run: echo "tree=$(git rev-parse HEAD:tools/db_patches)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         with:
           path: scripts/data/processed
-          key: seer-db-v2-${{ steps.meta.outputs.sha }}
+          key: seer-db-v3-${{ steps.dbpatches.outputs.tree }}-${{ steps.meta.outputs.sha }}
       - run: sudo apt-get update && sudo apt-get install -y ninja-build libsqlite3-dev
       - name: configure & build（指定场景 + 插件部署）
         run: |
