@@ -282,3 +282,64 @@ M1.5 归因靶心，不许先验定性（D14 教训）。
 | 快照浮点 `%.6g/%.9g` | lib stdio 的 %g 舍入无跨平台强制一致，但 978/1006 链一致已实证 libc↔UCRT 现值域安全；硬化建议：改打 IEEE 位模式（%08x），链基线重录时一并落 |
 | 快照 FNV 常量 | 现为 `std::size_t`（Win64 亦 64 位无实险），建议显式 uint64_t（坑 14），随基线重录落 |
 
+
+### 9.5 链逐字节硬门（2026-11-21 接线落地）
+
+- **基线重录**：test/scenario/golden 845→1006（main-local@9a320cdf 全量 1018/1018 绿的
+  Mac 产链；683 条与旧基线逐字节相同——一个月效果新增只影响各自场景，基线大部分本就稳；
+  12 个早退型场景不产链）。
+- **Mac 本地门（tools/night/build.sh）**：场景循环随跑落链 + 同平台**零容忍**逐字节比对
+  （GOLDEN_DIFF/NO_BASELINE/NO_CHAIN）。Mac 与基线同平台同种子，不一致只可能是
+  引擎变更未重录或非确定性 bug——无清单、无豁免。
+- **wuying gate.ps1**：`-CompareGolden` 默认开；预期平台漂移清单
+  `tools/windows/golden_expected_diff.txt`（28 = 6 终态红 + 22 绿漂移）**只减不增**，
+  清单外 diff / NO_BASELINE / NO_CHAIN 打红。
+- **CI windows 抽样**：链落盘 + 同清单比对（SHA256 等价逐字节）；ubuntu 全量暂不接
+  （7 平台候选未归因，接了即常红噪声）。
+- **治理映射（AGENTS.md §2 分层）**：效果纯新增 PR = 场景+链成对提交（NO_BASELINE 门）；
+  效果改口径 = needs-ruling（改既有场景期望/golden 同一裁决口径）；内核变动 =
+  kernel-approved + **全量 golden 重录随 PR**（机械 diff 可审）。build.sh 属
+  tools/night 灰名单，公开仓不含——公开面（gate.ps1/CI）走预期清单口径。
+
+### 9.6 dump 取证通道（dump.yml）
+
+`gh workflow run dump -f scenarios="scenario_009_... ..."` → ubuntu 构建指定场景 +
+`SBS_SCENARIO_TRACE_FULL` 全量文本 → artifact `full-dumps`。与 Mac 侧同场景 FULL dump
+做块对齐字段 diff，首个分叉字段即漂移点。⚠️ 快照开关只认 `SBS_SCENARIO_TRACE`
+（state_snapshot.cpp:116），单设 FULL 不产文件——dump.yml 已按双变量落。
+
+### 9.7 平台候选首例签字：009_combo_syntax_parser（2026-11-21）
+
+- FULL dump 块对齐 diff：前 10 块（0..9）逐字段一致、`rand=1` 两端全同——**RNG 序列排除**；
+  首个分叉块 #10（First Attack Damage）仅两字段：`ws.powView[0].value` Mac=170 / Linux=0、
+  `ws.powView[0].rw` Mac=1 / Linux=0——**改写在 Linux 未发生**，其余 600+ 字段全同。
+- 条件输入全部排除：roundChoice/skills(pp,id)/velem/pet elem 逐字段同——非 RNG、
+  非容器序、非位宽、非快照盲区（velem 在链内）。
+- 179 效果有**双实现史**（j_cond_power_rewrite.cpp 头注自证：解析器内建 SameElement
+  pet-vs-pet 降级近似 vs 插件 clone_effect 缓存取代 + custom_effect_programs 行短路）。
+  签字：**分发/装载层分歧嫌疑**（哪条路径被调用在 Linux 上不同）——下轮插桩实证
+  （打印 179 的 dispatcher 解析目标即可钉死）。剩余 6 候选同法取证。
+
+### 9.8 CI windows 链比对降级 report-only（2026-11-21 终版口径）
+
+首秀实证：exit 码全绿（含快照通道生效后无已知红）而 **98/102 抽样链 vs 基线漂移**——
+CI 的 setup-msys2 `update:true` 拉滚动最新 MinGW，与 wuying 钉版 GCC 16.2 之间是
+**编译器版本的系统性漂移面**（非个别场景）。据此定口径：
+- 链逐字节契约绑定「引擎 + **钉住工具链**」：Mac（零容忍）+ wuying（预期清单）。
+- CI windows job = exit 码哨兵（knownRed 兜底）+ 链比对 **report-only**（不阻断），
+  漂移清单进 step summary 供人看趋势。
+- 顺带的治理信号：`update:true` 的滚动 MinGW 本身就是一个不受控变量（工具链治理
+  候选：CI 侧钉 GCC 版本，或改 update:false + 显式包版本）。
+
+### 9.9 平台候选签字补全（dump 块对齐，2026-11-21）
+
+| 场景 | 签名 | 归类 |
+|---|---|---|
+| 009 / 010 | 前 10 块逐字段全同、rand=1 全同；块 #10（First Attack Damage）仅 `powView[0].value/rw` 两字段分叉（Mac=170/1，Linux=0/0）——**179 条件威力改写未发生** | 同根：分发/装载层（179 双实现史） |
+| 038 | 前 39 块全同后死于 `meta->window == EffectWindowKind::NextRounds` | EffectMeta 元数据装载/解析分歧 |
+| 074 | 前 184 块全同后死于 `power1=0 vs power0+50` | 威力加成未生效（同改写族嫌疑） |
+| 874 | `got_atk=330 vs panel[0]*110/100=363`（Linux 面板基值 330 vs Mac 300 推断） | 面板合成/百分比分歧 |
+| 136 / 172 | Linux 初始化期死（无任何 dump 块）——party/pet_factory 构建期差异 | 初始化期（待插桩） |
+
+主题收敛：**全部 7 例都不在 RNG/容器序/位宽类**（rand 逐字段全同），集中指向
+效果元数据装载、分发路径、面板合成三个面——M1.5 插桩靶心。
