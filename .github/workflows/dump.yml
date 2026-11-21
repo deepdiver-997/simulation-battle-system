@@ -35,11 +35,15 @@ jobs:
       - name: run with FULL dump
         run: |
           mkdir -p dumps
+          # ⚠️ 快照开关机制：enabled 只看 SBS_SCENARIO_TRACE（state_snapshot.cpp:116），
+          # 单设 FULL 不产文件——chain 落丢弃路径，FULL 才是取证目标
           for s in ${{ github.event.inputs.scenarios }}; do
             echo "=== $s ==="
+            SBS_SCENARIO_TRACE="dumps/$s.chain" \
             SBS_SCENARIO_TRACE_FULL="dumps/$s.full.txt" \
               timeout 300 ./build/sim_$s || echo "exit=$? （红场景照常落 dump，退出码供参考）"
           done
+          rm -f dumps/*.chain
           ls -la dumps/
       - uses: actions/upload-artifact@v4
         if: always()
