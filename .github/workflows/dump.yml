@@ -1,0 +1,48 @@
+name: dump
+# 平台差异归因取证：按名构建场景 + 跑出 SBS_SCENARIO_TRACE_FULL 全量文本 + 传 artifact。
+# 用法：gh workflow run dump -f scenarios="scenario_009_combo_syntax_parser scenario_010_..."
+#       （gh run download <id> -n full-dumps 取回；与 Mac 侧同场景 FULL dump 逐字段 diff，
+#        首个分叉字段即漂移点——口径见 docs_local/docs/07-工具与测试/Windows-移植.md §9.3）
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: '场景名（不带 scenario_ 前缀，空格分隔）'
+        required: true
+
+jobs:
+  full-dump:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          SHA=$(curl -sfL -H "Authorization: Bearer ${{ github.token }}" \
+                https://api.github.com/repos/SeerAPI/seer-unity-assets/commits/HEAD \
+                | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        with:
+          path: scripts/data/processed
+          key: seer-db-v2-${{ steps.meta.outputs.sha }}
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libsqlite3-dev
+      - name: configure & build（指定场景 + 插件部署）
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          TARGETS="moves_plugin_deploy soul_plugin_deploy suit_plugin_deploy"
+          for s in ${{ github.event.inputs.scenarios }}; do TARGETS="$TARGETS sim_$s"; done
+          cmake --build build -j$(nproc) --target $TARGETS
+      - name: run with FULL dump
+        run: |
+          mkdir -p dumps
+          for s in ${{ github.event.inputs.scenarios }}; do
+            echo "=== $s ==="
+            SBS_SCENARIO_TRACE_FULL="dumps/$s.full.txt" \
+              timeout 300 ./build/sim_$s || echo "exit=$? （红场景照常落 dump，退出码供参考）"
+          done
+          ls -la dumps/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-dumps
+          path: dumps/
