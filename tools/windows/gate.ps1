@@ -18,6 +18,7 @@ param(
     [int]$TimeoutSec = 120,
     [switch]$SkipBuild,
     [switch]$ConfigureOnly,
+    [switch]$SkipGoldenCompare,
     [string]$MsysRoot = 'C:\msys64'
 )
 
@@ -95,6 +96,50 @@ try {
 
 if ($failures.Count -gt 0) {
     Set-Content -Path (Join-Path $buildPath 'gate_failures.txt') -Value $failures -Encoding UTF8
+}
+
+# 4) D16 链逐字节比对（§9.1/9.5）：基线 = test\scenario\golden 入库链。
+#    预期内平台漂移在 tools\windows\golden_expected_diff.txt（只减不增）；
+#    清单外的 diff / NO_BASELINE / NO_CHAIN 都打红——「全绿且链逐字节相同」是硬门。
+if (-not $SkipGoldenCompare) {
+    $refDir = Join-Path $repo 'test\scenario\golden'
+    if (Test-Path $refDir) {
+        $expected = @()
+        $expFile = Join-Path $repo 'tools\windows\golden_expected_diff.txt'
+        if (Test-Path $expFile) {
+            $expected = @(Get-Content $expFile -Encoding UTF8 |
+                Where-Object { $_ -and -not $_.StartsWith('#') })
+        }
+        $gFail = New-Object System.Collections.Generic.List[string]
+        $gMatch = 0; $gKnown = 0
+        $outDir = Join-Path $buildPath 'golden'
+        foreach ($chain in @(Get-ChildItem $outDir -Filter '*.chain')) {
+            $ref = Join-Path $refDir $chain.Name
+            if (-not (Test-Path $ref)) {
+                $gFail.Add("NO_BASELINE $($chain.Name)"); continue
+            }
+            $hOut = (Get-FileHash $chain.FullName -Algorithm SHA256).Hash
+            $hRef = (Get-FileHash $ref -Algorithm SHA256).Hash
+            if ($hOut -eq $hRef) { $gMatch++ }
+            elseif ($expected -contains ($chain.BaseName)) { $gKnown++ }
+            else { $gFail.Add("GOLDEN_DIFF $($chain.Name)") }
+        }
+        if ($Filter -eq '*') {
+            # 全量跑才查 NO_CHAIN（子集跑只比产出面）
+            foreach ($ref in @(Get-ChildItem $refDir -Filter '*.chain')) {
+                if (-not (Test-Path (Join-Path $outDir $ref.Name))) {
+                    $gFail.Add("NO_CHAIN $($ref.Name)")
+                }
+            }
+        }
+        Write-Host ''
+        Write-Host ('=== golden 链比对：MATCH {0} / 预期内平台漂移 {1} / 异常 {2} ===' -f $gMatch, $gKnown, $gFail.Count)
+        if ($gFail.Count -gt 0) {
+            Set-Content -Path (Join-Path $buildPath 'golden_failures.txt') -Value $gFail -Encoding UTF8
+            Write-Host 'golden 比对异常（明细 build\golden_failures.txt）：清单外漂移=新平台分叉；NO_BASELINE/NO_CHAIN=场景与基线不同步'
+            exit 1
+        }
+    }
 }
 
 Write-Host ''
