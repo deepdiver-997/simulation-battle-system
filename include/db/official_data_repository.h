@@ -383,6 +383,10 @@ public:
     std::optional<NatureRecord> load_nature(int nature_id) const;
     std::optional<MintmarkRecord> load_mintmark(int item_id) const;
     std::optional<TitleRecord> load_title(int title_id) const;
+    // 按名锚定称号 id（前缀匹配，取最小 id）。title_stats 是顺序枚举 id，官方新增
+    // 称号会使既有 id 后移（K450：430→432；2026-11-22：433→434，两度漂移实证）——
+    // 场景/调用方一律按名取 id，禁钉数字。
+    std::optional<int> find_title_id_by_name(const std::string& name_prefix) const;
 
     // ── 战斗内物品（battle_items 表，药剂线）──────────────────────────
     // 嗑药结算（SeerRobot::use_medicine）按 item_id 查效果；不在表中的 id（下架/

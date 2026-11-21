@@ -346,3 +346,351 @@ e902bc15a08f7538 Operation: Protection Mechanism 2.
 bb3df3712604dd21 Battle: After Defeated.
 1c603e4e1dc3b61b Battle: After Defeating Opponent.
 2acfaded56372474 Battle: Round Completion.
+d50fbde58609eb4e Game Start.
+414ef3681206d5d4 Operation: Enter/Exit Stage.
+70741bc77ab6ab2e Operation: Enter Stage.
+1f504a5d3332f741 Battle round start.
+afb5521b6abcf150 Battle: Determine First Move Right.
+6637a88099c7a3be Preemptive right determined by speed: player0 wins.
+30f71a184571861d Battle: First Action Start.
+ef748635bc604310 Battle: First Before Skill Hit.
+85036ab38af96a3c Battle: First On Skill Hit.
+045ec589b98b08a5 Battle: First Skill Effect.
+4471e83fce08cc6c Battle: First Attack Damage.
+020b516aa6cfed6d Battle: First After Action.
+cc799e9351a9b5e6 Battle: First Action End.
+7e0e44db3a9f4255 Battle: First After Action End.
+997b0a41ab596e84 Battle: First Extra Action.
+06059b5e2ee63f73 Battle: First Mover Death.
+f5d13a1f01417032 Battle: Second Action Start.
+9807b778e8c6e8d1 Battle: Second Before Skill Hit.
+a50e17fd0e5d91c0 Battle: Second On Skill Hit.
+3ca7f9f5007cabdf Battle: Second Skill Effect.
+269c073247d333a3 Battle: Second Attack Damage.
+269c073247d333a3 Second mover's skill does not allow attack damage pipeline, skipping damage stage.
+c752fc38f48df06c Battle: Second After Action.
+9ad1bcb6e54ee0a1 Battle: Second Action End.
+bc07dc6c8366ce4c Battle: Second After Action End.
+95c799ea0c5cc3c3 Battle: Second Extra Action.
+ecf215d5bd8ce4ae Battle: Round End.
+0c0b92fd8a391105 Battle: Second Mover Death.
+cb510eaa6fea8620 Battle: Old Round End 1.
+1c48711d22024507 Battle: Round Reduction All Round Minus.
+b0622553d4b778e2 Battle: Round Reduction New Round End.
+1ec6fbe1bf75395c Battle: Old Round End 2.
+556ac9f8e28d4e31 Battle: Death Timing.
+8ec8276070f3239a Battle: Defeat Status.
+1c6bab7551086c3f Battle: Opponent Defeat Status.
+49ae6dbd7bd4ed30 Battle: New Defeat Mechanism.
+c287c299fd488d55 Operation: Protection Mechanism 2.
+88ddd1f19e58a47e Battle: After Defeated.
+ef39c4b1eff275d4 Battle: After Defeating Opponent.
+f225a4b074cf3dc9 Battle: Round Completion.
+eb6fab930a50318e Operation: Enter Stage.
+4e66db4adb939397 Battle round start.
+6bd6ab95c4ee2338 Battle: Determine First Move Right.
+cf97ca7d72a449ef Preemptive right determined by preemptive level: player0 wins.
+0fdcc6ee8f99bf92 Battle: First Action Start.
+56df284c0bdc6591 Battle: First Before Skill Hit.
+bcc8be6787c3d9db Battle: First On Skill Hit.
+dd02e05afde3e62a Battle: First Skill Effect.
+97f6c14512d16296 Battle: First Attack Damage.
+434d8fa139feaac6 Battle: First After Action.
+8d3dbabc09e62eb5 Battle: First Action End.
+6345046b7390eac0 Battle: First After Action End.
+4997339830791a77 Battle: First Extra Action.
+0ad83d7ab6d2d74a Battle: First Mover Death.
+fcd06fda28a1baa1 Battle: Second Action Start.
+fcd06fda28a1baa1 Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+da2b4112f1526526 Battle: Second Extra Action.
+7cae9ca630895e13 Battle: Round End.
+0e02efbf6ab58e88 Battle: Second Mover Death.
+4b019a6bbfb46f7d Battle: Old Round End 1.
+70fc4f449cae8d1a Battle: Round Reduction All Round Minus.
+4810a9ddb1b39647 Battle: Round Reduction New Round End.
+c49dd0b66e4ed88d Battle: Old Round End 2.
+eb1f7702dc188698 Battle: Death Timing.
+35f1a6d4e3f4d363 Battle: Defeat Status.
+69d4469aacddd4b6 Battle: Opponent Defeat Status.
+741526b8cc070fb9 Battle: New Defeat Mechanism.
+809eaedd6b365084 Operation: Protection Mechanism 2.
+29cf381e96aa82af Battle: After Defeated.
+ad471fdf8a498b55 Battle: After Defeating Opponent.
+8e66dfdcd8da67e0 Battle: Round Completion.
+9dba41005e1bfc80 Operation: Enter Stage.
+2bd9aca29a0b0eb7 Battle round start.
+2d462ca5a333942d Battle: Determine First Move Right.
+d8f20b5ffd14cef2 Preemptive right determined by preemptive level: player0 wins.
+100da7e165bab557 Battle: First Action Start.
+443ca728276eeebc Battle: First Before Skill Hit.
+ad23b7dfbb96749a Battle: First On Skill Hit.
+d6de5a8051a228bd Battle: First Skill Effect.
+1d9dca91a9ac1f37 Battle: First Attack Damage.
+11a9435197780e74 Battle: First After Action.
+d44b198050fdd501 Battle: First Action End.
+cb034594037162b8 Battle: First After Action End.
+34c5dd0f02ac8ab7 Battle: First Extra Action.
+6f4a2a74f2d973c6 Battle: First Mover Death.
+be3e43065a91c2cd Battle: Second Action Start.
+be3e43065a91c2cd Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+d171289ae526d3ae Battle: Second Extra Action.
+40887deda666b53f Battle: Round End.
+f232808cdc54cb3c Battle: Second Mover Death.
+e98bc103cc885c75 Battle: Old Round End 1.
+5d88667b427d9eda Battle: Round Reduction All Round Minus.
+133c68dce29b336b Battle: Round Reduction New Round End.
+86581ddb743231a5 Battle: Old Round End 2.
+4a10bc00f88d4a6c Battle: Death Timing.
+4c3d3ff17f5cbcaf Battle: Defeat Status.
+788eedf3baedb7de Battle: Opponent Defeat Status.
+18466e49d07ca5f9 Battle: New Defeat Mechanism.
+ed641ced32b88d10 Operation: Protection Mechanism 2.
+6a5a5448478f7a53 Battle: After Defeated.
+3fb41aa10b5cae6d Battle: After Defeating Opponent.
+5a3c62fb67d7a494 Battle: Round Completion.
+a4d6afac1a9dec9c Operation: Enter Stage.
+c7d2b6afb1b258e3 Battle round start.
+049ba0327b30d785 Battle: Determine First Move Right.
+95b0d206833d8b93 Preemptive right determined by speed: player0 wins.
+84b3d979a2de25ba Battle: First Action Start.
+61d44faefeb4dd39 Battle: First Before Skill Hit.
+75279c1fb44931d7 Battle: First On Skill Hit.
+212a5753495244f2 Battle: First Skill Effect.
+746317a88e59b1a2 Battle: First Attack Damage.
+496ae12f4df30eb8 Battle: First After Action.
+669a946665a1fd8b Battle: First Action End.
+c749606f71bc1dbe Battle: First After Action End.
+6e27c0b6655e3d65 Battle: First Extra Action.
+3e7d63eee5cd3af8 Battle: First Mover Death.
+e7feb257febdf837 Battle: Second Action Start.
+e7feb257febdf837 Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+986a108c0f9b8330 Battle: Second Extra Action.
+901eb0a1427babfd Battle: Round End.
+78ef34875af52232 Battle: Second Mover Death.
+8369ef8a1a38fd6f Battle: Old Round End 1.
+a7bfa1c5150a159c Battle: Round Reduction All Round Minus.
+6634b50095a99ef9 Battle: Round Reduction New Round End.
+7ab8c78cab28099f Battle: Old Round End 2.
+1552304304d0a222 Battle: Death Timing.
+7893fc28d5c6cbed Battle: Defeat Status.
+bb8192178eeb2160 Battle: Opponent Defeat Status.
+62feda92b5677733 Battle: New Defeat Mechanism.
+83537534ab8fc526 Operation: Protection Mechanism 2.
+2cf7c6f01a2b7f21 Battle: After Defeated.
+77381bfe4e86ac07 Battle: After Defeating Opponent.
+869a78d664f0cb6a Battle: Round Completion.
+be996f7a243023c8 Operation: Enter Stage.
+372cc74bde309ee5 Battle round start.
+8b6c85eaca960cdb Battle: Determine First Move Right.
+04a12a70d91566d1 Preemptive right determined by speed: player0 wins.
+21a06a2d7f98cbc6 Battle: First Action Start.
+a8e774f37510293b Battle: First Before Skill Hit.
+3349f7a2044e69ef Battle: First On Skill Hit.
+083dc5c1e5bc0f5e Battle: First Skill Effect.
+5351d5d15a35a18e Battle: First Attack Damage.
+a48abe9467e71cff Battle: First After Action.
+d3c3d54efe3a6198 Battle: First Action End.
+b74ccb4a92d82357 Battle: First After Action End.
+0954f43f71d2c96a Battle: First Extra Action.
+c672ebd883e216b1 Battle: First Mover Death.
+b05748a290c1a544 Battle: Second Action Start.
+415551b58b2af293 Battle: Second Before Skill Hit.
+c6f79e8190710c96 Battle: Second On Skill Hit.
+2fc0461476671063 Battle: Second Skill Effect.
+b24cc1428c23276f Battle: Second Attack Damage.
+2e9bbbdd7769e4db Battle: Second After Action.
+4c6955d42c6b15c0 Battle: Second Action End.
+067b031bb19ed7b3 Battle: Second After Action End.
+0d585a1ccc6ce862 Battle: Second Extra Action.
+ace483865db09255 Battle: Round End.
+f004adeff01cf9bc Battle: Second Mover Death.
+17fb3002392aa99f Battle: Old Round End 1.
+b68e08720e0a9e0e Battle: Round Reduction All Round Minus.
+edcf412ea78afb61 Battle: Round Reduction New Round End.
+b7635b85b7c1734f Battle: Old Round End 2.
+f0a284711d3f672c Battle: Death Timing.
+b16e8f2ebf9a1445 Battle: Defeat Status.
+38bea40593702792 Battle: Opponent Defeat Status.
+177d0b9f404227e3 Battle: New Defeat Mechanism.
+d4ce4ca45cf9f6b0 Operation: Protection Mechanism 2.
+e9f2cb3fff9e5789 Battle: After Defeated.
+8b1086b48b83f3f7 Battle: After Defeating Opponent.
+f947ba125f8be954 Battle: Round Completion.
+ea524cb38ad9f453 Game Start.
+f8e51288ecc1035f Operation: Enter/Exit Stage.
+4c254df8e3724f71 Operation: Enter Stage.
+1deff436f035e090 Battle round start.
+6775f15a527f966c Battle: Determine First Move Right.
+b3dd8dcd9d8b666a Preemptive right determined by speed: player0 wins.
+19470c93169c338b Battle: First Action Start.
+118db3a14ce3d8e8 Battle: First Before Skill Hit.
+0e0ffe1914e9fdd6 Battle: First On Skill Hit.
+5dc082f7c9738a73 Battle: First Skill Effect.
+c65edf2bf240a0a1 Battle: First Attack Damage.
+d6217f65f78447ec Battle: First After Action.
+a62c306c08597bed Battle: First Action End.
+c016ff3e6fe38b1a Battle: First After Action End.
+5885d5d79dc35ea3 Battle: First Extra Action.
+61312a4c78396340 Battle: First Mover Death.
+12a79d0569c01ee1 Battle: Second Action Start.
+53a95a6968041060 Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+e0b39a82722e91e1 Battle: Second Extra Action.
+6b9e2382caed06de Battle: Round End.
+de5c26a7c12410e3 Battle: Second Mover Death.
+523ca7760c2af4c8 Battle: Old Round End 1.
+53452723ce9ed035 Battle: Round Reduction All Round Minus.
+0d4b3c130228749a Battle: Round Reduction New Round End.
+407dc544add268d0 Battle: Old Round End 2.
+1d4fa310fe2b7d9b Battle: Death Timing.
+3d44d32a75c1a32e Battle: Defeat Status.
+7687b498c88d5f79 Battle: Opponent Defeat Status.
+c5cec1ff7301d014 Battle: New Defeat Mechanism.
+a2ea8672d09213cf Operation: Protection Mechanism 2.
+bc3de5e942e636b2 Battle: After Defeated.
+09df1f04b951b5c8 Battle: After Defeating Opponent.
+c312f6cbcca012b3 Battle: Round Completion.
+7659657a06c79cae Operation: Enter Stage.
+7b2c6d978a7b8c35 Battle round start.
+22d85a69a8df79c1 Battle: Determine First Move Right.
+969e53673c34252b Preemptive right determined by speed: player0 wins.
+6b96baf61faa6772 Battle: First Action Start.
+f36fc6bc5fedd319 Battle: First Before Skill Hit.
+89d510c7516e2e07 Battle: First On Skill Hit.
+54f1bf57c95af4a4 Battle: First Skill Effect.
+3cd7397d7d04a2d4 Battle: First Attack Damage.
+f87b7c0a413fa204 Battle: First After Action.
+b81ccac09057ba5b Battle: First Action End.
+63e20cda3eae835c Battle: First After Action End.
+dddc68957c565b79 Battle: First Extra Action.
+b3ec01ea4853f852 Battle: First Mover Death.
+4ff8e4ec8846e5ff Battle: Second Action Start.
+86e45434c117664e Battle: Second Before Skill Hit.
+615e99ef38d38ce3 Battle: Second On Skill Hit.
+37d22f49b4a28ec9 Battle: Second Skill Effect.
+7bef514fb5ae83e9 Battle: Second Attack Damage.
+7bef514fb5ae83e9 Second mover's skill does not allow attack damage pipeline, skipping damage stage.
+03c1068d2187df20 Battle: Second After Action.
+329f6fab860d5a5d Battle: Second Action End.
+9d5d1c438abb159a Battle: Second After Action End.
+5c319009aa676e23 Battle: Second Extra Action.
+4e21d4ee475216b8 Battle: Round End.
+ac3a783b3f9d8651 Battle: Second Mover Death.
+c616f8a438e0e6fe Battle: Old Round End 1.
+db2405f67898e1d7 Battle: Round Reduction All Round Minus.
+db23acad4b6649ec Battle: Round Reduction New Round End.
+2a94d962f9d2f156 Battle: Old Round End 2.
+41965a040541a805 Battle: Death Timing.
+e369a5880f3510f4 Battle: Defeat Status.
+5fbf3210c9bbb7fb Battle: Opponent Defeat Status.
+4b27a68710846592 Battle: New Defeat Mechanism.
+a3cf2558d0a11551 Operation: Protection Mechanism 2.
+be7022f90a131d60 Battle: After Defeated.
+43624ba097f3ef3e Battle: After Defeating Opponent.
+8237abf78f15a9cd Battle: Round Completion.
+823cc3725a83a8cd Operation: Enter Stage.
+e7c8542e649058d8 Battle round start.
+4821e4db446f86e9 Battle: Determine First Move Right.
+3e03f91a0e98ab1b Preemptive right determined by speed: player0 wins.
+e98b1bf49c42ba8c Battle: First Action Start.
+0ce71491799c1d09 Battle: First Before Skill Hit.
+bf6a0d8190492d31 Battle: First On Skill Hit.
+156bbe335c810830 Battle: First Skill Effect.
+6e31bfc24e3438b6 Battle: First Attack Damage.
+f53aad40a9f6e54c Battle: First After Action.
+9c2963a59ba80f87 Battle: First Action End.
+47471a35d952b04c Battle: First After Action End.
+49d371e5ce472975 Battle: First Extra Action.
+03599fe7503a285a Battle: First Mover Death.
+07a1a70e55145d83 Battle: Second Action Start.
+68c8b08f42f1c80e Battle: Second Before Skill Hit.
+a7e1def2a157ad5b Battle: Second On Skill Hit.
+c456f003786c0c06 Battle: Second Skill Effect.
+c690c70a1b410dca Battle: Second Attack Damage.
+8ca193b1fbc9ed4e Battle: Second After Action.
+4eabce2350828925 Battle: Second Action End.
+a21f7bd08773320e Battle: Second After Action End.
+3456eaa5f38e17af Battle: Second Extra Action.
+ae2267393ed658d8 Battle: Round End.
+ef1c4f2f355c27d9 Battle: Second Mover Death.
+ebdeef0c1de4ce32 Battle: Old Round End 1.
+34b61d5258706ed3 Battle: Round Reduction All Round Minus.
+f347077a32b114c3 Battle: Round Reduction New Round End.
+2e9e03e65e6ff455 Battle: Old Round End 2.
+b1add7d70684ed86 Battle: Death Timing.
+f8b72a3cb7ad6f77 Battle: Defeat Status.
+737d7a0ad6cefa60 Battle: Opponent Defeat Status.
+e982b68e25a31b11 Battle: New Defeat Mechanism.
+36ae70ba9545d032 Operation: Protection Mechanism 2.
+50417900950ce993 Battle: After Defeated.
+e3a5c826bedeeced Battle: After Defeating Opponent.
+146e2fca41826d1e Battle: Round Completion.
+828ee87fa0455a14 Game Start.
+803b3fce3ba969ee Operation: Enter/Exit Stage.
+9614994a51462d62 Operation: Enter Stage.
+95aa5058687e70ff Battle round start.
+37be19fecc1d5a9e Battle: Determine First Move Right.
+06ca8eed092b1970 Preemptive right determined by speed: player0 wins.
+b9396b17ff52bfdd Battle: First Action Start.
+3b8ca8b5cebb687e Battle: First Before Skill Hit.
+b8e8e5c38dda0c7c Battle: First On Skill Hit.
+def2ebbe85ca99a3 Battle: First Skill Effect.
+089e39a56f651daf Battle: First Attack Damage.
+0b7437fec14e5c96 Battle: First After Action.
+4a526b7ed9d736b7 Battle: First Action End.
+f0362faab970fff8 Battle: First After Action End.
+311ec1bdba118691 Battle: First Extra Action.
+3694f4cafae57252 Battle: First Mover Death.
+4a36d5dde86a6a13 Battle: Second Action Start.
+4a36d5dde86a6a13 Battle: Second mover skips main action flow and jumps to extra-action/death timing.
+152ced3c2cafe336 Battle: Second Extra Action.
+0374c9f4dc9b9ca5 Battle: Round End.
+06da126a005cfba8 Battle: Second Mover Death.
+70d56093b593f6e7 Battle: Old Round End 1.
+72b801c1a324031a Battle: Round Reduction All Round Minus.
+ec6418e7d771868a Battle: Round Reduction New Round End.
+30ed0344eafb684c Battle: Old Round End 2.
+1a7667e1072d5c9b Battle: Death Timing.
+409b00a8d245eb56 Battle: Defeat Status.
+d3ed5bc40d642635 Battle: Opponent Defeat Status.
+5de4ca23768a3c00 Battle: New Defeat Mechanism.
+cdbdf7b6e151fc4f Operation: Protection Mechanism 2.
+c4e2ddb37986153a Battle: After Defeated.
+be6aaae74851c254 Battle: After Defeating Opponent.
+536f9e52b9b30723 Battle: Round Completion.
+e921a8b0fb4aa7d2 Operation: Enter Stage.
+5df4a0ccfb70c6f1 Battle round start.
+d04dead7128e0806 Battle: Determine First Move Right.
+989e86e177a25a84 Preemptive right determined by speed: player0 wins.
+59e9aa16db552401 Battle: First Action Start.
+2898eca37745dcbe Battle: First Before Skill Hit.
+1819417979f970f4 Battle: First On Skill Hit.
+701d612d53a79c9b Battle: First Skill Effect.
+2a00f3419a27a0b1 Battle: First Attack Damage.
+d5773f7fb0b4e4e6 Battle: First After Action.
+8261b0c4a73b4f03 Battle: First Action End.
+b8211a07a4d1c7e0 Battle: First After Action End.
+379ac2e363ef0355 Battle: First Extra Action.
+534a1144f51575d2 Battle: First Mover Death.
+5b65c68891cf8fd7 Battle: Second Action Start.
+6e4c84cee28531f4 Battle: Second Before Skill Hit.
+3359e1d1d2412d99 Battle: Second On Skill Hit.
+567dcdaf1a7f60a0 Battle: Second Skill Effect.
+3e10b4fda5e81c80 Battle: Second Attack Damage.
+07389a40352221fc Battle: Second After Action.
+4e55890bc546b819 Battle: Second Action End.
+9c9b7eed3b39f62e Battle: Second After Action End.
+7dca46edb919efef Battle: Second Extra Action.
+a2548bfbb83d88a4 Battle: Round End.
+7e8a7f9f0c89c6c5 Battle: Second Mover Death.
+aa0f485df02bcd9a Battle: Old Round End 1.
+2c617df52da3e42b Battle: Round Reduction All Round Minus.
+236256c2a47fde4d Battle: Round Reduction New Round End.
+d6fcfc358f579983 Battle: Old Round End 2.
+d14ede5027e26e1c Battle: Death Timing.
+cced498960f00465 Battle: Defeat Status.
+8cbe250c3fd712be Battle: Opponent Defeat Status.
+3b9c82864417aeaf Battle: New Defeat Mechanism.
+e902bc15a08f7538 Operation: Protection Mechanism 2.
+bb3df3712604dd21 Battle: After Defeated.
+1c603e4e1dc3b61b Battle: After Defeating Opponent.
+2acfaded56372474 Battle: Round Completion.
