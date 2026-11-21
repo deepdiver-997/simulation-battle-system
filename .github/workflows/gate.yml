@@ -103,7 +103,13 @@ jobs:
             id=$(basename "$b" | grep -oE '[0-9]+' | head -1)
             # PR 只跑变更场景 + 号段相邻场景（同族联动）；nightly 跑全量
             if [ -n "$IDS" ] && ! echo "$IDS" | grep -qw "$id"; then continue; fi
-            timeout 300 "$b" || { echo "FAIL $b"; FAILED=1; }
+            # PASS 静音：stdout/stderr 落盘，只有失败才回吐末 30 行（断言 dump 在尾部）
+            # ——1018 场景 PASS 各打 2+ 行会把 step 日志顶到 GH 展示上限被截断（2026-11-21）
+            timeout 300 "$b" > "build/$(basename "$b").log" 2>&1 || {
+              echo "FAIL $b（末 30 行见下，完整日志 build/$(basename "$b").log）"
+              tail -30 "build/$(basename "$b").log"
+              FAILED=1
+            }
           done
           exit $FAILED
       - name: all scenarios（nightly / push main）
@@ -111,7 +117,11 @@ jobs:
         run: |
           FAILED=0
           for b in build/sim_scenario_*; do
-            timeout 300 "$b" || { echo "FAIL $b"; FAILED=1; }
+            timeout 300 "$b" > "build/$(basename "$b").log" 2>&1 || {
+              echo "FAIL $b（末 30 行见下，完整日志 build/$(basename "$b").log）"
+              tail -30 "build/$(basename "$b").log"
+              FAILED=1
+            }
           done
           exit $FAILED
       - uses: actions/upload-artifact@v4
