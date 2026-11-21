@@ -17,6 +17,7 @@
 
 #include <cstring>
 
+#include <db/official_data_repository.h>
 #include <entities/pet_factory.h>
 #include <server/battle_init.h>
 
@@ -147,7 +148,12 @@ int main() {
         cfg.ev = {252, 0, 128, 0, 4, 126};
         cfg.nature_id = 0;
         cfg.inscriptions = {kShengXuwu, 0, 0};
-        cfg.title_id = 433;   // 正义圣使（真值；K450 刷新后 431→433）
+        // 按名锚定（顺序 id 随官方新增称号后移：K450 431→433、2026-11-22 433→434
+        // 两度实证——禁钉数字，2026-11-22 K451 刷新 136 红的修复）
+        auto& repo = official_data::OfficialDataStore::instance().repository();
+        const auto title_zhengyi = repo.find_title_id_by_name("正义圣使");
+        REQUIRE(title_zhengyi.has_value());
+        cfg.title_id = *title_zhengyi;
         msg.cultivate_cfg = cfg;
         const ElfPet pet = PetFactory::create_pet(msg);
         REQUIRE(stat(pet.numericalBase, 0) == 370);   // 330 + 40（称号攻，性格不作用其上）

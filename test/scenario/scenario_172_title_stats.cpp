@@ -24,7 +24,9 @@
 #include <stdexcept>
 
 #include <cstring>
+#include <string>
 
+#include <db/official_data_repository.h>
 #include <entities/pet_factory.h>
 #include <server/battle_init.h>
 
@@ -37,7 +39,19 @@ namespace {
 constexpr int kPetBubu = 1;        // 布布种子
 constexpr int kPetZhengyi = 2987;  // 重生之翼（正义圣使专属称号 target）
 const int kZhengyiSkills[5] = {10004, 10317, 10356, 10531, 11492};  // 2987 可学技
-constexpr int kTitleBawang = 432;  // 狂战士：全维 +20（通用；主线全量表；K450 刷新后 430→432）
+// 按名锚定（顺序 id 随官方新增称号后移：430→432→433，K450/2026-11-22 两度实证——禁钉数字）。
+int title_bawang_id() {
+    static const int id = [] {
+        auto& repo = official_data::OfficialDataStore::instance().repository();
+        const auto v = repo.find_title_id_by_name("狂战士");
+        if (!v) {
+            std::cerr << "title_stats 缺狂战士（按名锚定失败）" << std::endl;
+            std::exit(1);
+        }
+        return *v;
+    }();
+    return id;
+}
 constexpr int kTitleZero = 1;      // 标兵：全 0（通用）
 constexpr int kTitleUnknown = 999999;
 
@@ -108,11 +122,11 @@ int main() {
         return 1;
     }
 
-    // A) 称号 delta：狂战士(430) 全维 +20。
+    // A) 称号 delta：狂战士（按名锚定 id）全维 +20。
     {
         CultivateConfig without = base_cultivate(/*neutral=*/true);
         CultivateConfig with = without;
-        with.title_id = kTitleBawang;
+        with.title_id = title_bawang_id();
         const auto no_title = compose_with_title(kPetBubu, without);
         const auto has_title = compose_with_title(kPetBubu, with);
         const std::array<int, 6> expect = {20, 20, 20, 20, 20, 20};   // 引擎序
@@ -128,13 +142,13 @@ int main() {
     {
         CultivateConfig lonely = base_cultivate(/*neutral=*/false);
         CultivateConfig lonely_t = lonely;
-        lonely_t.title_id = kTitleBawang;
+        lonely_t.title_id = title_bawang_id();
         const auto l0 = compose_with_title(kPetBubu, lonely);
         const auto l1 = compose_with_title(kPetBubu, lonely_t);
 
         CultivateConfig neutral = base_cultivate(/*neutral=*/true);
         CultivateConfig neutral_t = neutral;
-        neutral_t.title_id = kTitleBawang;
+        neutral_t.title_id = title_bawang_id();
         const auto n0 = compose_with_title(kPetBubu, neutral);
         const auto n1 = compose_with_title(kPetBubu, neutral_t);
 
@@ -168,13 +182,13 @@ int main() {
         std::cout << "  [D] 未知称号 id 显式报错" << std::endl;
     }
 
-    // E) JSON：cultivate.titleId 解析。
+    // E) JSON：cultivate.titleId 解析（titleId 用按名锚定的动态 id 拼——禁钉数字）。
     {
-        const char* lineup = R"({
+        const std::string lineup = std::string(R"({
             "side1": [
                 {"petId": 1, "skills": [10001,20001,10002,10003,20008],
                  "cultivate": {"ev": [252,0,128,0,4,126], "natureId": 0,
-                               "titleId": 432, "inscriptions": [40757], "resist": {"enabled": false}}}
+                               "titleId": )" + std::to_string(title_bawang_id()) + R"(, "inscriptions": [40757], "resist": {"enabled": false}}}
             ],
             "side2": [
                 {"petId": 1, "skills": [10001,20001,10002,10003,20008]},
@@ -184,11 +198,14 @@ int main() {
                 {"petId": 1, "skills": [10001,20001,10002,10003,20008]},
                 {"petId": 1, "skills": [10001,20001,10002,10003,20008]}
             ]
-        })";
+        })");
         BattleCreateRequest req;
         std::string err;
+        if (!server::decode_lineup_json(lineup, req, err)) {
+            std::cerr << "  [E] decode err=" << err << "\n  lineup=" << lineup << std::endl;
+        }
         REQUIRE(server::decode_lineup_json(lineup, req, err));
-        REQUIRE(req.side1[0].cultivate_cfg.title_id == kTitleBawang);
+        REQUIRE(req.side1[0].cultivate_cfg.title_id == title_bawang_id());
         REQUIRE(req.side1[0].cultivate_cfg.cultivate);
         std::cout << "  [E] JSON cultivate.titleId 解析" << std::endl;
     }

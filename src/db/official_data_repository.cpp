@@ -947,6 +947,24 @@ std::optional<TitleRecord> OfficialDataRepository::load_title(int title_id) cons
     return record;
 }
 
+std::optional<int> OfficialDataRepository::find_title_id_by_name(
+    const std::string& name_prefix) const {
+    if (!db_ || name_prefix.empty()) {
+        return std::nullopt;
+    }
+    Statement stmt(
+        db_,
+        "SELECT id FROM title_stats WHERE name LIKE ?1 || '%' ORDER BY id LIMIT 1"
+    );
+    if (!stmt || !bind_text(stmt.get(), 1, name_prefix)) {
+        return std::nullopt;   // title_stats 表可能尚未建（旧库）
+    }
+    if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+        return std::nullopt;
+    }
+    return sqlite3_column_int(stmt.get(), 0);
+}
+
 std::optional<MintmarkRecord> OfficialDataRepository::load_mintmark(int item_id) const {
     if (!db_ || item_id <= 0) {
         return std::nullopt;
