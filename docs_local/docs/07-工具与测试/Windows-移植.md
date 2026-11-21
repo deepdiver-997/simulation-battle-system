@@ -211,7 +211,7 @@ Linux = ubuntu-24.04 CI 全量（OSS 线 2026-11-21 首次跑到全量）。gold
 |---|---|---|
 | Mac（arm64，基准） | 0 | — |
 | Windows（wuying MinGW UCRT64 GCC16.2） | 6 | 2460_lowdmg_gate3 / 2520_window_roll_anomaly / 2550_untouched_gate / 2570_window_drain（§8 历史 4 红，签名未变）/ **7931_selection_timing / 8510_k464（新增）**；历史第 5 红 179 已绿 |
-| Linux CI（ubuntu-24.04） | 11 | 009_combo_syntax_parser / 010_combo_condition_cancel / 025_lowhp_lock_medicine / 038_round_window_first_second / 074_vanish_family / 115_medicine_system / 136_peiyang_cultivation / 172_title_stats / 5660_potion_backlash / 6150_opp_heal_reaction / 874_suit_pct_panel |
+| Linux CI（ubuntu-24.04） | 11 | **快照缺失类 4（§9.2 决定性实验，非平台差）**：025 / 115 / 5660 / 6150；**平台/工具链候选 7（§9.3）**：009 / 010 / 038 / 074 / 136 / 172 / 874（全名见小节） |
 
 - **两平台红名单零交集**（Linux 红的 Windows 全绿、Windows 红的 Linux 全绿）——
   不是单一平台偏差，而是各平台各有一组 rand 消费序/条件盲区敏感面。
@@ -232,3 +232,53 @@ Linux = ubuntu-24.04 CI 全量（OSS 线 2026-11-21 首次跑到全量）。gold
 
 抽样门 `$knownRed` 集合 = {115} ∪ wuying-6；集合外新红才把 job 打红（哨兵不失灵）。
 **只减不增**：M1.5 每修一个就从集合摘一个，摘前先在 wuying/CI 复测确认绿。
+
+### 9.1 快照机制现状确认（2026-11-21 口径对齐）
+
+- **每一步 dump？** 是：`BattleFsm::log()`（battleFsm.cpp:1473）是全部 FSM 时点日志唯一出口，
+  每条调一次 `fsm::snapshot_record`——把规范化状态（rand 状态 + FSM 标量 + workspace 全字段 +
+  DamageSnapshot/粉伤 + 规则票 + 双方六宠必变状态）按**固定键序**序列化后 FNV-1a 哈希，
+  追加 `<hash16> <phase>` 进链文件。仅设 `SBS_SCENARIO_TRACE` 时启用（平时零开销不落盘）；
+  `SBS_SCENARIO_TRACE_FULL` 另落人读全量文本。
+- **盲区（v1 头注释明示）**：std::any 三兄弟（soulmark/plugin/on_stage_storage）、pet.marks 明细、
+  anomaly_view_layers、attack_boost_grants、timed bucket 效果体——**链相同 ≠ 盲区外相同**。
+- **「全绿」是唯一现行硬门**（exit code）；**「链逐字节相同」尚未接线为自动门**——
+  只有手工对拍工具（tools/windows/compare_golden.sh / 对拍脚本），入库 845 条 golden 是
+  10-25 陈旧基线，无人比对。接线方案（待实施）：① Mac 当前 HEAD 重录 1006 条入库存替 845；
+  ② gate.ps1 加 -CompareGolden、Mac 门/CI 抽样接逐字节比对，DIFF>0 即红；
+  ③ 现 22 条绿漂移会立刻打红 wuying 门——作为 M1.5 工作清单逐个归因摘除。
+
+### 9.2 快照缺失类（决定性实验，2026-11-21）
+
+- 背景：battle_items 官方快照（`data/raw/official/Battleitem_reconstructed_pre_k450.json`，
+  19,799 字节手工重建）**不入库**；本地/wuying import 时消费它（battle_items 91 行），
+  CI 侧 import 走 [WARN] 降级跳过（import_seer_unity_sqlite.py:1090）→ **CI DB 药剂表为空**。
+- 决定性实验：Mac 本地建沙盒（DB 副本 DELETE FROM battle_items）复跑 11 个 Linux 红场景
+  → **025/115/5660/6150 四个在 Mac+空表也红（134）**——它们是 CI 环境缺失，不是平台差异
+  （115 在 CI-Windows 同红与此完全吻合：CI 两平台 DB 同为空表）。
+- 修复选项（待用户拍板）：快照 base64（~26KB）塞 GitHub Actions variable/secret，
+  db job 解码落地后再 import——红线不破（secret 非仓库内容），CI DB 与本地对齐，
+  四红消失、knownRed 收缩；不修则这 4 个要在两平台 CI knownRed 里挂名。
+
+### 9.3 平台/工具链差候选（7 个，待逐个归因）
+
+009 / 010 / 038 / 074 / 136 / 172 / 874：Linux CI 红、Mac 绿、wuying 绿。
+注意 CI 与 wuying 都是 libstdc++（MinGW 同源），容器序相同 → 差异面缩到：
+GCC 版本（CI 最新 vs wuying 16.2 钉版）/ glibc vs UCRT / x86-64 与 arm64 的编译器 UB 利用法。
+M1.5 归因靶心，不许先验定性（D14 教训）。
+
+### 9.4 静态扫描结论（2026-11-21，跨平台位宽/序类）
+
+| 类 | 结果 |
+|---|---|
+| `unsigned long`/`long long` 算术 | 引擎侧已全量显式 `long long`（battle_primitives/shield_bank 均有收窄前置提升）；sbs_rand u64 修复无复发 |
+| 超 INT_MAX 常量 | **实锤 2 文件**：j_kill_boost_transfer（9911253100/9911253200 超 int，实际生效键=mod 2^32 截断值）+ tianqi（~0ULL→int）——**已修**（9a320cdf：显式落截断值/等值 -1，6400 复绿、-Woverflow 清零）；leichen_runtime.h 系 1.02e9 在范围内（虚惊） |
+| `long` 单独使用 | official_data_repository.cpp:72 解析累加器 → 已改 long long（坑 14 卫生） |
+| `size_t`→`int` 收窄 | 仅 yanshou_4875.cpp:229（skills.size()≤6 有界，卫生级不动）；`.size()-1` 下溢 0 命中 |
+| `char` 符号性（arm64 无符号 vs x86 有符号） | 0 命中（解析路径均显式 unsigned char） |
+| `long double`（x86-64 Linux 80 位 vs 其他 64 位） | 0 使用 |
+| 容器迭代序（libc++ vs libstdc++） | 状态路径干净：RuleCenter=vector（插入序）、event_center 投递走 by_type_ 的 vector + id find（注册序）、cleanup 逐元素独立判定序无关；breakpoints 仅 membership |
+| `std::rand` 残留 | 0（仅注释提及 srand 口径） |
+| 快照浮点 `%.6g/%.9g` | lib stdio 的 %g 舍入无跨平台强制一致，但 978/1006 链一致已实证 libc↔UCRT 现值域安全；硬化建议：改打 IEEE 位模式（%08x），链基线重录时一并落 |
+| 快照 FNV 常量 | 现为 `std::size_t`（Win64 亦 64 位无实险），建议显式 uint64_t（坑 14），随基线重录落 |
+
