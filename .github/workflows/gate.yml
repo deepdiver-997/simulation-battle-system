@@ -35,13 +35,15 @@ jobs:
                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "镜像 HEAD：$SHA"
+      - id: dbpatches
+        run: echo "tree=$(git rev-parse HEAD:tools/db_patches)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: cache
         with:
           path: scripts/data/processed
-          # v2：battle_items 官方快照通道上线（2026-11-21）。快照不随镜像 sha 变化，
-          # 同 key 会命中无药剂表的旧缓存 → 升版本号强制重建一次。
-          key: seer-db-v2-${{ steps.meta.outputs.sha }}
+          # v3：key 绑定 db_patches 目录树哈希——补丁内容一变（如 2026-11-22 c1 custom
+          # 表固化）缓存自动失效重建，不再手工升版本号；镜像 sha 仍参与（官方数据源变也重建）
+          key: seer-db-v3-${{ steps.dbpatches.outputs.tree }}-${{ steps.meta.outputs.sha }}
       - if: steps.cache.outputs.cache-hit != 'true'
         env:
           # battle_items 官方快照（手工重建，红线不入库）走 Actions secret 私有通道：
