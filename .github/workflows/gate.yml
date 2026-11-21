@@ -211,8 +211,11 @@ jobs:
           )
           $fails = @()
           $bins = @(Get-ChildItem build -Filter 'sim_scenario_*.exe' | Sort-Object Name)
+          New-Item -ItemType Directory -Force build/golden | Out-Null
           foreach ($exe in $bins) {
-            # 场景二进制必须以仓库根为 CWD（DB/插件按相对路径加载，同 gate.ps1）
+            # 场景二进制必须以仓库根为 CWD（DB/插件按相对路径加载，同 gate.ps1）；
+            # D16 链随跑落盘 → 跑完与入库基线比对（预期漂移清单同 gate.ps1，§9.5）
+            $env:SBS_SCENARIO_TRACE = "build/golden/$($exe.BaseName -replace '^sim_','').chain"
             $p = Start-Process -FilePath $exe.FullName -WorkingDirectory (Get-Location) -NoNewWindow -PassThru
             if (-not $p.WaitForExit(120000)) {
               try { $p.Kill() } catch {}
@@ -220,10 +223,25 @@ jobs:
             }
             if ($p.ExitCode -ne 0) { Write-Host "FAIL($($p.ExitCode)) $($exe.Name)"; $fails += $exe.Name }
           }
+          Remove-Item Env:SBS_SCENARIO_TRACE -ErrorAction SilentlyContinue
+          # D16 链比对（子集模式：只比产出面；预期漂移清单与 wuying gate.ps1 同一份）
+          $gFail = @(); $gMatch = 0; $gKnown = 0
+          $expected = @(Get-Content tools/windows/golden_expected_diff.txt -Encoding UTF8 -ErrorAction SilentlyContinue |
+            Where-Object { $_ -and -not $_.StartsWith('#') })
+          foreach ($chain in @(Get-ChildItem build/golden -Filter '*.chain')) {
+            $ref = "test/scenario/golden/$($chain.Name)"
+            if (-not (Test-Path $ref)) { $gFail += "NO_BASELINE $($chain.Name)"; continue }
+            if ((Get-FileHash $chain.FullName -Algorithm SHA256).Hash -eq (Get-FileHash $ref -Algorithm SHA256).Hash) {
+              $gMatch++
+            } elseif ($expected -contains $chain.BaseName) { $gKnown++ }
+            else { $gFail += "GOLDEN_DIFF $($chain.Name)" }
+          }
           $new = @($fails | Where-Object { $knownRed -notcontains $_ })
           "Windows 抽样回归：$($bins.Count - $fails.Count)/$($bins.Count) 绿；已知红 $($fails.Count - $new.Count)；新红 $($new.Count)（$(if ($new.Count) { $new -join ', ' })）" |
             Out-File -Append $env:GITHUB_STEP_SUMMARY
-          exit ([int][bool]$new.Count)
+          "golden 链：MATCH $gMatch / 预期内漂移 $gKnown / 异常 $($gFail.Count)（$(if ($gFail.Count) { $gFail -join ', ' })）" |
+            Out-File -Append $env:GITHUB_STEP_SUMMARY
+          exit ([int][bool]($new.Count + $gFail.Count))
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: registry-json-windows, path: build/registry.json }
