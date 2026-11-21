@@ -39,10 +39,25 @@ jobs:
         id: cache
         with:
           path: scripts/data/processed
-          key: seer-db-${{ steps.meta.outputs.sha }}
+          # v2：battle_items 官方快照通道上线（2026-11-21）。快照不随镜像 sha 变化，
+          # 同 key 会命中无药剂表的旧缓存 → 升版本号强制重建一次。
+          key: seer-db-v2-${{ steps.meta.outputs.sha }}
       - if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          # battle_items 官方快照（手工重建，红线不入库）走 Actions secret 私有通道：
+          # 本地/wuying 的 DB 药剂表 91 行，CI 降级空表曾致 4 场景环境差红（docs §9.2）。
+          # fork PR 无 secret → 自动回落降级路径（已知行为）。
+          BATTLEITEM_SNAPSHOT_B64: ${{ secrets.BATTLEITEM_SNAPSHOT_B64 }}
         run: |
           pip install seerapi-solaris
+          if [ -n "$BATTLEITEM_SNAPSHOT_B64" ]; then
+            mkdir -p scripts/data/raw/official
+            printf '%s' "$BATTLEITEM_SNAPSHOT_B64" | base64 -d \
+              > scripts/data/raw/official/Battleitem_reconstructed_pre_k450.json
+            echo "battle_items 快照已落位（$(wc -c < scripts/data/raw/official/Battleitem_reconstructed_pre_k450.json) 字节）"
+          else
+            echo "[WARN] 无 BATTLEITEM_SNAPSHOT_B64（fork PR？）——battle_items 降级为空表"
+          fi
           python3 scripts/fetch_seer_unity_bytes.py
           python3 scripts/decode_seer_bytes.py
           python3 scripts/import_seer_unity_sqlite.py
