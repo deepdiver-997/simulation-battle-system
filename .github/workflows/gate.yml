@@ -201,7 +201,6 @@ jobs:
           # docs_local/docs/07-工具与测试/Windows-移植.md §9）。
           # 集合外的红 = 新平台差异，哨兵触发 job 红；集合应随逐个归因收缩，只减不增。
           $knownRed = @(
-            'sim_scenario_115_medicine_system.exe',       # CI DB battle_items 空表（无手工快照降级，§9.2）——Mac+空表实验红，非平台差
             'sim_scenario_2460_lowdmg_gate3.exe',         # wuying 全量门 6 红（§8 历史签名族）
             'sim_scenario_2520_window_roll_anomaly.exe',
             'sim_scenario_2550_untouched_gate.exe',
@@ -230,11 +229,11 @@ jobs:
             Where-Object { $_ -and -not $_.StartsWith('#') })
           foreach ($chain in @(Get-ChildItem build/golden -Filter '*.chain')) {
             $ref = "test/scenario/golden/$($chain.Name)"
-            if (-not (Test-Path $ref)) { $gFail += "NO_BASELINE $($chain.Name)"; continue }
+            if (-not (Test-Path $ref)) { $gFail += "NO_BASELINE $($chain.Name)"; Write-Host "NO_BASELINE $($chain.Name)"; continue }
             if ((Get-FileHash $chain.FullName -Algorithm SHA256).Hash -eq (Get-FileHash $ref -Algorithm SHA256).Hash) {
               $gMatch++
             } elseif ($expected -contains $chain.BaseName) { $gKnown++ }
-            else { $gFail += "GOLDEN_DIFF $($chain.Name)" }
+            else { $gFail += "GOLDEN_DIFF $($chain.Name)"; Write-Host "GOLDEN_DIFF $($chain.Name)" }
           }
           $new = @($fails | Where-Object { $knownRed -notcontains $_ })
           "Windows 抽样回归：$($bins.Count - $fails.Count)/$($bins.Count) 绿；已知红 $($fails.Count - $new.Count)；新红 $($new.Count)（$(if ($new.Count) { $new -join ', ' })）" |
