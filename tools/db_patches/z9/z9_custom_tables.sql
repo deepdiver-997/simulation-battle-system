@@ -1,4 +1,4 @@
--- c1_custom_tables.sql —— 固化 custom_* 引擎自有表内容为管线资产（2026-11-22）
+-- z9_custom_tables.sql —— 固化 custom_* 引擎自有表内容为管线资产（2026-11-22）
 --
 -- 根因（2026-11-21/22 CI 实证链）：custom_* 五张表是 CREATE TABLE IF NOT EXISTS 的
 -- 「引擎自有表」，内容只存在于本地 DB 的手工演化史——apply_all 旧注释称"重建后保留，
