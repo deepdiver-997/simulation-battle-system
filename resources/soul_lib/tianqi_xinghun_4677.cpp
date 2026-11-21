@@ -44,7 +44,7 @@ constexpr int kFatigue = static_cast<int>(AbnormalStatusId::Fatigue);           
 constexpr int kFear = static_cast<int>(AbnormalStatusId::Fear);                   // 害怕 6
 constexpr int kMysteryCycleElement = 123;  // 神秘·轮回（skill_types 123；28810 自身系别）
 constexpr int kFullDial = 12;
-constexpr int kCoverageAll = ~0ULL;        // 免疫票全时点覆盖
+constexpr int kCoverageAll = -1;           // 免疫票全时点覆盖（原 ~0ULL 经 int 收窄恒为 -1，显式落值消 -Woverflow）
 
 int host_slot(BattleContext* ctx, int side) {
     const int slot = ctx->find_pet_with_soulmark(side, kTianqiMarkId);

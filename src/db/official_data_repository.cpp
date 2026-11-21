@@ -69,7 +69,7 @@ std::vector<int> parse_json_int_array(const std::string& raw) {
             if (negative) {
                 ++i;
             }
-            long value = 0;
+            long long value = 0;   // 坑14：long 在 Windows 是 32 位，统一显式 64 位（值域实际小，纯卫生）
             bool any = false;
             while (i < n && std::isdigit(static_cast<unsigned char>(raw[i]))) {
                 value = value * 10 + (raw[i] - '0');
