@@ -46,8 +46,12 @@ namespace {
 
 constexpr int k784GateBase = 991784100;    // +owner*2：击败门
 constexpr int k784MovedBase = 991784200;   // +owner*2：转移到的正等级总和
-constexpr int k1253GateBase = 9911253100;  // +owner*2：击败门
-constexpr int k1253DoubledBase = 9911253200;   // +owner*2：翻倍槽数
+// ⚠️ 键位事实（2026-11-21 Windows gcc -Woverflow 实锤）：原设计 9911253100/9911253200
+// 超出 int（INT_MAX=2147483647），历来实际生效的就是 mod 2^32 截断值 1321318508/1321318608
+// （各平台同截断 → 行为一致，但属编译期收窄 UB 面）。此处显式落截断值，键槽不变、警告清零；
+// 如需恢复 10 位键位语义须连 plugin_storage 键类型一起升 int64_t（连场景 6400 的副本）。
+constexpr int k1253GateBase = 1321318508;    // 原设计 9911253100（+owner*2：击败门）
+constexpr int k1253DoubledBase = 1321318608; // 原设计 9911253200（+owner*2：翻倍槽数）
 
 // AFTER_ACTION 桶的当前行动方（j_kill_preempt/j_gate_family4 同款小工具）。
 int j307_bucket_acting_side(const BattleContext* ctx) {

@@ -32,8 +32,8 @@ constexpr int kPaiDa = 10004;
 
 constexpr int k784GateKey = 991784100;    // +owner*2
 constexpr int k784MovedKey = 991784200;   // +owner*2
-constexpr int k1253GateKey = 9911253100;  // +owner*2
-constexpr int k1253DoubledKey = 9911253200;   // +owner*2
+constexpr int k1253GateKey = 1321318508;  // 原设计 9911253100 超 int，实际生效=mod 2^32 截断值（与 moves_lib 侧同步，+owner*2）
+constexpr int k1253DoubledKey = 1321318608; // 原设计 9911253200（同上）
 
 void accuracy_100(ElfPet& p) {
     for (Skills& s : p.skills) {
