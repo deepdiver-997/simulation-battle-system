@@ -6,9 +6,12 @@
 # 装法：cp docs_local/tools/pre-push-guard.sh .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 #
 # ⚠️ 2026-11-20 口径收窄（用户拍板：效果库/场景/内部文档开放贡献）：
-#   resources/ test/ docs_local/ tools/night|agents|taskctl 已全部公开
+#   resources/ test/ docs_local/ tools/agents|taskctl 已全部公开
 #   （双仓同史镜像模型下它们随每次推送走，路径拦截对 tracked 路径无意义），
-#   从拦截清单移除。拦截清单只剩**未入库的数据大件 + 灰色逆向内容**：
+#   从拦截清单移除。
+#   ⚠️ tools/night（夜跑工具链）**未并入公开仓**（hub 无此目录，oss-sync 同步时按
+#   灰名单跳过）——它不在本 hook 拦截清单里是因为 hub 根本没有这目录可推，
+#   注释口径 2026-11-21 更正。拦截清单只剩**未入库的数据大件 + 灰色逆向内容**：
 #     reference/ scripts/data/   语料与官方数据（从未入库，保持如此）
 #     tools/official/            官方服对接（本机自用，勿公开——增量即拦）
 #     官方对战协议采样*.md        协议逆向文档（双保险）
