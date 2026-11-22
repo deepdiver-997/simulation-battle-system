@@ -391,3 +391,5 @@ CI 的 setup-msys2 `update:true` 拉滚动最新 MinGW，与 wuying 钉版 GCC 1
   会话——InteractiveToken 任务随会话断开被清，本次 build interrupted 实证）；
   probe 现场 sbs-win-net2 + probe_dumps{,2} 保留，旧 sbs-win-net 顶层句柄待
   重启后清理。
+
+| 2026-11-22 | **M1.5 收口**：方案 B 注册仲裁全链闭环——Mac 全量门 1019 绿（翻转面零）→ wuying 增量重建 **6 红 exit 全绿 + 链 vs Mac MATCH=6 DIFF=0（逐字节）** → CI 最终 dispatch 45001971226 同 commit 双绿（build-test 3m14s + windows-nightly 26m）。三平台行为面自此单实现一致；备案双注册对（15+）的清理转效果层批产积压（仲裁已保证跨平台确定性，清理非紧迫）。wuying 实验收尾：killall 客户端休眠（升配 8C 记得调回 4C/8G）；sbs-win-net 旧目录顶层句柄待重启清（sbs-win-net2 现役） | **wuying 门现状 = 全绿**；M1.5 平台差目标达成 |
