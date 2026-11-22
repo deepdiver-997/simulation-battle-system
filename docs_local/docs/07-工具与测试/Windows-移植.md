@@ -366,3 +366,28 @@ CI 的 setup-msys2 `update:true` 拉滚动最新 MinGW，与 wuying 钉版 GCC 1
   009/010 最终根因（custom_prog 短路插件 + 场景构造使新口径恒 FALSE）以沙盒
   实验与 CI 验证闭环，插桩分支可按需复用。
 - 当前真·平台差存量 = **wuying 6 红**（§8 签名族，MinGW GCC16.2 vs arm64 clang）。
+
+### 9.11 2026-11-22 终章：wuying 6 红根因修复（方案 B，用户拍板内核仲裁）
+
+- **根因实锤链**：① wuying 6 红场景 FULL dump 与 Mac 块对齐——首分叉字段均为
+  "某效果在单侧触发/不触发"（2460=949 低伤回满、2520=全能力-6、2550=粉伤 500、
+  8510=击杀/留1血、7931=先制等级 3v0、2570=rand 消费次数分叉）；
+  ② 注册表对账（--dump-registry-exit 双侧 diff）：moves/suit 全量一致、
+  **soul 2553 仅 Mac 有**（动态库注册侧实锤）；③ 全量扫描：**15+ 对 SKILL_EFFECT
+  双注册**（949/929/91/903/898/881/868/853/851/846/844/840/837/819/760/72/655/179…，
+  备案"死代码/实验遗留"模式），last-wins 下生效者 = **静态初始化序**——
+  MinGW .ctors 逆序 vs Mach-O/ELF .init_array 正序 → Windows 生效旧实现、
+  Mac/Linux 生效新实现。
+- **wuying 禁用实验**（gates2 版 949 注销重编译）：失败点从 T2460 前移至 T2461——
+  生效实现切换实锤；连带暴露 2461.a 的深层分叉（R3 攻击伤害数值差 → 949 回满
+  误触发）。
+- **修复（48c1c6af，内核三注册表）**：撞号按「basename+全路径」稳定字典序仲裁
+  （basename 跨平台无关，方向固定 key 大者胜）；fn=nullptr = 显式运行期注销，
+  注销态条目接受任何非空接管（7921 MissingMoves1470 注销/恢复双向豁免）。
+- **验证闭环**：全量门 1019 全绿（basename 大者恰为全部备案对现役实现，翻转面
+  为零）→ oss-sync → wuying 增量重建 → **6 红场景 exit 全绿 + 链与 Mac 基线
+  MATCH=6 DIFF=0（逐字节）** → CI dispatch（44995817685）终验。
+- 实验环境：wuying S4U 计划任务（WuyingOpProbeBuild/Retest949/Sync2，不骑交互
+  会话——InteractiveToken 任务随会话断开被清，本次 build interrupted 实证）；
+  probe 现场 sbs-win-net2 + probe_dumps{,2} 保留，旧 sbs-win-net 顶层句柄待
+  重启后清理。
