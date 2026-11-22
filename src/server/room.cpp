@@ -28,8 +28,9 @@ Room::Room(int match_id, std::shared_ptr<ThreadPoolBase> battle_pool, int seat_c
     : match_id_(match_id),
       seat_count_(seat_count == 1 ? 1 : 2),
       battle_pool_(std::move(battle_pool)) {
+    // 池归 Room（server 层执行资源）：战斗任务在 Room::post 到池上跑；
+    // FSM 不持执行资源（battleFsm.h 注），只是被 Room 驱动的状态处理函数集合。
     fsm_ = std::make_shared<BattleFsm>(true);
-    fsm_->battle_pool_ = battle_pool_;
 }
 
 Room::~Room() = default;

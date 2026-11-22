@@ -577,7 +577,11 @@ void sync_workspace_from_on_stage(BattleContext* ctx) {
 
 // 换宠：清理旧在场精灵公共状态 → 更新 on_stage → 新精灵魂印激活 → ws 同步。
 // 被拦截方换宠会清掉自己身上的拦截（invalidate 清 skill_seals），即"换宠洗掉封属性"。
-void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
+// cause = 本次下场的成因（SwitchCause，2026-11-21 驱逐线）：只进 EVENT_ENTER_STAGE 的
+// switch_cause 载荷，离场侧清理（清异常/等级/on_stage_storage/魂印离场钩子）对成因无感——
+// 官方口径"死亡下场、下场时之类的都不受影响"，成因只服务"主动 vs 驱逐"键控面。
+void perform_switch(BattleContext* ctx, int robot_id, int target_slot,
+                    SwitchCause cause = SwitchCause::ACTIVE) {
     if (!ctx || robot_id < 0 || robot_id > 1 || target_slot < 0 || target_slot >= 6) {
         return;
     }
@@ -626,19 +630,90 @@ void perform_switch(BattleContext* ctx, int robot_id, int target_slot) {
     }
     // ⑤ ws 同步新精灵数值（伤害/先手判定用）
     sync_workspace_from_on_stage(ctx);
-    // ⑥ 上场事件：perform_switch 是**主动中切**与**死亡换宠**的共同漏斗，在此统一 emit
-    //    EVENT_ENTER_STAGE（actor=登场方）——两条路径都覆盖。drain 在当前状态桶跑完后，
-    //    届时新精灵已完全就位（on_stage 已更新、旧宠已 invalidate、新宠已激活、ws 已同步），
-    //    "下一个登场精灵"类 watcher（如自爆传承、帝皇之御）在回调里挂到的是干净桶。
+    // ⑥ 上场事件：perform_switch 是**主动中切**、**死亡换宠**与**驱逐下场**的共同漏斗，
+    //    在此统一 emit EVENT_ENTER_STAGE（actor=登场方）并携带 switch_cause 成因——
+    //    三条路径都覆盖。drain 在当前状态桶跑完后，届时新精灵已完全就位（on_stage 已更新、
+    //    旧宠已 invalidate、新宠已激活、ws 已同步），"下一个登场精灵"类 watcher（如自爆
+    //    传承、帝皇之御）在回调里挂到的是干净桶。"被驱逐下场时…"类效果按
+    //    switch_cause == (int)SwitchCause::EXPELLED 过滤。
     //    注：切到同一只（on_stage==target_slot）在上面早返回，不算登场、不发事件。
-    ctx->event_center_.emit(
-        BattleEvent{EventType::EVENT_ENTER_STAGE, robot_id, 1 - robot_id, 0});
+    {
+        BattleEvent enter_stage{EventType::EVENT_ENTER_STAGE, robot_id, 1 - robot_id, 0};
+        enter_stage.switch_cause = static_cast<int>(cause);
+        ctx->event_center_.emit(enter_stage);
+    }
 
-    // 主动切换场景：EVENT_SWAP 已在 handle_OperationChooseSkillMedicament 收到
-    // CHOOSE_PET 时 emit（perform_switch 也在那里同步完成，让 drain 时 watch_callback
-    // 看到的是新精灵）。死亡换宠（handle_ChooseAfterDeath）路径下 perform_switch 是
-    // 在 m_buffer 提交后立即调用——目前没有 emit EVENT_SWAP，因为死亡换宠语义上是
-    // 强制替换，不是对方主动切换。如未来需要"对方看到我方死亡换宠"的事件再补 emit。
+    // EVENT_SWAP 的 emit 面（battleFsm 口径注释）：**仅主动切换**（CHOOSE_PET 收包路径）。
+    // 死亡换宠语义上是强制替换、驱逐（EXPELLED）语义上是强制/视为强制下场——都不是
+    // "对方主动切换"，均不 emit。神印/朝曦/2040 窗等"主动"键控 watcher 天然不触发
+    // （玄武 2553「双方的主动下场均视为驱逐下场」的压制面即由此成立，零 watcher 改动）。
+    // 如未来需要"对方看到我方死亡/驱逐换宠"的事件再补 emit。
+}
+
+// op 记录 → 下场成因（收包转化后 roundChoice[side][0]==EXPEL 即驱逐档，否则主动档）。
+inline SwitchCause switch_cause_for_op(const BattleContext* ctx, int side) {
+    return ctx->roundChoice[side][0] == static_cast<int>(BattleFsm::ActionType::EXPEL)
+               ? SwitchCause::EXPELLED
+               : SwitchCause::ACTIVE;
+}
+
+// ★ 强制驱逐解析锚点（2026-11-21 天尊线，effect_des 402 通用机制执行体）。
+// 插件侧的契约只有一句话：触发时（如"辛死亡并驱逐对手"）置
+// ctx->forced_expel_pending[side] = 1——其余全部在这里：
+//   ① 守卫（effect_des 402）：驱逐对象 = 该侧当前在场宠，体力为 0 → 无法被驱逐；
+//     背包中不存在其他存活精灵 → 无法被驱逐。
+//   ② 随机补位：候选 = 存活、不在场、**未被放逐锁**（is_locked，神殇"不能切换上场"
+//     按字面管住一切上场途径——2026-11-21 用户口径；注意排除它是有意为之，
+//     与死亡补位 is_forced 绕过 is_locked 是两条不同规则，别"对称化"）。
+//     无合法候选 → 守卫失败，只清标志不填 op（该侧当回合保持空过；"操作位是否归还"
+//     官方未说死，待实测——记档 TBD）。
+//   ③ 机器填参：rewrite_round_choice(side, EXPEL, 随机槽)（玩家在锁面板下只能空过，
+//     这里覆盖其 NONE），随后本回合行动链把它当一次"表现为中切的驱逐"处理。
+// 挂点：handle_BattleRoundStart 入口（workspace 重置后、sync/回合桶前）——回合开始
+// 时点效果与先手权判定看到的是**换上来**的新宠（官方"下次操作阶段强制切换下场"落点）。
+void apply_forced_expels(BattleContext* ctx) {
+    if (!ctx) {
+        return;
+    }
+    const int order[2] = {ctx->host_side, ctx->challenger_side()};
+    for (int side : order) {
+        if (ctx->forced_expel_pending[side] == 0) {
+            continue;
+        }
+        ctx->forced_expel_pending[side] = 0;   // 消费即清（守卫失败也清，无跨回合残留）
+        const int victim_slot = ctx->on_stage[side];
+        if (victim_slot < 0 || victim_slot >= 6) {
+            continue;
+        }
+        if (ctx->seerRobot[side].elfPets[victim_slot].hp <= 0) {
+            continue;   // 守卫：对象体力为 0 → 无法被驱逐（死切流程已接管）
+        }
+        // 候选 = 存活 + 不在场 + 未被放逐锁
+        int candidates[6];
+        int candidate_count = 0;
+        for (int slot = 0; slot < 6; ++slot) {
+            const ElfPet& p = ctx->seerRobot[side].elfPets[slot];
+            if (slot != victim_slot && p.hp > 0 && !p.is_locked) {
+                candidates[candidate_count++] = slot;
+            }
+        }
+        if (candidate_count == 0) {
+            continue;   // 守卫：背包中不存在其他存活（未被锁）精灵 → 无法被驱逐
+        }
+        const int pick = candidates[sbs_rand() % candidate_count];
+        ctx->rewrite_round_choice(side, static_cast<int>(BattleFsm::ActionType::EXPEL), pick);
+        log_battle_line("INFO", "forced expel: side=" + std::to_string(side)
+                                    + " victim_slot=" + std::to_string(victim_slot)
+                                    + " -> slot=" + std::to_string(pick));
+    }
+    // 应用：roundChoice==EXPEL 的侧逐个下场（随机/转化参数已在 roundChoice[1]）。
+    // 此处 perform_switch(EXPELLED)：不发 EVENT_SWAP，ENTER_STAGE 带 EXPELLED 成因。
+    for (int side = 0; side < 2; ++side) {
+        if (ctx->roundChoice[side][0] == static_cast<int>(BattleFsm::ActionType::EXPEL)
+            && ctx->on_stage[side] != ctx->roundChoice[side][1]) {
+            perform_switch(ctx, side, ctx->roundChoice[side][1], SwitchCause::EXPELLED);
+        }
+    }
 }
 
 void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
@@ -1456,6 +1531,9 @@ void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType 
             }
             break;
         default:
+            // EXPEL 有意**无 case**（2026-11-21 驱逐线）：内部操作绝不进线协议——wire 侧
+            // 发 EXPEL 数值落到这里 = 什么都不记 → roundChoice 不变 → 收包处 accepted
+            // 判 false 拒绝。EXPEL 的两个产生途径都在内核自己手里（收包转化 / 锚点填参）。
             break;
     }
 
@@ -1495,12 +1573,6 @@ void BattleFsm::trace_fsm(const BattleContext* battleContext, const std::string&
         << " resolved_final=" << battleContext->resolvedDamage.final;
     if (id_debug) {
         std::cout << oss.str() << std::endl;
-    }
-}
-
-void BattleFsm::post(std::function<void()> task) {
-    if (battle_pool_) {
-        battle_pool_->post(std::move(task));
     }
 }
 
@@ -1596,6 +1668,19 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
 
     const int actor = buf[0];
 
+    // ★ 面板锁收包校验（2026-11-21 天尊强制驱逐线）：forced_expel_pending 置位的侧
+    //   只接受 NONE（空过）——合法动作集（compute_legal_actions）与这里的接受集必须
+    //   同源，否则客户端无视菜单发包就是漏洞窗口（现有"切换锁"同款双消费模式）。
+    //   驱逐本身由 BATTLE_ROUND_START 锚点机器填参，玩家提交的 NONE 会被覆盖。
+    if (battleContext->forced_expel_pending[actor] != 0
+        && static_cast<ActionType>(buf[1]) != ActionType::NONE) {
+        battleContext->control_block_->async_write(
+            battleContext->current_player_id_,
+            "Error: operation locked (forced expulsion), only skip allowed\n",
+            battleContext, this);
+        return;
+    }
+
     operation(battleContext, buf[0], static_cast<ActionType>(buf[1]), buf[2]);
 
     const bool accepted =
@@ -1631,15 +1716,34 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
             }
         }
         battleContext->operation_collected[actor] = true;
-        // 操作选择时点同步完成"主动切换"操作结果：on_stage 更新 + 旧宠公共状态清
+        // ★ 玄武重分类拦截（2026-11-21，LEAVE_CAUSE_RECLASS 票的查询桥——内核耦合清单
+        //   登记点）：改写票 armed 且本次是实际换槽的 CHOOSE_PET → 操作记录改写为 EXPEL
+        //   （**参数不变**，玩家选的槽照切；官方"视为驱逐"= 动作面不变、判定面按驱逐读）。
+        //   改写后本块内走 perform_switch(EXPELLED)、**不发 EVENT_SWAP**——事件在入队前
+        //   被掐源，神印/朝曦/2040 窗等"主动"键控 watcher 零改动被压制（不是转化跑赢
+        //   回调的竞态，是构造上的序：转化点在 emit 上游）。守卫次序：accepted 判定已按
+        //   玩家原值通过（改写在 accepted 之后），active 切换校验（is_locked/SWITCH_LOCK/
+        //   凝滞瘫痪）也已过——重分类不改变动作合法性，只换判定档。
+        //   切到同一只（on_stage==buf[2]）不是下场，无驱逐可言（同原 no-op 语义）。
+        if (static_cast<ActionType>(buf[1]) == ActionType::CHOOSE_PET
+            && battleContext->on_stage[actor] != buf[2]
+            && battleContext->rule_center_.has_leave_cause_reclass(
+                   battleContext, battleContext->roundCount,
+                   /*offfield_gate=*/[](BattleContext* c, int owner, int mark_id) {
+                       return c->reclass_offfield_gate_pass(owner, mark_id);
+                   })) {
+            battleContext->rewrite_round_choice(
+                actor, static_cast<int>(ActionType::EXPEL), buf[2]);
+        }
+        // 操作选择时点同步完成"主动切换/驱逐"操作结果：on_stage 更新 + 旧宠公共状态清
         // （invalidate/clear_abnormal）+ 新宠魂印激活 + ws 同步——全部在收到 CHOOSE_PET
-        // 那一刻完成，让随后 emit 的 EVENT_SWAP 在 drain 时 watch_callback 看到的 getPet(actor)
-        // 是新精灵（不是切换出去的旧精灵）。BATTLE_FIRST/SECOND_ACTION_START 里的 perform_switch
-        // 会因 on_stage==target_slot 早返回变 no-op，不会重复执行清理。
+        // 那一刻完成，让随后 emit 的 EVENT_SWAP（仅主动档）在 drain 时 watch_callback
+        // 看到的 getPet(actor) 是新精灵（不是切换出去的旧精灵）。
         if (static_cast<ActionType>(buf[1]) == ActionType::CHOOSE_PET) {
-            // 只在"实际切到不同槽位"时 emit+执行 perform_switch：切到同一只精灵时不应触发
-            // EVENT_SWAP（不算"中切"，watcher 不应响应），也不应重复清状态。
+            // 只在"实际切到不同槽位"时执行 perform_switch：切到同一只精灵时不应触发
+            // 事件（不算"中切"/下场，watcher 不应响应），也不应重复清状态。
             if (battleContext->on_stage[actor] != buf[2]) {
+                const SwitchCause cause = switch_cause_for_op(battleContext, actor);
                 // ★ 首回合双方中切强制**房主先登场**（2026-09-22 官方判定，涂蝶砥砺 vs
                 //   百鬼转化视频：无论点击顺序都是房主侧先挂）：挑战方的切换在房主
                 //   本回合输入收集完成之前先到 → 缓冲，两输入齐后按房主→挑战方应用。
@@ -1650,12 +1754,17 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
                 if (defer_for_host_first) {
                     battleContext->deferred_switch_slot[actor] = buf[2];
                 } else {
-                    perform_switch(battleContext, actor, buf[2]);
+                    perform_switch(battleContext, actor, buf[2], cause);
                     // 操作选择时点广播中切事件：让 event_center 派发给"对方中切"类 watcher
                     // （如启灵元神 1581 神印）。drain 在 CHOOSE 桶跑完后、PROTECTION_1 跑前派发，
                     // 紧跟的 PROTECTION_1 节点可以直接读对方 soulmark_storage[1581].stacks 结算真伤。
-                    battleContext->event_center_.emit(
-                        BattleEvent{EventType::EVENT_SWAP, actor, 1 - actor, 0});
+                    // ⚠️ 仅主动档 emit——驱逐档（EXPELLED）不发 EVENT_SWAP（见 perform_switch
+                    //    尾注）：神印/朝曦/2040 窗的压制由"事件不存在"成立。
+                    if (cause == SwitchCause::ACTIVE) {
+                        BattleEvent swap_ev{EventType::EVENT_SWAP, actor, 1 - actor, 0};
+                        swap_ev.switch_cause = static_cast<int>(SwitchCause::ACTIVE);
+                        battleContext->event_center_.emit(swap_ev);
+                    }
                 }
             }
         }
@@ -1673,16 +1782,21 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
     }
 
     // 首回合双中切：两输入齐后按 房主→挑战方 应用缓冲的挑战方切换（此时房主若也切了
-    // 早已先行应用）——登场顺序与点击顺序解耦。
+    // 早已先行应用）——登场顺序与点击顺序解耦。成因从 op 记录读（收包时玄武转化已把
+    // roundChoice 改成 EXPEL——缓冲只存槽位，档位以 op 记录为准，驱逐档不发 EVENT_SWAP）。
     {
         const int chal = battleContext->challenger_side();
         const int slot = battleContext->deferred_switch_slot[chal];
         if (slot >= 0) {
             battleContext->deferred_switch_slot[chal] = -1;
             if (battleContext->on_stage[chal] != slot) {
-                perform_switch(battleContext, chal, slot);
-                battleContext->event_center_.emit(
-                    BattleEvent{EventType::EVENT_SWAP, chal, 1 - chal, 0});
+                const SwitchCause cause = switch_cause_for_op(battleContext, chal);
+                perform_switch(battleContext, chal, slot, cause);
+                if (cause == SwitchCause::ACTIVE) {
+                    BattleEvent swap_ev{EventType::EVENT_SWAP, chal, 1 - chal, 0};
+                    swap_ev.switch_cause = static_cast<int>(SwitchCause::ACTIVE);
+                    battleContext->event_center_.emit(swap_ev);
+                }
             }
         }
     }
@@ -1745,6 +1859,13 @@ void BattleFsm::handle_BattleRoundStart(BattleContext* battleContext) {
             battleContext->roundChoice[i][1] = -1;
         }
     }
+    // ★ 强制驱逐解析锚点（2026-11-21 天尊线，effect_des 402）：在 workspace 重置后、
+    //   sync/回合桶前——消费 forced_expel_pending（守卫 + 随机补位 + 机器填 EXPEL op）
+    //   并应用 EXPEL 切换。落在先手权判定（BATTLE_FIRST_MOVE_RIGHT）之前 → 先手比较与
+    //   全部行动主流程看到的是**换上来**的新宠；ROUND_START 桶（回合开始时效果）也在
+    //   本调用之后 → 官方"下次操作阶段强制切换下场"的落点语义（操作阶段已结束、
+    //   回合效果与出手未开始）。EXPEL 应用不发 EVENT_SWAP（驱逐不是主动切换）。
+    apply_forced_expels(battleContext);
     sync_workspace_from_on_stage(battleContext);
     // 注：魂印的每回合重注册**不在这里**——ROUND_START 晚于本回合的 CHOOSE（线性序里
     // OPERATION_CHOOSE_SKILL_MEDICAMENT 在前），在此注册会让选择期缺失 once 效果（迟到一拍）。
@@ -2334,8 +2455,8 @@ void BattleFsm::handle_ChooseAfterDeath(BattleContext* battleContext) {
     // is_forced=true：这是**死后补位**，不是主动切换 —— 限制类异常（凝滞/瘫痪）拦不住它，
     // 否则宠物阵亡后无法补位会导致对局卡死。其余校验（hp>0 / is_locked / 槽位范围）照走。
     operation(battleContext, buf[0], static_cast<ActionType>(buf[1]), buf[2], /*is_forced=*/true);
-    // 死亡换宠：死宠离场 → 实际执行换宠（清死宠公共状态 → 新宠登场激活）
-    perform_switch(battleContext, buf[0], buf[2]);
+    // 死亡换宠：死宠离场 → 实际执行换宠（清死宠公共状态 → 新宠登场激活）。成因 = 死亡档
+    perform_switch(battleContext, buf[0], buf[2], SwitchCause::DEATH);
     // ★ 双方同回合倒下（2026-10-01 D4 配套）：先倒的一方补位后，另一方在场宠仍倒着
     //   → 原地轮转继续等它补位（原先只问 set_current_player 选中的一方，另一方会拖着
     //   尸体进下一回合）。另一方无存活替补 → 全灭终局（AFTER_DEFEATED 的评估已拦过

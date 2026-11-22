@@ -91,8 +91,12 @@ private:
         return EffectResult::kOk;
     }
 
-    // 缓存映射表：魂印ID -> 效果函数
-    std::unordered_map<int, EffectFn> effect_cache_;
+    // 缓存映射表：魂印ID -> 效果函数 + 来源（撞号仲裁见 utils/registration_arbiter.h）
+    struct SoulFnRegistration {
+        EffectFn fn = nullptr;
+        std::string source;
+    };
+    std::unordered_map<int, SoulFnRegistration> effect_cache_;
     // 魂印程序缓存：魂印ID -> 多时点节点（程序模型；单效果链路不在此表）。
     std::unordered_map<int, std::vector<SoulMarkNodeRef>> program_cache_;
     // 魂印钩子缓存：魂印ID -> 登场/离场钩子（只在插件显式注册时存在）。

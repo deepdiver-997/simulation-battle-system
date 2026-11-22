@@ -40,6 +40,18 @@ enum class DefeatCause {
     EFFECT = 3,       // 效果直接扣血/直写归零（含对场下精灵的结算）
 };
 
+// 换宠/下场的**成因**（2026-11-21 玄武/混元天尊驱逐线）。官方运行时把"这只精灵怎么
+// 下来的"分成三档，效果按档过滤——玄武 2553「双方的主动下场均视为驱逐下场」
+// （effect_icon 行 2144）压制的正是"主动"键控效果（启灵元神神印/梅赫维特朝曦/
+// J212 对手主动切换窗族，语料《机制解析—镇世神岳·玄武》：死亡下场、下场时类不受影响）。
+// EVENT_ENTER_STAGE / EVENT_SWAP 的 switch_cause 载荷携带本枚举整数值（-1 = 未填）。
+enum class SwitchCause {
+    ACTIVE = 0,    // 主动切换（CHOOSE_PET；EVENT_SWAP 仅此档 emit——battleFsm 口径注释）
+    DEATH = 1,     // 死亡补位（handle_ChooseAfterDeath，is_forced）
+    EXPELLED = 2,  // 驱逐下场（混元天尊线真驱逐 + 玄武线"视为驱逐"重分类，共用一档：
+                   //  官方措辞"视为"= 对一切规则按驱逐读，不区分来源）
+};
+
 // defeat_pet 的结果。
 enum class DefeatResult {
     DEFEATED = 0,     // 本次死亡成立（已标记 + emit EVENT_DEATH）
