@@ -56,7 +56,10 @@ if (-not $SkipBuild) {
 # 3) 轮跑场景（顺序执行保随机序可复现；-Jobs 只作用于构建阶段）
 # D16 golden 快照：每个场景输出时点状态 hash 链到 build\golden\<name>.chain；
 # 与 Mac 侧同名文件逐行 diff，第一个失配行即漂移时点。
+# ⚠️ 链 fopen 是 append 模式：目录必须先清空，否则上一轮（旧引擎/旧数据）的链
+# 会叠进本轮（2026-11-22 实证：基线 830 行=旧 415+新 415，比对全假阳）。
 $goldenDir = Join-Path $buildPath 'golden'
+if (Test-Path $goldenDir) { Remove-Item -Recurse -Force $goldenDir }
 New-Item -ItemType Directory -Force $goldenDir | Out-Null
 
 function Invoke-Scenario {
