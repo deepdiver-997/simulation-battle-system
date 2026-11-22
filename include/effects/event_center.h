@@ -239,6 +239,14 @@ struct BattleEvent {
     // Skill=0/SoulMark=1/Trait=2/Suit=3）。监听方按它做 source_mask 过滤
     // （永沐排除 Trait 的特性主动毒/被动毒，与亮节票的 source_mask 同语义）。
     int chance_source = -1;
+    // ── 换宠成因族（2026-11-21 玄武/混元天尊驱逐线，追加在末尾——遵守本 struct 的追加纪律）──
+    // EVENT_ENTER_STAGE / EVENT_SWAP 专用：本次登场/切换的成因（SwitchCause 的整数值
+    // ACTIVE=0/DEATH=1/EXPELLED=2；枚举在 spirit_lifecycle.h，与 DefeatCause 同族）。
+    // 用途：驱逐键控效果按它过滤——"对方被驱逐下场时…"类监听 ENTER_STAGE + cause==
+    // EXPELLED；"主动切换"类效果**不要**改听 ENTER_STAGE：EVENT_SWAP 的语义就是
+    // "发生了主动切换"（驱逐/死亡路径均不 emit，battleFsm.cpp 口径注释），天然过滤。
+    // 非换宠事件为 -1。
+    int switch_cause = -1;
     static constexpr int kNoEventState = -999;
 };
 

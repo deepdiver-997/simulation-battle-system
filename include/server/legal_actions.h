@@ -67,6 +67,13 @@ struct LegalActions {
     // 前端据 canSkip==false 隐藏跳过按钮（缺省视为 true，向后兼容旧服务端）。
     bool can_skip = true;
 
+    // 强制驱逐锁面板（2026-11-21 天尊线，effect_des 402）：true = 合法动作被**有意**
+    // 收窄到只剩"空过"（skills/pets/medicines 全部 usable=false、reason="expel_locked"）。
+    // 官方表现：面板禁止选择，只留跳过。前端据 expelLocked==true 渲染锁定态
+    // （缺省视为 false，向后兼容旧服务端）。FSM 收包校验同口径只认 NONE——
+    // 暴露集与接受集同源（battleFsm.cpp 收包处注释）。
+    bool expel_locked = false;
+
     std::vector<LegalSkill> skills;
     std::vector<LegalPet> pets;
     std::vector<LegalMedicine> medicines;

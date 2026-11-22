@@ -195,6 +195,7 @@ std::string legal_actions_to_json(const LegalActions& legal) {
     oss << ",\"reason\":\"" << json_escape(legal.reason) << "\"";
     oss << ",\"mustChoosePet\":" << (legal.must_choose_pet ? "true" : "false");
     oss << ",\"canSkip\":" << (legal.can_skip ? "true" : "false");
+    oss << ",\"expelLocked\":" << (legal.expel_locked ? "true" : "false");
 
     oss << ",\"skills\":[";
     for (std::size_t i = 0; i < legal.skills.size(); ++i) {

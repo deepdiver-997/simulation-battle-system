@@ -1,4 +1,5 @@
 #include <entities/suit_manager.h>
+#include <utils/registration_arbiter.h>
 
 #include <dirent.h>
 #include <algorithm>
@@ -104,10 +105,19 @@ void SuitManager::ensureInitialized(const std::string& lib_dir) {
 }
 
 void SuitManager::registerSuit(int suit_id, EffectFn fn, const std::string& source) {
-    // id 撞号审计（2026-10-22）：套装单效果表按 id 覆盖语义 → 同 id 两处 = 静默覆盖。
+    // id 撞号审计（2026-10-22）。2026-11-22 起撞号不再按 id 覆盖（last-wins 的生效者
+    // 随静态初始化序跨平台翻转，wuying 6 红实证）——改按 basename 稳定序仲裁。
     id_collision::instance().record(id_collision::Category::SuitEffect, suit_id, source);
     std::unique_lock<std::shared_mutex> lock(cache_mutex_);
-    effect_cache_[suit_id] = fn;
+    auto it = effect_cache_.find(suit_id);
+    if (it == effect_cache_.end()) {
+        effect_cache_.emplace(suit_id, SuitFnRegistration{fn, source});
+    } else if (fn == nullptr) {
+        it->second = SuitFnRegistration{nullptr, {}};   // 显式注销（语义见 registration_arbiter.h）
+    } else if (it->second.fn == nullptr
+               || registration_arbiter::should_replace(it->second.source, source)) {
+        it->second = SuitFnRegistration{fn, source};
+    }
 }
 
 void SuitManager::registerSuitProgram(int suit_id,
@@ -127,7 +137,7 @@ const std::vector<SoulMarkNodeRef>* SuitManager::getSuitProgram(int suit_id) con
 EffectFn SuitManager::getSuitFunc(int suit_id) const {
     std::shared_lock<std::shared_mutex> lock(cache_mutex_);
     auto it = effect_cache_.find(suit_id);
-    return it == effect_cache_.end() ? &SuitManager::noop_effect : it->second;
+    return it == effect_cache_.end() ? &SuitManager::noop_effect : it->second.fn;
 }
 
 std::vector<int> SuitManager::registered_suit_ids() const {

@@ -260,6 +260,16 @@ enum class RuleCategory {
     //     "在不在"。持有者无关：谁被授予谁受益（技能被复制 / 偷走 → 新施放者 arm 自己
     //     的票），读者**不做精灵 ID 判定**（官方实现路径待实测，2026-09-28 记档）。
     CARRIER,
+    // **下场成因改写票**（2026-11-21 玄武 2553 / 蜃都之源 539 同款子句引入）：
+    // 「自身存活于出战背包时，**双方的主动下场均视为驱逐下场**」。挂载面 = 全局
+    // （target=-1，"双方的"），窗口 = 永久（rounds=0；生效门走 condition 回调现场判
+    // "持有者存活于出战背包"——阵亡即失效、复活即恢复、消逝即永久失效，无需 revoke 事件面）。
+    // 查询点唯一：handle_OperationChooseSkillMedicament 收包转化（battleFsm）——
+    // armed 时把 CHOOSE_PET 改写成 EXPEL（参数=玩家选的槽），FSM 对 EXPEL 走
+    // perform_switch(EXPELLED) + 不发 EVENT_SWAP，神印/朝曦/2040 窗等"主动"键控
+    // watcher **零改动**被压制（语料《机制解析—镇世神岳·玄武》点名清单）。
+    // 多来源各挂各票（玄武/蜃都之源），任一 armed 即改写（OR 语义）。
+    LEAVE_CAUSE_RECLASS,
 };
 
 // "纯查询"规则类别：**绝对窗口模型**（免 tick 递减、cleanup 按绝对回合过期）、
@@ -272,7 +282,8 @@ inline bool is_pure_query_category(RuleCategory c) {
     return c == RuleCategory::IMMUNE || c == RuleCategory::SKILL_BAN
         || c == RuleCategory::ATTACH_BAN || c == RuleCategory::SWITCH_LOCK
         || c == RuleCategory::POTION_BACKLASH || c == RuleCategory::ARMOR_SUPPRESS
-        || c == RuleCategory::CHANCE_GATE || c == RuleCategory::CARRIER;
+        || c == RuleCategory::CHANCE_GATE || c == RuleCategory::CARRIER
+        || c == RuleCategory::LEAVE_CAUSE_RECLASS;
 }
 
 // "免断回合"类别：**不可被 clear_round_type / invalidate_stale(epoch) 作废**。
@@ -284,8 +295,14 @@ inline bool is_undeletable_category(RuleCategory c) {
         || c == RuleCategory::ATTACH_BAN;
 }
 
-inline bool is_penetrate_category(RuleCategory c) {
-    return c == RuleCategory::PENETRATE_ATTACK || c == RuleCategory::PENETRATE_ATTRIBUTE;
+// ── 场域管辖全局开关（LEAVE_CAUSE_RECLASS，2026-11-21 用户裁决）─────────────
+// false = 现状（官方双标：新精灵"场下源改写场上判定"类机制不受薇尔诗 2513 场下源
+// 抑制场域影响，票默认豁免）。翻 true = 一视同仁（夷灭一切场下→场上影响）——
+// 非显式豁免的票在「场域开启 + 源在场下」时即失效，无需逐效果改。
+// 见 grant_leave_cause_reclass / RuleTicket::reclass_offfield_exempt 注。
+inline constexpr bool kReclassSubjectToOfffieldBlock = false;
+
+inline bool is_penetrate_category(RuleCategory c) {    return c == RuleCategory::PENETRATE_ATTACK || c == RuleCategory::PENETRATE_ATTRIBUTE;
 }
 
 // ③层命中失效类别 ↔ 技能类型的对应（is_attribute_skill = 本次用的是属性技能）。
@@ -405,6 +422,13 @@ struct RuleTicket {
     // 的条件，静态 anomaly_mask 表达不了（异常随时变，push 式改 mask 会有漏改窗口）。
     // ctx 由查询方传入（is_immune/consume_immune 的尾参）；为 nullptr 时条件不成立。
     std::function<bool(const BattleContext*, int status_id)> anomaly_condition;
+
+    // ── 下场成因改写票（LEAVE_CAUSE_RECLASS）参数 ─────────
+    // true = **豁免**薇尔诗 2513 场下源抑制场域（官方双标现状：新精灵机制不受影响）。
+    // false = 受场域管辖（场域开启 + 源在场下 → 本票抑制）。默认值由
+    // kReclassSubjectToOfffieldBlock 全局常量给出——一视同仁开关翻常量即可，见
+    // grant_leave_cause_reclass 注。
+    bool reclass_offfield_exempt = true;
 
     bool is_round_type() const { return remaining_rounds > 0; }
     bool responds_to(bool is_attribute_skill) const {
@@ -1252,6 +1276,85 @@ public:
             }
             if (window_expired(t, current_round)) {
                 continue;   // 窗口已过
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // ── 下场成因改写票（LEAVE_CAUSE_RECLASS）：授予 / 查询 ───────────────
+    // 见 RuleCategory::LEAVE_CAUSE_RECLASS 注。授予方（玄武 2553 / 蜃都之源 539）
+    // 在 deploy 节点授一次（TEAM、rounds=0 永久窗口），"存活于出战背包"门由
+    // condition 回调现场判（阵亡失效 / 复活恢复 / 消逝永久失效——不需要 revoke 事件面）。
+    //
+    // ── 场域管辖开关（2026-11-21 用户裁决）─────────────────────────────
+    // 玄武这类"场下源改写场上判定"的机制，官方现状是**双标**：新精灵不受薇尔诗 2513
+    // 场下源抑制场域影响。本票默认豁免（kReclassSubjectToOfffieldBlock=false，命名空间
+    // 作用域常量，本文件顶部）——将来一视同仁只翻那一个常量，非显式豁免的票在
+    // 「场域开启 + 源在场下」时即失效，不需要逐效果改。授予方可按效果用
+    // outfield_block_exempt 显式点名（源是印记/亡语类同款判别轴，档案 §4.0）。
+    // 场域门本体需要完整 BattleContext（find_mark_in_roster/场域标志/在场槽）——
+    // rule_center 只持 forward declaration，所以门以**回调注入**（offfield_gate）进来，
+    // 唯一调用方（battleFsm 查询桥）与场景传 reclass_offfield_gate_pass 的包装。
+    int grant_leave_cause_reclass(
+        int source_owner, int source_effect_id,
+        std::function<bool(BattleContext*, int, int, bool)> condition,
+        EffectScope scope = EffectScope::TEAM,
+        bool outfield_block_exempt = !kReclassSubjectToOfffieldBlock) {
+        if (source_owner < 0 || source_owner > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::LEAVE_CAUSE_RECLASS
+                && t.source_owner == source_owner
+                && t.source_effect_id == source_effect_id) {
+                t.scope = scope;
+                t.condition = std::move(condition);
+                t.reclass_offfield_exempt = outfield_block_exempt;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.source_slot = -1;
+        t.scope = scope;
+        t.target = -1;   // 全局："双方的主动下场"——不绑某一侧
+        t.category = RuleCategory::LEAVE_CAUSE_RECLASS;
+        t.remaining_rounds = 0;   // 永久窗口（纯查询族；生效门 = condition 现场判）
+        t.register_round = 0;
+        t.source_valid_id = 0;
+        t.condition = std::move(condition);
+        t.reclass_offfield_exempt = outfield_block_exempt;
+        const int sid = ++next_source_id_;
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // 查询：任一 armed 且 condition 通过（OR 语义；ctx 供 condition 现场判持有者状态）。
+    // 非豁免票再过场域门：offfield_gate(ctx, source_owner, source_effect_id) 返回 false
+    // （场域开启 + 源在场下）→ 本票抑制。门以回调注入（见上注），**nullptr = 不设防**
+    // ——唯一调用方 battleFsm 查询桥必传，别裸调。const 委屈点：condition 签名带
+    // 非 const BattleContext*（条件盔同款）——查询本身只读。
+    bool has_leave_cause_reclass(
+        BattleContext* ctx, int current_round,
+        const std::function<bool(BattleContext*, int, int)>& outfield_gate = nullptr) const {
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::LEAVE_CAUSE_RECLASS) {
+                continue;
+            }
+            if (window_expired(t, current_round)) {
+                continue;
+            }
+            if (t.condition && !t.condition(ctx, /*user=*/0, /*power=*/0,
+                                            /*is_attribute_skill=*/false)) {
+                continue;   // 持有者不在存活背包 → 本票不生效
+            }
+            if (!t.reclass_offfield_exempt
+                && (!outfield_gate
+                    || !outfield_gate(ctx, t.source_owner, t.source_effect_id))) {
+                continue;   // 场域门不通过：场域开启 + 源在场下（薇尔诗 2513 场下源抑制）
             }
             return true;
         }

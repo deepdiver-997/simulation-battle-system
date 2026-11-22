@@ -243,8 +243,13 @@ private:
 
     static bool roll_percent(int percent);
 
-    // 缓存映射表：效果ID -> 效果函数
-    std::unordered_map<int, EffectFn> effect_cache_;
+    // 缓存映射表：效果ID -> 效果函数 + 来源（撞号仲裁见 utils/registration_arbiter.h：
+    // 重复注册按 basename 稳定序仲裁，不再 last-wins——生效者跨平台一致）
+    struct EffectFnRegistration {
+        EffectFn fn = nullptr;
+        std::string source;
+    };
+    std::unordered_map<int, EffectFnRegistration> effect_cache_;
     mutable std::shared_mutex cache_mutex_;
 
     // 携带类效果注册表（effect_id → fn；插件 flush 时灌入，见 CarryEffectFn 注释）

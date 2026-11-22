@@ -1145,68 +1145,6 @@ void BattleContext::settle_hp_consume_marks(int marker_side) {
         hp_consume_marks.end());
 }
 
-template<int EffectId>
-bool BattleContext::hasEffect(State trigger, int owner) const {
-    const auto has_in_bucket = [&](EffectContainer container) {
-        for (const auto& [key, effect] : bucket_for(this, container).at(trigger, owner)) {
-            (void)key;
-            if (effect->getEffectId() == EffectId && !effect->isExpired(roundCount)) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    if (has_in_bucket(EffectContainer::SoulMark)) {
-        return true;
-    }
-    if (has_in_bucket(EffectContainer::Skill)) {
-        return true;
-    }
-    return false;
-}
-
-template<int EffectId>
-bool BattleContext::consumeEffect(State trigger, int opponent) {
-    // 默认仅消费技能容器，避免技能侧误删魂印侧效果。
-    auto& oppEffects = bucket_for(this, EffectContainer::Skill).at(trigger, opponent);
-    for (auto& [key, effect] : oppEffects) {
-        (void)key;
-        if (effect->getEffectId() == EffectId && !effect->isExpired(roundCount)) {
-            bool consumed = effect->consume(this);
-            // 清理所有已过期条目（map 惰性删除）
-            for (auto mit = oppEffects.begin(); mit != oppEffects.end();) {
-                if (mit->second->isExpired(roundCount)) {
-                    mit = oppEffects.erase(mit);
-                } else {
-                    ++mit;
-                }
-            }
-            return consumed;
-        }
-    }
-    return false;
-}
-
-// 显式实例化模板
-template bool BattleContext::hasEffect<0>(State trigger, int owner) const;
-template bool BattleContext::hasEffect<1>(State trigger, int owner) const;
-template bool BattleContext::hasEffect<2>(State trigger, int owner) const;
-template bool BattleContext::hasEffect<3>(State trigger, int owner) const;
-template bool BattleContext::hasEffect<4>(State trigger, int owner) const;
-template bool BattleContext::hasEffect<10>(State trigger, int owner) const;
-template bool BattleContext::hasEffect<11>(State trigger, int owner) const;
-template bool BattleContext::hasEffect<12>(State trigger, int owner) const;
-
-template bool BattleContext::consumeEffect<0>(State trigger, int opponent);
-template bool BattleContext::consumeEffect<1>(State trigger, int opponent);
-template bool BattleContext::consumeEffect<2>(State trigger, int opponent);
-template bool BattleContext::consumeEffect<3>(State trigger, int opponent);
-template bool BattleContext::consumeEffect<4>(State trigger, int opponent);
-template bool BattleContext::consumeEffect<10>(State trigger, int opponent);
-template bool BattleContext::consumeEffect<11>(State trigger, int opponent);
-template bool BattleContext::consumeEffect<12>(State trigger, int opponent);
-
 std::string BattleContext::getStateJson() const {
     // ... (existing implementation kept below)
     auto append_skills = [](std::ostringstream& oss, const ElfPet& pet) {

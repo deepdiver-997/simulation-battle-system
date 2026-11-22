@@ -1,4 +1,5 @@
 #include <utils/sbs_rand.h>
+#include <utils/registration_arbiter.h>
 #include <effects/effect.h>
 #include <fsm/battleContext.h>
 #include <plugin/plugin_interface.h>
@@ -228,7 +229,7 @@ Effect EffectFactory::getEffect(int id, EffectArgs args) {
         std::shared_lock<std::shared_mutex> read_lock(cache_mutex_);
         auto it = effect_cache_.find(id);
         if (it != effect_cache_.end()) {
-            fn = it->second;
+            fn = it->second.fn;
         }
     }
 
@@ -276,7 +277,20 @@ void EffectFactory::registerEffect(int effectId, EffectFn effect,
     id_collision::instance().record(id_collision::Category::SkillEffect, effectId,
         source.empty() ? "EffectFactory::registerEffect [manual]" : source);
     std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
-    effect_cache_[effectId] = effect;
+    auto it = effect_cache_.find(effectId);
+    if (it == effect_cache_.end()) {
+        effect_cache_.emplace(effectId, EffectFnRegistration{effect, source});
+    } else if (effect == nullptr) {
+        // fn=nullptr = 显式运行期注销（7921 MissingMoves1470 模式；无条件生效），
+        // 注销态条目接受任何非空注册接管——两分支覆盖注销/恢复双向。
+        it->second = EffectFnRegistration{nullptr, {}};
+    } else if (it->second.fn == nullptr
+               || registration_arbiter::should_replace(it->second.source, source)) {
+        // 撞号仲裁：按 basename 稳定序保留（不再 last-wins——静态初始化序跨平台
+        // 不同，last-wins 曾致 Windows 生效旧实现、Mac/Linux 生效新实现，§9）
+        it->second = EffectFnRegistration{effect, source};
+    }
+    // 仲裁落败方：已由 id_collision 记账，不覆盖现役实现
 }
 
 void EffectFactory::registerSoulMark(int soulmark_id, EffectFn effect_fn,

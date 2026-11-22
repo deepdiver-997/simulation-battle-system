@@ -1,4 +1,5 @@
 #include <entities/soul_mark_manager.h>
+#include <utils/registration_arbiter.h>
 #include <entities/soul_mark.h>
 #include <effects/continuousEffect.h>
 #include <fsm/battleContext.h>
@@ -210,7 +211,7 @@ EffectFn SoulMarkManager::getEffectFunc(int soulmarkId) {
         std::shared_lock<std::shared_mutex> read_lock(cache_mutex_);
         auto it = effect_cache_.find(soulmarkId);
         if (it != effect_cache_.end()) {
-            return it->second;
+            return it->second.fn;
         }
     }
     // Not found, return noop
@@ -222,7 +223,15 @@ void SoulMarkManager::registerEffect(int soulmarkId, EffectFn effect,
     id_collision::instance().record(id_collision::Category::SoulMarkEffect, soulmarkId,
         source.empty() ? "SoulMarkManager::registerEffect [manual]" : source);
     std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
-    effect_cache_[soulmarkId] = effect;
+    auto it = effect_cache_.find(soulmarkId);
+    if (it == effect_cache_.end()) {
+        effect_cache_.emplace(soulmarkId, SoulFnRegistration{effect, source});
+    } else if (effect == nullptr) {
+        it->second = SoulFnRegistration{nullptr, {}};   // 显式注销（语义见 registration_arbiter.h）
+    } else if (it->second.fn == nullptr
+               || registration_arbiter::should_replace(it->second.source, source)) {
+        it->second = SoulFnRegistration{effect, source};   // 撞号仲裁，见 registration_arbiter.h
+    }
 }
 
 void SoulMarkManager::registerSoulMark(int soulmark_id, EffectFn effect_fn,

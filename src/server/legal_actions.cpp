@@ -37,6 +37,12 @@ bool has_any_legal_action(const LegalActions& legal) {
     if (!legal.can_act) {
         return false;
     }
+    // 强制驱逐锁面板（2026-11-21 天尊线）：合法动作被**有意**收窄到只剩"空过"——
+    // 这是设计语义不是引擎死路，不能落进下面的全灭兜底（room 的 engine_no_legal_action
+    // 会误把对局收场）。can_skip=true + expel_locked=true ⇒ 恒有一个合法动作（空过）。
+    if (legal.expel_locked) {
+        return legal.can_skip;
+    }
     // 必须换宠时只看精灵：FSM 在 CHOOSE_AFTER_DEATH 只接受 CHOOSE_PET
     // （computed legal 里技能/药剂那档已按 must_choose_pet 标成不可用）。
     for (const auto& p : legal.pets) {
@@ -100,6 +106,12 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
     out.prospective = prospective;
     out.reason = prospective ? "prospective" : "";
     out.must_choose_pet = !prospective && (ctx.currentState == State::CHOOSE_AFTER_DEATH);
+    // ★ 强制驱逐锁面板（2026-11-21 天尊线）：forced_expel_pending 置位的侧，合法集合
+    //   只剩"空过"——官方表现是面板禁止选择、只留跳过按钮。与 FSM 收包校验（只认 NONE）
+    //   同源双消费（battleFsm.cpp 收包处注释）。死切期不锁（must_choose_pet 优先：
+    //   己方宠倒了要先补位，驱逐对象已死、锚点守卫会自然放弃驱逐——口径 TBD 记档）。
+    out.expel_locked = !prospective && !out.must_choose_pet
+                       && ctx.forced_expel_pending[player] != 0;
     // D1（2026-10-01 死切改造）：死切期合法操作 = 仅 CHOOSE_PET —— 跳过不出现在
     // 合法集合里（FSM 对 NONE 回 "Error: must choose pet"，这里从源头不给这个选项）。
     out.can_skip = !out.must_choose_pet;
@@ -123,6 +135,9 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
         if (out.must_choose_pet) {
             s.usable = false;
             s.reason = "must_choose_pet";
+        } else if (out.expel_locked) {
+            s.usable = false;
+            s.reason = "expel_locked";
         } else if (!sk.skill_usable(&ctx, player)) {
             s.usable = false;
             s.reason = "unusable";
@@ -148,6 +163,11 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
         if (p.hp <= 0) {
             lp.usable = false;
             lp.reason = "fainted";
+        } else if (out.expel_locked) {
+            // 锁面板下换宠列表整体不可选（含健康的替补）——FSM 收包也只认 NONE，
+            // 如实标记，前端才不会给出会被拒的按钮。
+            lp.usable = false;
+            lp.reason = "expel_locked";
         } else if (p.is_locked) {
             lp.usable = false;
             lp.reason = "locked";
@@ -171,7 +191,7 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
             lm.name = item->name;
         }
         lm.count = count;
-        lm.usable = !out.must_choose_pet && (count > 0) && (pet.hp > 0);
+        lm.usable = !out.must_choose_pet && !out.expel_locked && (count > 0) && (pet.hp > 0);
         out.medicines.push_back(std::move(lm));
     }
 

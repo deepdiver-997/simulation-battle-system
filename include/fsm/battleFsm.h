@@ -8,7 +8,6 @@
 #include <functional>
 #include <string>
 #include <entities/seer-robot.h>
-#include <thread_pool/thread_pool_base.h>
 
 class BattleContext;
 enum class State;
@@ -23,7 +22,17 @@ public:
         SELECT_SKILL,
         USE_MEDICINE,
         NONE,   // 跳过出手阶段但是回合类效果依旧触发，比如被控制但是点击了技能
-        SEND_EMOJI
+        SEND_EMOJI,
+        // **内部操作**（2026-11-21 驱逐线）：驱逐下场。绝不进线协议——proto::ActionType
+        // 不加对应值，且 operation() 的 switch **没有**本档 case（default 落空 → roundChoice
+        // 不变 → handle_OperationChooseSkillMedicament 的 accepted 判 false 拒绝），
+        // wire 侧发本数值天然被拒。产生途径只有两条：
+        //   ① 玄武 2553 重分类：收包时把 CHOOSE_PET 改写成 EXPEL（参数=玩家选的槽）；
+        //   ② 天尊线强制驱逐：BATTLE_ROUND_START 锚点按 forced_expel_pending 机器填参（随机槽）。
+        // 处理语义 = 表现为中切的下场（is_skill_action=false 跳过出手主流程），
+        // perform_switch(cause=EXPELLED) + **不发 EVENT_SWAP**（驱逐不是主动切换，
+        // 朝曦/神印/2040 窗等"主动"键控 watcher 天然不触发）。
+        EXPEL
     };
 
     BattleFsm(bool enable_debug = true);
@@ -48,12 +57,10 @@ public:
 
     bool id_debug = true;
 
-    // 战斗线程池（由 Server 注入）。
-    // 类型是纯虚基类而非具体池：FSM 只用到 post()，不该被"池是 asio 还是原生"绑死。
-    std::shared_ptr<ThreadPoolBase> battle_pool_;
-
-    // Battle pool 用于继续执行
-    void post(std::function<void()> task);
+    // ⚠️ FSM 不持有执行资源（2026-11-22 用户裁决）：线程池归 server 层（service 创建、
+    //    Room 持有并 post 战斗任务），FSM 只是一组被调用的状态处理函数集合——驱动方式
+    //    = runInternal 同步推进 + need_input 时交还控制块。历史上这里曾有一个
+    //    battle_pool_ 成员 + post() 转发（零读取/零调用，纯死重），已删；别再加回来。
 
 private:
     std::unordered_map<State, HandlerType> stateHandlerMap;

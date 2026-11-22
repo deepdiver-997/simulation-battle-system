@@ -56,7 +56,11 @@ private:
         return EffectResult::kOk;
     }
 
-    std::unordered_map<int, EffectFn> effect_cache_;
+    struct SuitFnRegistration {
+        EffectFn fn = nullptr;
+        std::string source;
+    };
+    std::unordered_map<int, SuitFnRegistration> effect_cache_;
     std::unordered_map<int, std::vector<SoulMarkNodeRef>> program_cache_;
     mutable std::shared_mutex cache_mutex_;
 
