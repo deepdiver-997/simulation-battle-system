@@ -162,9 +162,9 @@ struct ExpectedRoute { int eid; std::vector<int> slice; };
 struct TempDb {
     std::string path;
     explicit TempDb(const char* suffix)
-        : path(std::string("/tmp/agent_ws_j327/j327_neg_") + suffix + ".sqlite") {
+        : path((std::filesystem::temp_directory_path() /
+                (std::string("j327_neg_") + suffix + ".sqlite")).string()) {
         std::error_code ec;
-        std::filesystem::create_directories("/tmp/agent_ws_j327");
         std::filesystem::copy_file(official_data::kDefaultOfficialDatabasePath, path,
                                    std::filesystem::copy_options::overwrite_existing, ec);
         if (ec) {

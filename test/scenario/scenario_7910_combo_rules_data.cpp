@@ -113,9 +113,10 @@ ElfPet hit_probe_pet(int carrier_id, int speed, int atk) {
 // 临时库构造：copy 主库 → mutate（只动副本，绝不碰共享库）。
 struct TempDb {
     std::string path;
-    TempDb(const char* suffix) : path(std::string("/tmp/agent_ws_13/j326_neg_") + suffix + ".sqlite") {
+    TempDb(const char* suffix)
+        : path((std::filesystem::temp_directory_path() /
+                (std::string("j326_neg_") + suffix + ".sqlite")).string()) {
         std::error_code ec;
-        std::filesystem::create_directories("/tmp/agent_ws_13");
         std::filesystem::copy_file(official_data::kDefaultOfficialDatabasePath, path,
                                    std::filesystem::copy_options::overwrite_existing, ec);
         if (ec) {

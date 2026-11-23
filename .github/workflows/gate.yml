@@ -71,6 +71,8 @@ jobs:
           path: scripts/data/processed/seer_unity.sqlite
 
   build-test:
+    # The temporary full trial needs a DB and Windows only.
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/ci/windows-full-trial'
     needs: db
     runs-on: ubuntu-24.04
     steps:
@@ -131,13 +133,13 @@ jobs:
         with: { name: registry-json, path: build/registry.json }
 
   # Windows 门（移植决策 D1/D2 口径：MSYS2 UCRT64 MinGW + PowerShell/pwsh）。
-  # 只在 nightly 与手动触发跑，与 ubuntu build-test 并行（同 needs: db，public runner 免费）。
-  # 范围 = sim_server + smoke + 三插件部署 + 抽样场景（排序后每 10 取 1 ≈ 100 个）——
-  # 全量 982 场景对拍走 wuying 云电脑（docs_local/docs/07-工具与测试/Windows-移植.md §6），不烧 runner。
+  # 保持 nightly 和普通手动触发的抽样范围；仅试跑分支的手动触发跑全量。
   windows-nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: db
     runs-on: windows-latest
+    env:
+      FULL_WIN_TRIAL: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci/windows-full-trial' }}
     defaults:
       run:
         shell: pwsh
@@ -157,7 +159,7 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-sqlite3
-      - name: configure & build（引擎 + 插件部署 + 抽样场景）
+      - name: configure & build（引擎 + 插件部署 + 场景）
         run: |
           # ⚠️ runner 实证（2026-11-21 四跑）：① 镜像自带 C:\mingw64 会抢编译器选择；
           # ② setup-msys2 默认 release:true 的全新 MSYS2 根在 runner temp，不可钉 →
@@ -190,6 +192,17 @@ jobs:
             "-DCMAKE_PREFIX_PATH=$u" `
             "-DSQLite3_INCLUDE_DIR=$u/include" "-DSQLite3_LIBRARY=$sqliteLib"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:FULL_WIN_TRIAL -eq 'true') {
+            $jobs = [Environment]::ProcessorCount
+            $compiler = & "$u/bin/g++.exe" -dumpfullversion
+            $dbHash = (Get-FileHash scripts/data/processed/seer_unity.sqlite -Algorithm SHA256).Hash
+            "Windows full build: GCC $compiler, $jobs compile jobs; input DB SHA256: $dbHash" >> $env:GITHUB_STEP_SUMMARY
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            cmake --build build --parallel $jobs
+            $code = $LASTEXITCODE
+            "Ninja ALL: $([Math]::Round($timer.Elapsed.TotalSeconds, 1))s (exit $code)" >> $env:GITHUB_STEP_SUMMARY
+            exit $code
+          }
           # 确定性抽样：场景源按名排序后每 10 取 1（目标命名同 gate.ps1 全量门：sim_<basename>）
           $targets = @('sim_server','sim_smoke_test',
                        'moves_plugin_deploy','soul_plugin_deploy','suit_plugin_deploy')
@@ -206,7 +219,16 @@ jobs:
         run: |
           $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"
           ./build/sim_smoke_test.exe
+      - name: full scenarios（手动试跑）
+        if: env.FULL_WIN_TRIAL == 'true'
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"
+          python tools/windows/run_full_trial.py
+          exit $LASTEXITCODE
       - name: sampled scenarios（单例 120s 超时，口径同 gate.ps1）
+        if: env.FULL_WIN_TRIAL != 'true'
         run: |
           $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"
           # 已知平台/环境红兜底（2026-11-21 三平台对拍，清单与定性见
@@ -260,6 +282,15 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: registry-json-windows, path: build/registry.json }
+      - uses: actions/upload-artifact@v4
+        if: always() && env.FULL_WIN_TRIAL == 'true'
+        with:
+          name: windows-full-trial
+          path: |
+            build/windows-full/report.json
+            build/windows-full/logs/
+          if-no-files-found: ignore
+          retention-days: 3
 
   classify:
     if: github.event_name == 'pull_request'
