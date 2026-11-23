@@ -71,8 +71,8 @@ jobs:
           path: scripts/data/processed/seer_unity.sqlite
 
   build-test:
-    # The temporary full trial needs a DB and Windows only.
-    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/ci/windows-full-trial'
+    # The temporary full/PCH trials need a DB and Windows only.
+    if: github.event_name != 'workflow_dispatch' || (github.ref != 'refs/heads/ci/windows-full-trial' && github.ref != 'refs/heads/ci/windows-pch-trial')
     needs: db
     runs-on: ubuntu-24.04
     steps:
@@ -133,13 +133,14 @@ jobs:
         with: { name: registry-json, path: build/registry.json }
 
   # Windows 门（移植决策 D1/D2 口径：MSYS2 UCRT64 MinGW + PowerShell/pwsh）。
-  # 保持 nightly 和普通手动触发的抽样范围；仅试跑分支的手动触发跑全量。
+  # 保持 nightly 和普通手动触发的抽样范围；试跑分支手动触发独立模式。
   windows-nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: db
     runs-on: windows-latest
     env:
       FULL_WIN_TRIAL: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci/windows-full-trial' }}
+      PCH_WIN_TRIAL: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ci/windows-pch-trial' }}
     defaults:
       run:
         shell: pwsh
@@ -186,12 +187,17 @@ jobs:
           $sqliteLib = @("$u/lib/libsqlite3.dll.a", "$u/lib/libsqlite3.a") |
             Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $sqliteLib) { throw "ucrt64 下找不到 libsqlite3（.dll.a/.a）" }
+          $trialArgs = @()
+          if ($env:PCH_WIN_TRIAL -eq 'true') {
+            $trialArgs = @('-DSBS_SCENARIO_PCH=ON', '-DSBS_SCENARIO_PCH_TRIAL=ON', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON')
+          }
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             "-DCMAKE_MAKE_PROGRAM=$u/bin/ninja.exe" `
             "-DCMAKE_C_COMPILER=$u/bin/gcc.exe" "-DCMAKE_CXX_COMPILER=$u/bin/g++.exe" `
             "-DCMAKE_PREFIX_PATH=$u" `
-            "-DSQLite3_INCLUDE_DIR=$u/include" "-DSQLite3_LIBRARY=$sqliteLib"
+            "-DSQLite3_INCLUDE_DIR=$u/include" "-DSQLite3_LIBRARY=$sqliteLib" @trialArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:PCH_WIN_TRIAL -eq 'true') { exit 0 }
           if ($env:FULL_WIN_TRIAL -eq 'true') {
             $jobs = [Environment]::ProcessorCount
             $compiler = & "$u/bin/g++.exe" -dumpfullversion
@@ -211,6 +217,14 @@ jobs:
           "Windows nightly：抽样 $($targets.Count - 5)/$($srcs.Count) 场景" | Out-File -Append $env:GITHUB_STEP_SUMMARY
           cmake --build build -j $env:NUMBER_OF_PROCESSORS --target @targets
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: paired scenario PCH trial（手动试跑）
+        if: env.PCH_WIN_TRIAL == 'true'
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"
+          python -B tools/windows/run_pch_trial.py --ninja "$env:UCRT_ROOT/bin/ninja.exe" --jobs ([Environment]::ProcessorCount)
+          exit $LASTEXITCODE
       - name: registry dump
         run: |
           $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"   # 运行期 MinGW/sqlite DLL（sbs_rand.dll 在 exe 旁）
@@ -228,7 +242,7 @@ jobs:
           python tools/windows/run_full_trial.py
           exit $LASTEXITCODE
       - name: sampled scenarios（单例 120s 超时，口径同 gate.ps1）
-        if: env.FULL_WIN_TRIAL != 'true'
+        if: env.FULL_WIN_TRIAL != 'true' && env.PCH_WIN_TRIAL != 'true'
         run: |
           $env:PATH = "$env:UCRT_ROOT/bin;$env:PATH"
           # 已知平台/环境红兜底（2026-11-21 三平台对拍，清单与定性见
@@ -289,6 +303,18 @@ jobs:
           path: |
             build/windows-full/report.json
             build/windows-full/logs/
+          if-no-files-found: ignore
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: always() && env.PCH_WIN_TRIAL == 'true'
+        with:
+          name: windows-pch-trial
+          path: |
+            build/windows-pch/*.json
+            build/windows-pch/*.txt
+            build/windows-pch/*.log
+            build/windows-pch/logs/
+            build/windows-pch/traces/
           if-no-files-found: ignore
           retention-days: 3
 

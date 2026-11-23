@@ -25,6 +25,16 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(BUILD_SMOKE_TEST "Build smoke test executable" ON)
 option(BUILD_TRAINING_CLI "Build training command-line client" ON)
 option(BATTLE_FSM_VERBOSE_DEFAULT "Enable verbose FSM trace by default" OFF)
+option(SBS_SCENARIO_PCH "Reuse one GCC precompiled header across Ninja scenario executables" OFF)
+option(SBS_SCENARIO_PCH_TRIAL "Add no-PCH controls for the scenario PCH trial" OFF)
+
+if(SBS_SCENARIO_PCH AND (NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
+                         NOT CMAKE_GENERATOR STREQUAL "Ninja" OR CMAKE_DISABLE_PRECOMPILE_HEADERS))
+    message(FATAL_ERROR "SBS_SCENARIO_PCH requires GCC, single-config Ninja, and enabled PCH")
+endif()
+if(SBS_SCENARIO_PCH_TRIAL AND NOT SBS_SCENARIO_PCH)
+    message(FATAL_ERROR "SBS_SCENARIO_PCH_TRIAL requires SBS_SCENARIO_PCH")
+endif()
 
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
@@ -158,15 +168,54 @@ if(BUILD_SMOKE_TEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/test.cpp)
     file(GLOB SCENARIO_SOURCES CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/test/scenario/scenario_*.cpp)
     list(SORT SCENARIO_SOURCES)
-    foreach(scenario_src IN LISTS SCENARIO_SOURCES)
-        get_filename_component(scenario_name "${scenario_src}" NAME_WE)  # scenario_023_selfdestruct_legacy
-        add_executable(sim_${scenario_name} "${scenario_src}")
-        target_include_directories(sim_${scenario_name} PRIVATE
+    function(sbs_add_scenario target source)
+        add_executable(${target} "${source}")
+        target_include_directories(${target} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${NLOHMANN_INCLUDE_DIR}   # 场景按需 include src/server/*.cpp（JSON 解码复用）时需要
         )
-        target_link_libraries(sim_${scenario_name} PRIVATE sim_core)
+        target_link_libraries(${target} PRIVATE sim_core)
+    endfunction()
+
+    set(scenario_pch_owner "")
+    set(scenario_pch_sample "")
+    set(scenario_index 0)
+    foreach(scenario_src IN LISTS SCENARIO_SOURCES)
+        get_filename_component(scenario_name "${scenario_src}" NAME_WE)  # scenario_023_selfdestruct_legacy
+        set(scenario_target sim_${scenario_name})
+        sbs_add_scenario(${scenario_target} "${scenario_src}")
+        if(SBS_SCENARIO_PCH)
+            target_compile_options(${scenario_target} PRIVATE -Werror=invalid-pch)
+            if(scenario_pch_owner)
+                target_precompile_headers(${scenario_target} REUSE_FROM ${scenario_pch_owner})
+            else()
+                set(scenario_pch_owner ${scenario_target})
+                target_precompile_headers(${scenario_target} PRIVATE
+                    <iostream>
+                    <entities/pet_factory.h>
+                    <primitives/battle_primitives.h>
+                    <fsm/battleContext.h>
+                    <fsm/battleFsm.h>
+                )
+            endif()
+        endif()
+        if(SBS_SCENARIO_PCH_TRIAL)
+            # Sample the entire sorted suite, plus macro/include-order and DB-sensitive cases.
+            math(EXPR sample_offset "${scenario_index} % 43")
+            if((sample_offset EQUAL 0 OR scenario_name MATCHES "^scenario_(115|136|162|172|179|884|2460|7910|7930|7931)_")
+               AND NOT scenario_name STREQUAL "scenario_086_suit_skeleton"
+               AND NOT scenario_target STREQUAL scenario_pch_owner)
+                set(control_target sim_nopch_${scenario_name})
+                sbs_add_scenario(${control_target} "${scenario_src}")
+                set_target_properties(${control_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+                string(APPEND scenario_pch_sample "${scenario_name}\n")
+            endif()
+            math(EXPR scenario_index "${scenario_index} + 1")
+        endif()
     endforeach()
+    if(SBS_SCENARIO_PCH_TRIAL)
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pch-trial-scenarios.txt" "${scenario_pch_sample}")
+    endif()
 endif()
 
 # ── 公开示例包（examples/public，**随公开仓发布**）────────────────────────
