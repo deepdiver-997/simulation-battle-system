@@ -207,6 +207,9 @@ public:
     // 逐条查询、命中把 fn 装进 Skills::carryEffects 槽位（见 CarryEffectFn 注释）。
     void registerCarryEffect(int effect_id, CarryEffectFn fn,
                              const std::string& source = {}) override;
+    // 效果显示 G4（2026-11-23）：转投 DisplayRegistry（撞 key 首注保留）。
+    void registerStorageDisplay(const StorageDisplaySpec& spec) override;
+    void registerMarkType(const MarkTypeSpec& spec) override;
     // 查询（loadSkills 用）；未注册返回 nullptr。init 前调用安全（空表）。
     CarryEffectFn find_carry_effect(int effect_id) const;
 

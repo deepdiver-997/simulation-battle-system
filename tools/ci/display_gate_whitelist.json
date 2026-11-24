@@ -1,0 +1,30 @@
+{
+  "_readme": "效果显示 G1 描述链白名单（规范 docs/07-工具与测试/效果显示gate规范.md §4 G1）。键=注册表 id（字符串），值=原因（必须指认实现文件/口径依据，脚本拒绝空原因）。三类条目：①官方 id 但 DB 无描述行；②本地扩展/承接/私有号段 id；③G4（display 段）落地前的套装。条目 stale/僵尸脚本会警告，请随手清理。",
+  "moves": {
+    "21": "官方 effect_info 无行（G8 考古定案：side_effect 表有行、模板文本缺失，语义按 DB 切片+4399 图鉴双源定案）——见 resources/moves_lib/e_reflect_old21.cpp 头注",
+    "31": "经典连击：次数由 loadSkills combo_arg_indices 消化，效果体为 noop——见 resources/moves_lib/damage_modifier.cpp:438",
+    "42": "充能池窗口（K432）——见 resources/moves_lib/k432_chongneng_pool.cpp:204",
+    "270210": "本地扩展 id（启灵线）：神之宣告免断 n-1 元神特判——见 resources/moves_lib/qiling_skills.cpp:422",
+    "900001": "本地承接 id：DB 补丁 1526 拆分阈甲随机粉后缀——见 resources/moves_lib/j_threshold_armor_random_pink.cpp:195 与 tools/db_patches/j3/1526_split_900001.sql",
+    "999900": "本地承接 id（消强成功→下一回合必先）——见 resources/moves_lib/selection_seal.cpp:700"
+  },
+  "soul": {
+    "106": "官方 effect_icon 无 tips 行（尾族反击魂印；effect_info[106] 是技能空间模板，不可混用——规范 C2 空间隔离）——见 resources/soul_lib/k_reflect_tail_family.cpp:224",
+    "110": "官方 effect_icon 无 tips 行（同上族；effect_info[110] 属技能空间）——见 resources/soul_lib/k_reflect_tail_family.cpp:226",
+    "133": "官方 effect_icon 无 tips 行（同上族；effect_info[133] 属技能空间）——见 resources/soul_lib/k_reflect_tail_family.cpp:228",
+    "187": "击败族魂印：effect_icon 无 tips 行（effect_info[187] 属技能空间）——见 resources/soul_lib/j_defeat_family.cpp:510",
+    "201": "击败族魂印：effect_icon 无 tips 行（effect_info[201] 属技能空间）——见 resources/soul_lib/j_defeat_family.cpp:513",
+    "218": "击败族魂印：effect_icon 无 tips 行（effect_info[218] 属技能空间）——见 resources/soul_lib/j_defeat_family.cpp:516",
+    "9901001": "私有号段（原 1001，与官方 effect_icon 1001 珂莱蒂尔撞号迁移）：索伦森概率挡红伤——见 resources/soul_lib/legacy_guards.cpp:181",
+    "9901002": "私有号段（原 1002）：兰斯洛特免疫并反弹暴击伤害——见 resources/soul_lib/legacy_guards.cpp:182",
+    "9901004": "私有号段（原 1004）：神谕沧岚泪施加——见 resources/soul_lib/canglan_tears.cpp:130",
+    "9901005": "私有号段（原 1005）：神谕沧岚泪死亡清账——见 resources/soul_lib/canglan_tears.cpp:131",
+    "9901006": "私有号段（原 1006）：朝曦切换用 1 号位——见 resources/soul_lib/canglan_tears.cpp:132"
+  },
+  "suit": {
+    "387": "G4 前无效果描述源（DB suit.suitdes 是故事文本）：效果口径见 resources/suit_lib/fushi_387.cpp 头注（官方全文+拆解）",
+    "447": "G4 前无效果描述源（同上）：效果口径见 resources/suit_lib/chenxi_447.cpp 头注",
+    "462": "G4 前无效果描述源（同上）：效果口径见 resources/suit_lib/yingyi_462.cpp 头注",
+    "476": "G4 前无效果描述源（同上）：效果口径见 resources/suit_lib/shengmang_476.cpp 头注"
+  }
+}

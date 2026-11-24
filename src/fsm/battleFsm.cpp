@@ -309,21 +309,20 @@ void overclock_restore_selected_pp(BattleContext* ctx, int side) {
 // 官方 effect_des kind=2：
 //   19 瘫痪「控制类异常状态，**限制类**异常状态，该状态下精灵无法行动、**主动切换**」
 //   32 凝滞「弱化类异常状态，**限制类**异常状态，该状态下精灵**无法切换**，同时免疫受到的控制类异常状态」
-// 语料 idx=355《赛学必修1》：「还有个**限制类**异常状态，顾名思义就是限制对方切换，嗑药等等，
-// 目前只有**凝滞和瘫痪**」；idx=147 复述「限制类就凝滞和瘫痪」。
+// 魇昧(44)也归限制类，但本轮不实现操作封锁；这里只查询实际锁主动切换的异常。
 //
 // ⚠️ 只拦**主动**切换：死后换宠（必须补位，否则对局卡死）走 `is_forced=true` 绕过。
 // ⚠️ 与 `ElfPet::is_locked` 无关，别混：那个是 pet 级"能否被换**上场**"且引擎从不 set
-//    （语义方向相反）。目前"限制切换"的两个来源：限制类异常（凝滞 32 / 瘫痪 19）与
+//    （语义方向相反）。目前"限制切换"的两个来源：锁切换异常（凝滞 32 / 瘫痪 19）与
 //    **回合类锁切票**（RuleCenter SWITCH_LOCK，「下N回合无法主动切换精灵」族，
 //    2026-09-20 莫塔里安第五技能接入）——两条独立来源，同在下面这个函数里查。
-bool has_blocking_restriction_status(const BattleContext* ctx, int robot_id) {
+bool is_active_switch_blocked(const BattleContext* ctx, int robot_id) {
     if (!ctx || robot_id < 0 || robot_id > 1) {
         return false;
     }
-    // ① 限制类异常（凝滞 / 瘫痪）
+    // ① 实际锁主动切换的异常（凝滞 / 瘫痪）
     for (int status_id = 0; status_id <= kOfficialAbnormalStatusMaxId; ++status_id) {
-        if (!is_restriction_abnormal_status(static_cast<AbnormalStatusId>(status_id))) {
+        if (!abnormal_status_blocks_active_switch(static_cast<AbnormalStatusId>(status_id))) {
             continue;
         }
         if (ctx->has_active_abnormal_status(robot_id, status_id)) {
@@ -792,7 +791,13 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
         const int crit_mult = ctx->ws.cached_crit_damage[attacker_id];  // 默认 200（2 倍）
         snapshot.base = snapshot.base * crit_mult / 100;               // ① 暴击系数（整段放大）
         // ② 暴击抗性：读 ws **有效视图**（临时 buff 可修改；基线由 sync_damage_resist_view 重基）
-        const int crit_resist = ctx->ws.eff_crit_resist_pct[defender_id];
+        // ★ ATTACH_PIERCE（2026-11-22 SP④抗性提升无视）：施加方持凭证 → 读 base 基线。
+        const bool crit_resist_pierced =
+            ctx->rule_center_.has_attach_pierce(ctx, attacker_id, kPierceResistBoost,
+                                                ctx->roundCount);
+        const int crit_resist = crit_resist_pierced
+            ? ctx->ws.base_resist_pct[defender_id][0]
+            : ctx->ws.eff_crit_resist_pct[defender_id];
         snapshot.base = snapshot.base * (100 - crit_resist) / 100;     // 乘整段
         snapshot.isCrit = true;
     }
@@ -1513,9 +1518,9 @@ void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType 
                 std::cerr << "Invalid pet index: " << index << std::endl;
                 return;
             }
-            // 限制类异常（凝滞 32 / 瘫痪 19）→ **主动**切换被禁（官方 effect_des 19/32）。
+            // 锁切换异常（凝滞 32 / 瘫痪 19）和锁切票只拦**主动**切换。
             // is_forced 只由死后补位（handle_ChooseAfterDeath）传 true —— 死亡后必须能补位。
-            if (!is_forced && has_blocking_restriction_status(battleContext, robotId)) {
+            if (!is_forced && is_active_switch_blocked(battleContext, robotId)) {
                 std::cerr << "Cannot switch pet: restricted by abnormal status (stasis/crippled)"
                           << std::endl;
                 return;

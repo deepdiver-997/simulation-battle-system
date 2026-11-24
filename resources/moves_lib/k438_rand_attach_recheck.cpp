@@ -180,8 +180,8 @@ std::vector<int> k438_non_restriction_pool() {
 // anomalies → 三段账 + 新落 id 差集落审计。返回 landed 供 1116 补偿分支消费。
 int k438_attach_and_audit(BattleContext* ctx, int owner, int opp, int audit_base,
                           const std::vector<int>& pool, int kinds) {
-    // 前提快照（目标侧 0..43 全集——Modern 通道只可能新增不可能立即消除）。
-    bool before[44] = {false};
+    // 前提快照（目标侧有效异常全集——Modern 通道只可能新增不可能立即消除）。
+    bool before[kOfficialAbnormalStatusSlotCount] = {};
     for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
         before[id] = g_core->has_active_anomaly(ctx, opp, id);
     }

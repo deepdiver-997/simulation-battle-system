@@ -145,7 +145,7 @@ std::vector<int> k439_pool_named_four() {
 // → 三段账 + 新落 id 差集落审计。返回 landed 供 1498 补偿分支消费。
 int k439_attach_and_audit(BattleContext* ctx, int owner, int opp, int audit_base,
                           const std::vector<int>& pool, int kinds) {
-    bool before[44] = {false};
+    bool before[kOfficialAbnormalStatusSlotCount] = {};
     for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
         before[id] = g_core->has_active_anomaly(ctx, opp, id);
     }

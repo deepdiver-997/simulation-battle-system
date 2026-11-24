@@ -1,4 +1,5 @@
 #include <utils/sbs_rand.h>
+#include <cstdio>
 // 神觉·米斯蒂克 4676 技能组（官方参数 moves.side_effect / effect_info，2026-09-20 查库）：
 //   溃梦灵言 37509：1471 消强成功→疲惫，未触发→回1/3 ｜ 2212 受击疲惫控+挡伤 ｜ 776 攻伤翻倍(已实现)
 //   心朽魂凋 28808：1848 对手有下降→先制+2 ｜ 191 免疫反弹异常(已实现) ｜ 47 免弱(已实现) ｜
@@ -753,7 +754,27 @@ EffectResult effect_1827_defeat_seal(BattleContext* ctx, const EffectArgs& args)
 }  // namespace
 
 // ════════════════════════ 效果注册 ════════════════════════
-SKILL_EFFECT(1848, effect_1848_drop_priority);          // 心朽魂凋：对手有下降→先制+2（选择期）
+SKILL_EFFECT(1848, effect_1848_drop_priority);
+
+// ── 效果显示 G4（2026-11-23）：发布槽显示身份（STATE_DISPLAY_FN，规范 §4 G4）──
+// 键族 = 基址+side，逐侧登记、归属编进名字（"方0/方1"）。
+// ⚠️ 必须用插件侧解码器（STATE_DISPLAY_FN）而不是 kind 通用解码：
+//    std::any 的 type_info/manager 是各 TU 独立实例，内核 generic 解码 any_cast<int>
+//    对插件写入的值必抛 bad_any_cast（2026-11-23 实证值恒 "?"）。同 dylib 读写才安全。
+namespace {
+bool mistike_decode_int(const std::any& stored, DecodedValue& out) {
+    try {
+        std::snprintf(out.text, sizeof(out.text), "%d", std::any_cast<int>(stored));
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+}  // namespace
+STATE_DISPLAY_FN(4676000, "蚩庸之锁层数(方0)", mistike_decode_int);
+STATE_DISPLAY_FN(4676001, "蚩庸之锁层数(方1)", mistike_decode_int);
+STATE_DISPLAY_FN(4676500, "蚩庸之锁槽位(方0)", mistike_decode_int);
+STATE_DISPLAY_FN(4676501, "蚩庸之锁槽位(方1)", mistike_decode_int);          // 心朽魂凋：对手有下降→先制+2（选择期）
 SKILL_EFFECT(449, effect_449_conditional_anomaly);      // 心朽魂凋：对手有下降→100%疲惫
 SKILL_EFFECT(1684, effect_1684_lock_drops);             // 心朽魂凋：对手下降不可解除/反转
 SKILL_EFFECT(1428, effect_1428_all_down_then_roundly);  // 心朽魂凋：全属性-1+每回合三项-1

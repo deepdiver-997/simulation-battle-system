@@ -242,8 +242,9 @@ int main() {
     auto& repo = official_data::OfficialDataStore::instance().repository();
     RoDb ro;
 
-    // ══ A typed loader 直查（37/38 行双态 + 无路由 id nullptr）═════════════════
+    // ══ A typed loader 直查（37/38/39 行三态 + 无路由 id nullptr）══════════════
     bool has616_route = false;
+    bool has953_route = false;
     {
         CHECK(repo.load_selection_routes(), "A) load_selection_routes 成功（表在、版本/白名单全合法）");
         for (const RouteRow& r : kRoutes) {
@@ -273,13 +274,30 @@ int main() {
                      "A) 616 schema_version=1");
             CHECK(!r616->evidence.empty(), "A) 616 evidence 非空");
         }
+        // K487 三态：953 行在（39 行态）→ 全量校验（回血+血量先制族，expansion_7）。
+        if (const official_data::SelectionRouteRecord* r953 =
+                repo.find_selection_route(953)) {
+            has953_route = true;
+            CHECK(r953->phase == official_data::kSelectionRoutePhaseSelection,
+                  "A) 953 phase=selection（K487 扩行态）");
+            CHECK(r953->state == official_data::kSelectionRouteStateFirstMoveRight,
+                  "A) 953 state=FIRST_MOVE_RIGHT（K487 扩行态）");
+            CHECK(r953->arg_adapter == official_data::kSelectionRouteAdapterPlain,
+                  "A) 953 adapter=plain（K487 扩行态）");
+            CHECK_EQ(r953->schema_version, official_data::kSelectionRoutesSchemaVersion,
+                     "A) 953 schema_version=1");
+            CHECK(!r953->evidence.empty(), "A) 953 evidence 非空");
+        }
         CHECK(repo.find_selection_route(451) == nullptr,
               "A) 451（链兄弟）无路由行——普通效果保持既有执行分支");
         CHECK(repo.find_selection_route(2020) == nullptr,
               "A) 2020（effect_register_state 用技期对照）无路由行——J66 勘误边界不外溢");
         CHECK(repo.find_selection_route(999999) == nullptr, "A) 未知 id 无路由行");
-        std::cout << "  [A] typed loader " << (has616_route ? 38 : 37) << " 行态精确"
-                  << (has616_route ? "（K469 扩行：616 血量先制族）" : "（35 plain + 2 static，J335 扩行后）")
+        std::cout << "  [A] typed loader " << (has953_route ? 39 : has616_route ? 38 : 37)
+                  << " 行态精确"
+                  << (has953_route ? "（K487 扩行：953 回血+血量先制族）"
+                                   : has616_route ? "（K469 扩行：616 血量先制族）"
+                                                  : "（35 plain + 2 static，J335 扩行后）")
                   << "；451/2020/未知 id 无行\n";
     }
 
@@ -302,7 +320,14 @@ int main() {
                 ref_total = sqlite3_column_int(st, 0);
                 carrier_total = sqlite3_column_int(st, 1);
             });
-        if (has616_route) {
+        if (has953_route) {
+            CHECK_EQ(ref_total, 484,
+                     "B) 引用总数 484（479 + K487 953 五载体各 1 引用：坠天断魂曲 24921/"
+                     "地底核心 25269/冰霸霸之魂 26577/福龙临世 28592/风翼护体 28714）");
+            CHECK_EQ(carrier_total, 480,
+                     "B) 载体总数 480（475 + 24921/25269/26577/28592/28714——五载体链上"
+                     "均无既有路由 id，SQL 核算 2026-11-19）");
+        } else if (has616_route) {
             CHECK_EQ(ref_total, 479, "B) 引用总数 479（473 + K469 616 六载体各 1 引用）");
             CHECK_EQ(carrier_total, 475,
                      "B) 载体总数 475（469 + 破锐怒冲 17660/龙怒天火断 19323/"
@@ -530,9 +555,10 @@ int main() {
                      "坏版本/static 切片非零）；切回主库复原 ✓\n";
     }
 
-    std::cout << "\n场景 7930 通过：J327+J331+J332+J335+K469 选择期路由数据化——typed loader "
-              << (has616_route ? "38 行精确（K469 616 扩行态，479 引用/475 载体）"
-                               : "37 行精确（473 引用/469 载体，K469 补丁待集成重放）")
+    std::cout << "\n场景 7930 通过：J327+J331+J332+J335+K469+K487 选择期路由数据化——typed loader "
+              << (has953_route ? "39 行精确（K487 953 扩行态，484 引用/480 载体）"
+                               : has616_route ? "38 行精确（K469 616 扩行态，479 引用/475 载体）"
+                                              : "37 行精确（473 引用/469 载体，K469 补丁待集成重放）")
               << "、载体全量构造核验（SQL 复刻切片逐位比对、"
                  "普通分支零路由 id）、禁用摘节点对照、fail-closed 七负测全拒且切回主库复原。\n";
     return 0;

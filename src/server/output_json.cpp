@@ -1,6 +1,8 @@
 #include <cstdint>
 #include <server/output_json.h>
 
+#include <effects/display_registry.h>
+
 #include <abnormal-system/abnormal-types.h>
 #include <effects/state_tape.h>
 #include <entities/pet_factory.h>
@@ -319,11 +321,13 @@ std::string hex64(std::uint64_t v) {
     return std::string(buf);
 }
 
-// 快照顶层键提取（外层对象深度 1 的键名），指纹只看键集——值会随对局变，
-// 键集才是 schema。键/值串区分 = 看进串前最近的显著字符（'{'或','=键，':'=值）。
-std::string top_level_keys(const std::string& json) {
+// 快照全深度键提取（G3 起：嵌套对象加/删字段也改变指纹——原实现只看外层深度 1，
+// 快照在 player0/player1 内嵌 effects/marks 段时指纹纹丝不动，报警形同虚设）。
+// 指纹只看键集——值会随对局变，键集才是 schema。键/值串区分 = 看进串前最近的
+// 显著字符（'{'或','=键，':'=值）；in_string/escape 跟踪保证字符串值的内容
+// 永远不会被当成键（值里出现 "…\"key\":" 形态也不会误判）。
+std::string all_json_keys(const std::string& json) {
     std::string keys;
-    int depth = 0;
     bool in_string = false, escaped = false, collecting_key = false;
     char last_sig = 0;
     std::string current;
@@ -350,20 +354,14 @@ std::string top_level_keys(const std::string& json) {
         switch (c) {
             case '"':
                 in_string = true;
-                collecting_key = (depth == 1 && (last_sig == '{' || last_sig == ','));
+                collecting_key = (last_sig == '{' || last_sig == ',');
                 current.clear();
                 current += c;
                 break;
             case '{':
             case '[':
-                ++depth;
-                last_sig = c;
-                break;
             case '}':
             case ']':
-                --depth;
-                last_sig = c;
-                break;
             case ':':
             case ',':
                 last_sig = c;
@@ -454,6 +452,7 @@ RegistryDump build_registry_dump() {
         {4, "回弹"}, {5, "穿透凭证·攻击"}, {6, "穿透凭证·属性伤害"}, {7, "场下保护"},
         {8, "异常池改写"}, {9, "技能封禁"}, {10, "附加禁令"}, {11, "锁切"},
         {12, "攻击无效化"}, {13, "药剂反噬"}, {14, "盔遮蔽"}, {15, "概率闸门"},
+        {static_cast<int>(RuleCategory::ANOMALY_REFLECT_COUNTS), "次数异常反弹"},
     };
     const std::vector<std::pair<int, const char*>> immunity_types = {
         {0, "免断"}, {1, "免伤"}, {2, "免粉伤"}, {3, "免弱化"}, {4, "免异常"},
@@ -481,7 +480,11 @@ RegistryDump build_registry_dump() {
                 + "],\"sealKinds\":[" + join_named(seal_kinds)
                 + "],\"chanceTags\":[" + join_named(chance_tags)
                 + "],\"chanceSources\":[" + join_named(chance_sources)
-                + "],\"effectScopes\":[" + join_named(effect_scopes) + "]}";
+                + "],\"effectScopes\":[" + join_named(effect_scopes)
+                // 效果显示 G4（2026-11-23）：display 段——storage key 显示身份 + Mark 类型
+                // 固定表（规范 §3 registry 出口）。网关 /api/meta 分发，客户端每注册表版本拉一次。
+                + "],\"display\":"
+                + display_reg::DisplayRegistry::instance().display_section_json() + "}";
     return dump;
 }
 
@@ -506,7 +509,7 @@ std::string version_fingerprint_json() {
                 PetFactory::create_empty_pet(), PetFactory::create_empty_pet()};
             std::array<SeerRobot, 2> robots{SeerRobot(empty_party), SeerRobot(empty_party)};
             BattleContext ctx(&block, robots.data(), /*pvp_battle=*/false);
-            state_hash = hex64(fnv1a64(top_level_keys(ctx.getStateJson())));
+            state_hash = hex64(fnv1a64(all_json_keys(ctx.getStateJson())));
         } catch (...) {
             state_hash = "";
         }

@@ -25,7 +25,11 @@
 // 错位、写进错误字段、行为随机（CLAUDE-full §5.13 事故）。
 //   v2（2026-10-24）：K6 虚拟异常视图转正——加 set/get_anomaly_view_layers 两槽，
 //   状态落 BattleContext::anomaly_view_layers（BattleContext 布局同时变化，全量重建）。
-constexpr uint32_t kPluginAbiVersion = 2;
+//   v3（2026-11-23）：效果显示 G4——IEffectRegistry 尾部追加 registerStorageDisplay/
+//   registerMarkType 两虚槽（STATE_DISPLAY/STATE_MARK_TYPE flush 通道），DisplayRegistry
+//   登记表落 sim_core。旧 dylib 对 v3 内核：verify_plugin_abi 当场 abort（响亮报警）。
+//   v4：免疫句柄别名与次数反弹票；BattleContext 的官方异常槽由 44 扩到 45。
+constexpr uint32_t kPluginAbiVersion = 4;
 
 // Core 原语函数指针集合。由 sim_core 填充（见 src/effects/core_api.cpp 的 core_api()）。
 struct CoreApi {

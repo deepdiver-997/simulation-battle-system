@@ -10,7 +10,8 @@
 //   （`kinddes=沸涌`，弱化类：「受到的攻击伤害至少为其最大体力的30%，对手打出致命一击时
 //   效果提升至50%」）。当日"36 是空号"的记录系快照过时，槽 36 由沸涌入编
 //   （燔薪照日 29275 的 effect 1676 args={3,100,36,1} 直接按 id 36 引用）。
-constexpr int kOfficialAbnormalStatusMaxId = 43;
+// effect_des 575（kind=2, icon=44）「魇昧」：弱化类、限制类，本轮仅作无特效状态入表。
+constexpr int kOfficialAbnormalStatusMaxId = 44;
 constexpr int kOfficialAbnormalStatusSlotCount = kOfficialAbnormalStatusMaxId + 1;
 
 enum class AbnormalStatusId : int {
@@ -60,6 +61,7 @@ enum class AbnormalStatusId : int {
     Fanaticism = 41,            // 狂信（控制类）
     ThunderRelease = 42,        // 雷解（附属类）
     SlowFreeze = 43,            // 渐冻（附属类）
+    Yanmei = 44,                // 魇昧（弱化类、限制类；仅状态）
 };
 
 // battle_effects.Efftype:
@@ -125,6 +127,7 @@ inline const char* abnormal_status_name_cn(AbnormalStatusId status_id) {
         case AbnormalStatusId::Fanaticism: return "狂信";
         case AbnormalStatusId::ThunderRelease: return "雷解";
         case AbnormalStatusId::SlowFreeze: return "渐冻";
+        case AbnormalStatusId::Yanmei: return "魇昧";
         default: return "未知异常";
     }
 }
@@ -166,6 +169,7 @@ inline AbnormalStatusKind abnormal_status_kind(AbnormalStatusId status_id) {
         case AbnormalStatusId::Stasis:
         // 官方 effect_des 304「沸涌：弱化类异常状态」（2026-09-20 入编）
         case AbnormalStatusId::Boil:
+        case AbnormalStatusId::Yanmei:
             return AbnormalStatusKind::Debuff;
         case AbnormalStatusId::MountainGuardian:
         case AbnormalStatusId::Berserk:
@@ -262,19 +266,19 @@ inline bool is_control_abnormal_status(AbnormalStatusId status_id) {
 }
 
 // ----------------------------------------------------------------
-// 限制类异常（官方 effect_des 19「瘫痪：控制类异常状态，限制类异常状态，该状态下精灵
-// 无法行动、主动切换」/ 32「凝滞：弱化类异常状态，限制类异常状态，该状态下精灵无法切换，
-// 同时免疫受到的控制类异常状态」；语料 idx=355「限制类异常状态，顾名思义就是限制对方切换，
-// 嗑药等等，目前只有凝滞和瘫痪」）。
-//
-// 与 is_control_abnormal_status 是**正交**的两张表：
-//   - 控制类 → 禁**行动**（has_blocking_control_status）；
-//   - 限制类 → 禁**主动切换**（can_switch_out）。
-// 瘫痪同时属于两张表（既不能行动也不能切换）；凝滞只属于限制类（能行动，不能切换）。
+// 限制类是异常分类（供非限制类异常池、星赎等查询），不是操作封锁的判据。
+// 瘫痪(19)同时属于控制类，凝滞(32)和魇昧(44)属于弱化类。
 // ----------------------------------------------------------------
 inline bool is_restriction_abnormal_status(AbnormalStatusId status_id) {
-    return status_id == AbnormalStatusId::Crippled   // 瘫痪 19
-        || status_id == AbnormalStatusId::Stasis;    // 凝滞 32
+    return status_id == AbnormalStatusId::Crippled
+        || status_id == AbnormalStatusId::Stasis
+        || status_id == AbnormalStatusId::Yanmei;
+}
+
+// 只有瘫痪、凝滞实际锁主动切换。魇昧虽归限制类，本轮只保留状态与分类。
+inline bool abnormal_status_blocks_active_switch(AbnormalStatusId status_id) {
+    return status_id == AbnormalStatusId::Crippled
+        || status_id == AbnormalStatusId::Stasis;
 }
 
 // 第五技能槽位（`ElfPet` 的 `std::array<Skills, 5>`，0..4；万相乖离 2260 的 kFifthSkillSlot 同值）。

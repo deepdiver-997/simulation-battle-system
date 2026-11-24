@@ -122,6 +122,29 @@ int main() {
         std::cout << "  [O5] 转化正常路径: CONVERTED, 烧伤→麻痹" << std::endl;
     }
 
+    //========== O6 最后一道魂免只按时点和种类挡下，不借旧回弹半票触发 ==========
+    for (int mode : {0, 1, 2, 3}) {
+        auto battle = make_battle();
+        auto& ctx = battle.ctx();
+        const bool resisted = mode == 0;
+        const bool in_soul_range = mode == 0 || mode == 1;
+        if (resisted) ctx.getPet(1).resistance.setUncontrolSlot(0, kBurn, 100);
+        const auto timing = mode == 2 ? State::BATTLE_ROUND_END : ctx.currentState;
+        const uint64_t mask = uint64_t{1} << (mode == 3 ? kParalysis : kBurn);
+        int soul_checks = 0;
+        ctx.grant_immunity(1, ImmunityType::ANOMALY, state_coverage_bit(timing), mask,
+                           2, 0, true, EffectScope::ON_STAGE, 0, 7006, ImmunityTier::Modern,
+                           [&](const BattleContext*, int) { ++soul_checks; return true; });
+        ctx.rule_center_.grant_reflect(1, -1, 7007, 1, 2);
+        const auto expected = resisted ? ApplyAnomalyResult::RESISTED_BY_RESISTANCE
+            : in_soul_range ? ApplyAnomalyResult::TARGET_IMMUNE : ApplyAnomalyResult::SUCCESS;
+        REQUIRE(apply_anomaly(&ctx, 1, kBurn, 2, 0) == expected);
+        REQUIRE(soul_checks == (mode == 1 ? 1 : 0));
+        REQUIRE(ctx.has_active_abnormal_status(1, kAbnormalImmunity) == resisted);
+        REQUIRE(ctx.has_active_abnormal_status(1, kBurn) == !in_soul_range);
+        REQUIRE(!ctx.has_active_abnormal_status(0, kBurn));
+    }
+
     std::cout << "scenario_o PASS (异常抗性优先级 + 免疫异常击穿魂免 + 反弹防循环 + 转化)"
               << std::endl;
     return 0;

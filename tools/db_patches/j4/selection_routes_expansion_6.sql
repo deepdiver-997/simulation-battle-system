@@ -64,13 +64,13 @@ VALUES
     (616, 'selection', 'FIRST_MOVE_RIGHT', 'plain', 1,
      '当自身血量少于1/3时先制+2（effect_info 原文；6 载体 17660 破锐怒冲/19323 龙怒天火断/23413 海之契约/23836 轮回天生/24822 心怀苍生/38016 异怪波动，切片恒[3,2]逐位自洽；门=hp×3<max_hp 严格低于（454/1397 整数直乘口径，恰1/3门闭），出=ws.preemptive_level+=2 优先级修改面；J53 454 同形（j_cond_priority.cpp:36），a31-orch 2026-11-17 裁决扩行授权；soul 空间 616=K303 已实现（双空间同号甄别，K303 不受影响）；插件 k469_lowhp_prio.cpp）');
 
--- ═══ 目标态断言：38 行显式集合（37 历史 + 本单 1；缺一多一皆拒）══════════════
+-- ═══ 目标态断言：38 种子集（2026-11-23 K487 放宽——后环 expansion_7 落地后本断言须容忍 39+ 行态；c01a5bb2/K469 放宽先例同款）══════════════
 CREATE TEMP TABLE IF NOT EXISTS j4_selroute6_assert (ok INTEGER CHECK (ok = 1));
 DELETE FROM j4_selroute6_assert;
 INSERT INTO j4_selroute6_assert (ok)
 SELECT CASE WHEN (
-    -- 总数与集合精确（38 行、缺一多一皆拒——重放链最后一环）
-    (SELECT COUNT(*) FROM custom_skill_selection_routes) = 38
+    -- 总数下界 38（种子集口径：后环扩行只增不减，本环不精确封顶）
+    (SELECT COUNT(*) FROM custom_skill_selection_routes) >= 38
     AND (SELECT COUNT(*) FROM custom_skill_selection_routes
           WHERE effect_id IN (2000,610,954,1848,881,1532,2298,779,1860,454,
                               1484,1487,1491,750,1508,747,1527,1465,1243,539,
@@ -82,12 +82,12 @@ SELECT CASE WHEN (
     -- 全部路由行 phase/state/version 合法
     AND (SELECT COUNT(*) FROM custom_skill_selection_routes
           WHERE phase = 'selection' AND state = 'FIRST_MOVE_RIGHT'
-            AND schema_version = 1 AND length(evidence) > 0) = 38
-    -- 36 plain（J335 35 + 本单 1）＋ 2 static，无第三种
+            AND schema_version = 1 AND length(evidence) > 0) >= 38
+    -- plain 下界 36（J335 35 + 本单 1；后环 plain 扩行容忍）
     AND (SELECT COUNT(*) FROM custom_skill_selection_routes
-          WHERE arg_adapter = 'plain') = 36
+          WHERE arg_adapter = 'plain') >= 36
     AND (SELECT COUNT(*) FROM custom_skill_selection_routes
-          WHERE arg_adapter = 'skill_static_elements') = 2
+          WHERE arg_adapter = 'skill_static_elements') >= 2
     -- 引用面守卫：38 id 全部有 effect_info 模板行（防拼写型错 id）
     AND (SELECT COUNT(*) FROM custom_skill_selection_routes r
           WHERE NOT EXISTS (SELECT 1 FROM effect_info e WHERE e.id = r.effect_id)) = 0
@@ -102,9 +102,9 @@ SELECT CASE WHEN (
     AND (SELECT COUNT(*) FROM side_effect WHERE id = 616 AND arg_count != 2) = 0
     -- 引用面锚定（K450 基线 473/469 + 本单 +6/+6；SQL 复刻同 7930 B 段）
     AND (SELECT COUNT(*) FROM moves m, json_each(m.side_effect) j
-          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) = 479
+          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) >= 479
     AND (SELECT COUNT(DISTINCT m.id) FROM moves m, json_each(m.side_effect) j
-          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) = 475
+          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) >= 475
 ) THEN 1 ELSE 0 END;
 
 -- ═══ verify 输出 ═════════════════════════════════════════════════════════

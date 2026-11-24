@@ -56,7 +56,8 @@ std::string battle_over_to_json(int match_id, BattleContext& ctx, const std::str
 // 指纹三个分量，两个**自动派生**（内容变→指纹变，不存在"忘了 bump"）：
 //   protoVersion     手动，仅破坏性变更加一（protocol.h kProtocolVersion）
 //   registryHash     注册表导出全文的 FNV-1a（时点/异常/票类型/已注册效果变化→变）
-//   stateSchemaHash  getStateJson 顶层键集的 FNV-1a（快照加/删字段→变）
+//   stateSchemaHash  getStateJson 全部键集（含嵌套对象）的 FNV-1a（快照加/删字段→变；
+//                    G3 起嵌套层也覆盖——原实现只看顶层，player 内嵌段不触发报警）
 
 struct RegistryDump {
     std::string json;      // 完整注册表 JSON（build/registry.json 的文件内容）

@@ -281,43 +281,54 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
         return ApplyAnomalyResult::TARGET_IMMUNE;
     }
 
-    // 弹控：目标免疫时把异常反弹给施放方。最多反弹 1 次（depth==1 不再弹）——防双方弹控打乒乓球。
-    // ⚠️ 古早施加（主动毒）不触发弹控（"所有的技能弹控不能免疫主动毒，包含魂印弹控也不能"）
-    //    → Ancient 通道免疫命中直接 TARGET_IMMUNE。
-    const auto reflect = [&]() -> ApplyAnomalyResult {
-        if (channel == AnomalyChannel::Modern && reflect_depth == 0
-            && ctx->rule_center_.has_reflect(target)
-            && actor >= 0 && actor != target) {
+    // 只有原生现代施加能触发反弹。每个命中响应各走一趟回程，但回程不再反弹。
+    const bool can_reflect = channel == AnomalyChannel::Modern && reflect_depth == 0
+        && actor >= 0 && actor <= 1 && actor != target;
+    const auto reflect_to_actor = [&](std::size_t reflections) {
+        for (std::size_t i = 0; i < reflections; ++i) {
             apply_anomaly_impl(ctx, actor, anomaly_id, duration_rounds,
                                /*actor=*/target, /*reflect_depth=*/1,
                                /*channel=*/AnomalyChannel::Modern,
                                /*chance_pct=*/-1,   // 概率已在原生那趟判定过，反弹不再掷
                                source);
-            return ApplyAnomalyResult::REFLECTED;
         }
-        return ApplyAnomalyResult::TARGET_IMMUNE;
     };
-
-    // [3] 次免/回合类免疫（soul=false）—— 官方优先级：先于抗性判定挡下。
-    // 挡下后消费（顺序不可颠倒：先判定、后扣次数，否则 counts=1 的次免会在判定前
-    // 就被扣光注销，下一次判定查不到它 → 该挡下的没挡住）。
-    // ⚠️ 官方规则（docs/02-效果系统/官方机制理解与引擎缺口对照.md §二，idx=418 第2条）：
-    //    **存在回合类免控/弹控时，次免依旧正常消耗** —— 故"是窗口条目挡下的"也要扣
-    //    次数型条目（consume_immune 会跳过 counts==0 的窗口条目继续扫）。
-    if (check_defense
-        && ctx->is_immune_effect(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
-                                 tier_filter)) {
-        // 被弹回来的异常（reflect_depth>0）**不消耗**——"被弹回来的异常不属于精灵受到异常"
-        // （idx=375）；但它仍可**被**次免免疫（照常走本分支挡下，只是不扣次数）。
-        if (reflect_depth == 0) {
-            ctx->consume_immune(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
-                                /*soul_filter=*/0, tier_filter);
-        }
-        // 免疫成功事件（2026-09-20 烧伤三精灵线）：「每次免疫成功…」族（秘纹护体 2059）
-        // 的检测点。弹控反弹也算免疫成功 → 照发。
+    const auto emit_immuned = [&]() {
         ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_IMMUNED, actor, target,
                                             anomaly_id, static_cast<int>(ctx->currentState)});
-        return reflect();
+    };
+
+    // [2.7] **附加穿透凭证**（ATTACH_PIERCE，2026-11-22 圣光灵神SP 2567④）：施加方
+    // 持有凭证时，[3]/[5] 的**免疫票查询被跳过**——语料 post497：「附加从神魂之器移除
+    // 的记录效果时，会无视对手对应的免疫效果……最终双方都进入疲惫」。
+    // ⚠️ 只穿免疫票：异常抗性 [4] 独立于免疫照常 roll（用户裁决"异常抵抗独立于免疫"）；
+    //    凝滞 [2.5] 是状态自带免疫非免疫票，本轮不穿（待实测记档）；Ancient 通道
+    //    （主动毒）本就不查现代票，老免控 vs 穿透未实测（口径待定，本轮只对 Modern 生效）。
+    //    回弹半边照常：穿透路径的反弹见 [3.1]（不 return，目标也收）。
+    const bool attach_pierced = (channel == AnomalyChannel::Modern
+        && actor >= 0 && actor <= 1
+        && ctx->rule_center_.has_attach_pierce(ctx, actor, kPierceAnomaly, ctx->roundCount));
+
+    // [3] 通用保护优先：回合免控/弹控在场，次免和次弹仍各扣一次（idx=418）。
+    // 回合弹控和每张命中的次弹独立响应；原施加只发一次免疫成功事件（2059 等监听）。
+    // 穿透只跳过免疫半边（post497）：次弹仍扣，普通次免不扣，原目标继续走抗性和落地。
+    if (check_defense) {
+        RuleCenter::AnomalyProtection protection;
+        if (reflect_depth == 0) {
+            protection = ctx->rule_center_.resolve_anomaly_protection(
+                target, state_coverage_bit(ctx->currentState), ctx->roundCount, anomaly_id,
+                tier_filter, ctx, attach_pierced, can_reflect);
+        } else if (!attach_pierced) {
+            // 回程可被免疫，但不扣次数（idx=375），也不再反弹。
+            protection.blocked = ctx->is_immune_effect(
+                target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id, tier_filter);
+        }
+        if (protection.blocked) emit_immuned();
+        reflect_to_actor(protection.reflections);
+        if (protection.blocked) {
+            return protection.reflections > 0 ? ApplyAnomalyResult::REFLECTED
+                                             : ApplyAnomalyResult::TARGET_IMMUNE;
+        }
     }
 
     // [4] 异常抗性 roll（弹回的异常不过抗性——depth>0 跳过；官方必修3/选修7）。
@@ -345,20 +356,14 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
         return ApplyAnomalyResult::RESISTED_BY_RESISTANCE;
     }
 
-    // [5] 魂免（soul=true）—— 抗性判定失败后才查（官方优先级）。同样挡下后消费次数型。
-    // Mark 0 = 老魂免兜底，属**古代层**（官方"带补丁"名单的机制化）→ 古早施加照常被它挡。
-    if (check_defense
+    // [5] 魂免最后查：命中时点和异常范围只挡下，不触发前段的扣次或弹控。
+    // Mark 0 是古代层魂免兜底，古早施加可被它挡；附加穿透和 [3] 一样跳过本段。
+    if (check_defense && !attach_pierced
         && (ctx->is_immune_soul(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
                                 tier_filter)
             || has_mark(pet.marks, 0))) {
-        if (reflect_depth == 0) {  // 弹回的异常不消耗（同 [3]）
-            ctx->consume_immune(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
-                                /*soul_filter=*/1, tier_filter);
-        }
-        // 免疫成功事件（同 [3]）：魂免命中也是"免疫成功"。
-        ctx->event_center_.emit(BattleEvent{EventType::EVENT_ANOMALY_IMMUNED, actor, target,
-                                            anomaly_id, static_cast<int>(ctx->currentState)});
-        return reflect();
+        emit_immuned();
+        return ApplyAnomalyResult::TARGET_IMMUNE;
     }
 
     // [6] 转化（单跳）：入→出，直接施加（绕过抗性/免疫的转换路径）。
@@ -1765,7 +1770,10 @@ StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount, i
         return StatDropResult::IMMUNE;
     }
     // ① 免弱：**无条件、最先查**。目标身上还有强化也照样失败——不许拿"有 +N 可抵消"当理由降。
-    if (ctx->is_immune(target, ImmunityType::STAT_DROP, ctx->currentState)) {
+    // ⚠️ ATTACH_PIERCE（2026-11-22 SP④）：施加方持免弱位凭证 → 免弱票查询跳过
+    //    （语料 post497：队友附加弱化无视对手免弱）。弱化无通道/无反弹 → 无其他分支。
+    if (!ctx->rule_center_.has_attach_pierce(ctx, actor, kPierceStatDrop, ctx->roundCount)
+        && ctx->is_immune(target, ImmunityType::STAT_DROP, ctx->currentState)) {
         return StatDropResult::IMMUNE;
     }
     // ⚠️ 此处**不查** STAT_CLEAR（免消除强化）：那个护的是"已有的提升被消除/吸取"，

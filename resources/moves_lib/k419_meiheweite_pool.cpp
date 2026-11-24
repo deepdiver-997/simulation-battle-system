@@ -302,7 +302,7 @@ EffectResult effect_1311_opp_attr_all_down_watch(BattleContext* ctx, const Effec
                 (void)g_core->stat_drop(c, opp, slot, down, owner);
             }
         },
-        WatcherScope::TEAM);
+        WatcherScope::TEAM, 0, 1311);
     return EffectResult::kOk;
 }
 

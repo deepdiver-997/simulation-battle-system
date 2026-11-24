@@ -94,38 +94,49 @@ jobs:
         run: ./build/sim_server --dump-registry-exit build/registry.json
       - name: smoke
         run: ./build/sim_smoke_test
-      - name: affected scenarios（PR）
+      # 场景并发回归（2026-11-23）：runner 4 vCPU，串行 1022×~1s ≈ 17min → xargs -P ≈ 5min。
+      # 安全性同本地门（tools/night/build.sh 并发化注记）：独立进程/链文件按名落盘/
+      # 不绑端口/sqlite 只读。失败行 + 末 30 行回吐保留，汇总改收敛式（并发完成序不打乱判定）。
+      - name: affected scenarios（PR，并发 ×nproc）
         if: github.event_name == 'pull_request'
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           IDS=$(git diff --name-only "$BASE"...HEAD -- test/scenario/ \
                 | grep -oE 'scenario_[0-9]+' | grep -oE '[0-9]+' | sort -un || true)
-          FAILED=0
+          rm -f build/failed_scenarios.txt
           for b in build/sim_scenario_*; do
             id=$(basename "$b" | grep -oE '[0-9]+' | head -1)
             # PR 只跑变更场景 + 号段相邻场景（同族联动）；nightly 跑全量
             if [ -n "$IDS" ] && ! echo "$IDS" | grep -qw "$id"; then continue; fi
+            echo "$b"
+          done | xargs -P "$(nproc)" -n1 bash -c '
+            b="$1"; name=$(basename "$b")
             # PASS 静音：stdout/stderr 落盘，只有失败才回吐末 30 行（断言 dump 在尾部）
             # ——1018 场景 PASS 各打 2+ 行会把 step 日志顶到 GH 展示上限被截断（2026-11-21）
-            timeout 300 "$b" > "build/$(basename "$b").log" 2>&1 || {
-              echo "FAIL $b（末 30 行见下，完整日志 build/$(basename "$b").log）"
-              tail -30 "build/$(basename "$b").log"
-              FAILED=1
-            }
-          done
-          exit $FAILED
-      - name: all scenarios（nightly / push main）
+            if ! timeout 300 "./$b" > "build/$name.log" 2>&1; then
+              echo "FAIL $b"
+              tail -30 "build/$name.log"
+              echo "$name" >> build/failed_scenarios.txt
+            fi' _
+          if [ -f build/failed_scenarios.txt ]; then
+            echo "失败场景清单："; cat build/failed_scenarios.txt
+            exit 1
+          fi
+      - name: all scenarios（nightly / push main，并发 ×nproc）
         if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
-          FAILED=0
-          for b in build/sim_scenario_*; do
-            timeout 300 "$b" > "build/$(basename "$b").log" 2>&1 || {
-              echo "FAIL $b（末 30 行见下，完整日志 build/$(basename "$b").log）"
-              tail -30 "build/$(basename "$b").log"
-              FAILED=1
-            }
-          done
-          exit $FAILED
+          rm -f build/failed_scenarios.txt
+          ls build/sim_scenario_* | xargs -P "$(nproc)" -n1 bash -c '
+            b="$1"; name=$(basename "$b")
+            if ! timeout 300 "./$b" > "build/$name.log" 2>&1; then
+              echo "FAIL $b"
+              tail -30 "build/$name.log"
+              echo "$name" >> build/failed_scenarios.txt
+            fi' _
+          if [ -f build/failed_scenarios.txt ]; then
+            echo "失败场景清单："; cat build/failed_scenarios.txt
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: registry-json, path: build/registry.json }

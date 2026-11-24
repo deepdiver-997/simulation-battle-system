@@ -177,6 +177,16 @@ enum class EventType {
     // 「自身位于出战背包时，若对方精灵执行概率不高于 50% 的异常状态附加效果则为
     // 对手附加曝」（K421 / chance_gate grant_yongmu 的检测锚点）。
     EVENT_ANOMALY_ATTACH_LOW_CHANCE,
+    // **"受到致死伤害"语义信号**（2026-11-22 圣光灵神SP 2567⑤引入）：
+    // 伤害来源方持有"造成的伤害视为致死伤害"语义且目标**未被真致死**（hp 仍 >0）时，
+    // 由来源方效果在红/粉结算完成后 emit——让"受到致死伤害则X"族效果（空元事象观测
+    // k412、死亡门 k270 等）的 viewed 分支触发并消耗次数。
+    // ⚠️ **不要**用它替代 EVENT_HP_EXHAUSTED：那一个是"落血≤0"的预死亡信号，漏斗侧
+    //    消费（同归标志/死亡登记）；本条是纯语义信号，目标 hp>0、无死亡处理。
+    // ⚠️ 真致死时不发本条（HP_EXHAUSTED 已走正序，避免双触发）；拦截器族（机盖式
+    //    DeathInterceptor）是否响应 viewed **口径待实测**，本事件先只服务 watcher 族。
+    // 载荷：actor = 伤害来源（视为致死方）、target = 受击方、amount = 本次伤害量。
+    EVENT_LETHAL_DAMAGE_TAKEN,
 
 };
 
@@ -276,6 +286,7 @@ struct EventWatcher {
     bool once;
     WatcherScope scope_ = WatcherScope::ON_STAGE;
     int valid_id_ = 0;   // 注册时从 BattleContext::watcher_valid_id[owner] 复制，切换作废用
+    int source_effect_id = 0;   // 登记效果 id（效果显示 G4 债务 #8：0 = 未归属/内核机械）
     std::function<void(BattleContext*, const BattleEvent&)> fn;
 };
 
@@ -308,10 +319,11 @@ public:
     int register_watcher(EventType type, int owner, int register_round, int duration_rounds,
                          bool once, std::function<void(BattleContext*, const BattleEvent&)> fn,
                          WatcherScope scope = WatcherScope::ON_STAGE,
-                         int valid_id = 0) {
+                         int valid_id = 0, int source_effect_id = 0) {
         const int id = next_id_++;
         watchers_.emplace(id, EventWatcher{type, owner, register_round, duration_rounds,
-                                           once, scope, valid_id, std::move(fn)});
+                                           once, scope, valid_id, source_effect_id,
+                                           std::move(fn)});
         by_type_[type].push_back(id);
         return id;
     }
@@ -438,6 +450,13 @@ public:
     bool has_watchers(EventType type) const {
         return watch_count(type) > 0;
     }
+
+    // 显示面只读访问（效果显示gate规范 §4 G3 快照效果摘要，2026-11-23）：
+    // j5_arm 族的"N 回合窗口"住在 watcher 里（不在时点桶、不在 RuleCenter）——
+    // 它们是驻留显示态，快照摘要必须能枚举。回调 fn 不可序列化，只出窗口维度
+    // （type/owner/register_round/duration/once/scope/valid_id），与桶条目
+    // "数据面只出原始维度、名字客户端解析"同纪律。
+    const std::unordered_map<int, EventWatcher>& watchers() const { return watchers_; }
 
 private:
     // 把单个事件投递给其类型的所有 watcher。

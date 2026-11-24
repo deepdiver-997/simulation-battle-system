@@ -10,6 +10,26 @@
 #include "common.h"
 #include "../nutao_runtime.h"
 
+// ── 效果显示 G4（2026-11-23）：逆涛发布槽显示身份（nutao_runtime.h 键族，+side 逐侧）
+// ⚠️ 插件侧解码器（STATE_DISPLAY_FN）——std::any 跨 dylib type_info 不统一，
+//    内核 generic any_cast 对插件写入值必抛（mistike_skills.cpp 同注）。
+namespace {
+bool nutao_decode_int(const std::any& stored, DecodedValue& out) {
+    try {
+        std::snprintf(out.text, sizeof(out.text), "%d", std::any_cast<int>(stored));
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+}  // namespace
+STATE_DISPLAY_FN(4690000, "永恒之水(方0)", nutao_decode_int);
+STATE_DISPLAY_FN(4690001, "永恒之水(方1)", nutao_decode_int);
+STATE_DISPLAY_FN(4690100, "锁定保留道数(方0)", nutao_decode_int);
+STATE_DISPLAY_FN(4690101, "锁定保留道数(方1)", nutao_decode_int);
+STATE_DISPLAY_FN(4690200, "蚀砚之泪滴数(方0)", nutao_decode_int);
+STATE_DISPLAY_FN(4690201, "蚀砚之泪滴数(方1)", nutao_decode_int);
+
 namespace {
 
 // ── 怒涛·沧岚 2343（**本轮只做粉伤相关子句**）──// 原文（effect_icon.pet_id=[3740], effect_id=2343, args「1 1 1」）：

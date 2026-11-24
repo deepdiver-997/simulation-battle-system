@@ -59,7 +59,7 @@ EffectResult j5_must_crit_tick(BattleContext* ctx, const EffectArgs& args) {
 // 条件窗通用注册：EVENT_SKILL_USED watcher，窗口 [start, start+rounds)（InRounds），
 // 触发条件 = 对手使用**攻击技能**（属性技不触发）。act = 该宏的触发动作。
 void j5_arm(BattleContext* ctx, int owner, int rounds,
-            std::function<void(BattleContext*)> act) {
+            std::function<void(BattleContext*)> act, int source_effect_id = 0) {
     if (!ctx || owner < 0 || owner > 1 || rounds <= 0 || !act) {
         return;
     }
@@ -78,7 +78,7 @@ void j5_arm(BattleContext* ctx, int owner, int rounds,
             }
             act(c);
         },
-        WatcherScope::TEAM);
+        WatcherScope::TEAM, 0, source_effect_id);
 }
 
 // 559/772 六池：模板点名序 烧伤、冻伤、中毒、麻痹、害怕、睡眠。
@@ -129,7 +129,7 @@ EffectResult effect_1151_all_boost_window(BattleContext* ctx, const EffectArgs& 
         if (levels > 0) {
             all_stats_up(c, owner, levels);
         }
-    });
+    }, 1151);
     return EffectResult::kOk;
 }
 

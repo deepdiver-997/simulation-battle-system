@@ -52,6 +52,10 @@ public:
     // CARRY_EFFECT 会被默认空实现静默吞掉。
     void registerCarryEffect(int effect_id, CarryEffectFn fn,
                              const std::string& source = {}) override;
+    // 效果显示 G4（2026-11-23）：soul dylib 的 flush 落本注册表——storage 显示登记
+    // 与 EffectFactory 同投 DisplayRegistry（撞 key 首注保留）。
+    void registerStorageDisplay(const StorageDisplaySpec& spec) override;
+    void registerMarkType(const MarkTypeSpec& spec) override;
 
     // 战前补丁扫描执行（init_battle 调；语义同 EffectFactory::run_pre_battle_patches，
     // 只是注册表换成本管理器的）。见 PreBattlePhase 注释。

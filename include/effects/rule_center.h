@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <functional>
 #include <optional>
+#include <stdexcept>
 #include <vector>
 
 #include <effects/continuousEffect.h>  // EffectScope(ON_STAGE/TEAM)
@@ -129,7 +130,7 @@ enum class RuleCategory {
     //    **要两种都失效就注册两条**（不是给一条加 mask）。
     HIT_INVALID_ATTACK,    // 只对**攻击技能**生效
     HIT_INVALID_ATTRIBUTE, // 只对**属性技能**生效
-    REFLECT,     // 回弹：target 免疫异常时反弹给施放方(apply_anomaly 反射)。支持 counts/rounds/source 锚
+    REFLECT,     // 回合反弹：另授免疫票；target 免疫异常时反弹给施放方
     // 「无视」凭证（穿盔 / 穿透限伤）：官方词条分两派，**按"受作用的是哪条伤害路径"拆成两个类别**
     // ——与上面 HIT_INVALID_ATTACK/ATTRIBUTE 完全同款（用户 2026-09-13 定的拆法：拆开就没有"这条到底
     // 管哪种技能"的歧义；**要两条路都管就注册两条**，不是给一条加 mask）。
@@ -270,7 +271,26 @@ enum class RuleCategory {
     // watcher **零改动**被压制（语料《机制解析—镇世神岳·玄武》点名清单）。
     // 多来源各挂各票（玄武/蜃都之源），任一 armed 即改写（OR 语义）。
     LEAVE_CAUSE_RECLASS,
+    // **附加穿透凭证**（2026-11-22 圣光灵神SP 13311 魂印 2567④引入）：
+    // 「自身存活于场下时，己方在场精灵附加从神魂之器移除的记录时，无视对手的对应的
+    // 免疫效果」——施加方侧（source_owner=SP 方，**全队共享**：同 side 的在场精灵
+    // 施加时都查）持有凭证时，目标的**免疫票查询被跳过**。三个查询点 = 三条施加
+    // 原语的既有免疫缝（不新增判定点）：apply_anomaly [3]/[5]（免控）、stat_drop ①
+    // （免弱）、粉伤管线免粉段（**本轮记档未接**——免粉票在管线按 phase 效果消费、
+    // 非单点查询，穿透需给管线加施加方通道，续单）。
+    // ⚠️ 只穿免疫票：异常抗性 [4] 独立于免疫照常 roll（用户裁决"异常抵抗独立于免疫"）；
+    //    凝滞 [2.5] 是状态自带免疫非免疫票，本轮不穿（待实测记档）。
+    // 生命周期 = condition 回调现场判（SP 存活于场下 + **场域门**：④条款官方明说受
+    // 薇尔诗 2513 场域抑制——post497"会被帝皇侠和薇无效"，与玄武线的官方双标相反，
+    // 故门显式写进 condition，不走 kReclassSubjectToOfffieldBlock 全局常量）。
+    // 记录移除 → 重授刷新 mask（覆盖键刷新不追加，与 CHANCE_GATE 折叠同型）。
+    ATTACH_PIERCE,
+    ANOMALY_REFLECT_COUNTS,  // 现代免异常＋反弹，共用一份次数；不占回合窗口
 };
+
+inline bool is_immunity_category(RuleCategory c) {
+    return c == RuleCategory::IMMUNE || c == RuleCategory::ANOMALY_REFLECT_COUNTS;
+}
 
 // "纯查询"规则类别：**绝对窗口模型**（免 tick 递减、cleanup 按绝对回合过期）、
 // 不消费、不计入 has_round_type 的"有无可断物"计数。
@@ -283,7 +303,7 @@ inline bool is_pure_query_category(RuleCategory c) {
         || c == RuleCategory::ATTACH_BAN || c == RuleCategory::SWITCH_LOCK
         || c == RuleCategory::POTION_BACKLASH || c == RuleCategory::ARMOR_SUPPRESS
         || c == RuleCategory::CHANCE_GATE || c == RuleCategory::CARRIER
-        || c == RuleCategory::LEAVE_CAUSE_RECLASS;
+        || c == RuleCategory::LEAVE_CAUSE_RECLASS || c == RuleCategory::ATTACH_PIERCE;
 }
 
 // "免断回合"类别：**不可被 clear_round_type / invalidate_stale(epoch) 作废**。
@@ -291,7 +311,7 @@ inline bool is_pure_query_category(RuleCategory c) {
 //   的保护窗口语义。SWITCH_LOCK / ATTACK_NULLIFY **不在本表**——它们就是挂在身上的
 //   回合类效果，断回合/切换（bearer epoch bump）都拆得掉（2026-09-21 用户口径）。
 inline bool is_undeletable_category(RuleCategory c) {
-    return c == RuleCategory::IMMUNE || c == RuleCategory::SKILL_BAN
+    return is_immunity_category(c) || c == RuleCategory::SKILL_BAN
         || c == RuleCategory::ATTACH_BAN;
 }
 
@@ -301,6 +321,20 @@ inline bool is_undeletable_category(RuleCategory c) {
 // 非显式豁免的票在「场域开启 + 源在场下」时即失效，无需逐效果改。
 // 见 grant_leave_cause_reclass / RuleTicket::reclass_offfield_exempt 注。
 inline constexpr bool kReclassSubjectToOfffieldBlock = false;
+
+// ── 附加类别位（ATTACH_PIERCE 凭证的 mask，一个 bit 一类免疫）──────────────
+// 记录在神魂之器中 → 己方（②，神灵系时）免疫该类；记录被移除 → ④穿透凭证 mask
+// 扩上该位（队友附加该类效果时无视对手对应免疫票）。
+inline constexpr int kPierceAnomaly  = 1 << 0;   // 控场（免控；查询点 apply_anomaly [3]/[5]）
+inline constexpr int kPierceStatDrop = 1 << 1;   // 弱化（免弱；查询点 stat_drop ①）
+inline constexpr int kPiercePink     = 1 << 2;   // 粉伤（免粉；查询点=粉伤管线 IMMUNE 阶段）
+// 抗性提升无视（2026-11-22 第二批拆分）：任一记录移除即武装（语料 post497 把"对应的
+// 免疫效果**与抗性提升效果**"并列为④穿透面；伤害抗性提升无视 = 消费读 base 基线）。
+// ⚠️ 异常抗性提升**本轮不在面内**：官方自身 BUG（异常抗性提升暂不被无视，圣芒套漏网，
+// 官方说后续修复）+ ResistanceSystem 槽位模型拆分是独立改造——记档续单，实现修复版。
+inline constexpr int kPierceResistBoost = 1 << 3;
+inline constexpr int kPierceMaskKnown = kPierceAnomaly | kPierceStatDrop | kPiercePink
+                                       | kPierceResistBoost;
 
 inline bool is_penetrate_category(RuleCategory c) {    return c == RuleCategory::PENETRATE_ATTACK || c == RuleCategory::PENETRATE_ATTRIBUTE;
 }
@@ -354,7 +388,8 @@ struct RuleTicket {
     int source_slot = -1;          // 挂载精灵槽（-1=未知/锚当前在场精灵）
     int source_effect_id = -1;     // 来源效果 id（覆盖键的一部分 + 审计）
     EffectScope scope = EffectScope::ON_STAGE;  // ON_STAGE=上场精灵(换宠清)；TEAM=全队保留
-    int source_id = 0;             // 授予句柄（revoke / 快照 re-grant 复用用）
+    int source_id = 0;             // 引擎分配的全局句柄（revoke / 快照 re-grant）；0 无句柄
+    int immunity_alias = 0;        // 旧 IMMUNE 调用点的固定编号，仅在 source_owner 侧可查
     int source_valid_id = 0;       // 来源效果 epoch（注册时 ctx->round_effect_valid_id[source_owner]）。
                                    // 0 = 不参与断回合作废（免疫天然豁免）。随来源效果被断回作废（Q2）。
 
@@ -430,6 +465,13 @@ struct RuleTicket {
     // grant_leave_cause_reclass 注。
     bool reclass_offfield_exempt = true;
 
+    // ── 附加穿透凭证（ATTACH_PIERCE）参数 ────────────────
+    // 当前凭证覆盖的类别位掩码（kPierceAnomaly/kPierceStatDrop/kPiercePink 的 OR）。
+    // 神魂之器每移除一项记录 → 授予方重授刷新本掩码（覆盖键刷新不追加）。0 = 凭证
+    // 在但无类别（记录全在时）→ 查询恒 false。**不放 subtype**：subtype 参与覆盖键，
+    // mask 变化会追加成多张票而非刷新。
+    int attach_pierce_mask = 0;
+
     bool is_round_type() const { return remaining_rounds > 0; }
     bool responds_to(bool is_attribute_skill) const {
         switch (static_cast<SealKind>(subtype)) {
@@ -475,13 +517,18 @@ public:
                      int counts = 0, int source_effect_id = -1,
                      int tier = static_cast<int>(ImmunityTier::Modern),
                      std::function<bool(const BattleContext*, int)> condition = nullptr) {
-        if (owner < 0 || owner > 1) {
+        if (owner < 0 || owner > 1 || source_id < 0) {
             return -1;
         }
-        // ① 复用句柄（快照 re-grant 同 source_id 更新，保持旧 grant_immunity 语义）。
+        // ① 返回句柄供快照 re-grant；旧固定编号仅是本侧别名，不是全场句柄。
+        // 保留同侧同别名的历史覆盖语义（即使 subtype 不同），不在此顺带翻案。
+        const bool by_handle = is_immunity_handle(source_id);
+        const int alias = by_handle ? 0 : source_id;
         if (source_id > 0) {
             for (RuleTicket& t : all_) {
-                if (t.source_id == source_id && t.category == RuleCategory::IMMUNE) {
+                if (t.category == RuleCategory::IMMUNE && t.source_owner == owner
+                    && (by_handle ? (t.source_id == source_id && !window_expired(t, register_round))
+                                  : t.immunity_alias == alias)) {
                     t.register_round = register_round;
                     t.remaining_rounds = duration_rounds;
                     t.remaining_counts = counts;   // 次数型免疫（>0：免下N次，is_immune 命中后 consume_immune 扣）
@@ -501,7 +548,7 @@ public:
         for (RuleTicket& t : all_) {
             if (t.category == RuleCategory::IMMUNE
                 && t.source_owner == owner && t.source_effect_id == source_effect_id
-                && t.subtype == type) {
+                && t.subtype == type && !(by_handle && window_expired(t, register_round))) {
                 t.register_round = register_round;
                 t.remaining_rounds = duration_rounds;
                 t.remaining_counts = counts;
@@ -515,14 +562,15 @@ public:
                 return t.source_id;
             }
         }
-        // ③ 新增。
-        const int sid = (source_id != 0) ? source_id : (++next_source_id_);
+        // ③ 新增。旧句柄失效后重新发号，不能降格成固定别名。
+        const int sid = kImmunityHandleBase + allocate_source_id();
         RuleTicket t;
         t.source_owner = owner;
         t.source_slot = source_slot;
         t.source_effect_id = source_effect_id;
         t.scope = scope;
         t.source_id = sid;
+        t.immunity_alias = alias;
         t.target = owner;              // 免疫单对象：被护方自身(source==target)
         t.category = RuleCategory::IMMUNE;
         t.subtype = type;
@@ -566,24 +614,9 @@ public:
         bool consumed = false;
         for (std::size_t i = 0; i < all_.size();) {
             RuleTicket& t = all_[i];
-            bool matches = t.category == RuleCategory::IMMUNE && t.target == target
-                        && t.subtype == type && t.remaining_counts > 0;   // 仅次数型
-            if (matches && soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) matches = false;
-            if (matches && tier_filter >= 0 && t.tier != tier_filter) matches = false;
-            if (matches && window_expired(t, current_round)) {
-                matches = false;
-            }
-            if (matches && !(t.coverage & timing_bit)) matches = false;
-            if (matches && type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
-                && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
-                matches = false;
-            }
-            // 条件免疫（与 is_immune 同一判定——consume 必须消费"查询命中"的同一条，
-            // 否则会把条件外的次数型票误扣掉）。
-            if (matches && t.anomaly_condition && !(ctx && t.anomaly_condition(ctx, status_id))) {
-                matches = false;
-            }
-            if (!matches) {
+            if (t.remaining_counts <= 0
+                || !matches_immunity(t, target, type, timing_bit, current_round, status_id,
+                                     soul_filter, tier_filter, ctx)) {
                 ++i;
                 continue;
             }
@@ -601,6 +634,50 @@ public:
         return consumed;
     }
 
+    struct AnomalyProtection {
+        bool blocked = false;
+        std::size_t reflections = 0;
+    };
+
+    // 原生施加的通用保护阶段。先收齐命中，再扣次；上一个响应不能改变下一个的资格。
+    // 回程只做 is_immune_effect 查询，魂免也不走此处。穿透时只消费参与回弹的次弹票。
+    AnomalyProtection resolve_anomaly_protection(int target, uint64_t timing_bit, int current_round,
+                                                 int status_id, int tier_filter,
+                                                 const BattleContext* ctx, bool pierced,
+                                                 bool can_reflect) {
+        AnomalyProtection result;
+        if (target < 0 || target > 1 || (pierced && !can_reflect)) {
+            return result;
+        }
+        constexpr int type = static_cast<int>(ImmunityType::ANOMALY);
+        std::vector<std::size_t> counted;
+        for (std::size_t i = 0; i < all_.size(); ++i) {
+            const RuleTicket& t = all_[i];
+            const bool reflects = t.category == RuleCategory::ANOMALY_REFLECT_COUNTS;
+            if (t.remaining_counts <= 0 || (pierced && !reflects)) continue;
+            if (!matches_immunity(t, target, type, timing_bit, current_round, status_id,
+                                  /*soul_filter=*/0, tier_filter, ctx)) {
+                continue;
+            }
+            counted.push_back(i);
+            if (can_reflect && reflects) ++result.reflections;
+        }
+        // 次数票已能挡下时，纯免疫窗口不必额外判条件（条件可能要掷点）。
+        result.blocked = !pierced && (!counted.empty()
+            || is_immune_window(target, type, timing_bit, current_round, status_id,
+                                /*soul_filter=*/0, tier_filter, ctx));
+        // 旧回合弹控仍是一个窗口响应；与各张次弹独立，不把重复登记的 REFLECT 票算成多发。
+        if (can_reflect && (result.blocked || pierced) && has_reflect(target)) {
+            ++result.reflections;
+        }
+        // 倒序移除耗尽的票，不使尚未消费的下标失效；末次反弹已记在结果里。
+        for (auto it = counted.rbegin(); it != counted.rend(); ++it) {
+            if (--all_[*it].remaining_counts == 0) {
+                all_.erase(all_.begin() + static_cast<std::vector<RuleTicket>::difference_type>(*it));
+            }
+        }
+        return result;
+    }
     // ── 「无视」凭证（PENETRATE_*）：授予 / 查询 / 消费 ─────────────────────────
     // 授予。`category` 必须是 PENETRATE_ATTACK / PENETRATE_ATTRIBUTE —— **要两条路都管就调两次**
     //（照 HIT_INVALID 的拆法；不要给一条加 mask）。
@@ -617,7 +694,7 @@ public:
             || !is_penetrate_category(category) || (counts <= 0 && rounds <= 0)) {
             return 0;
         }
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         for (RuleTicket& t : all_) {
             if (t.category == category && t.source_owner == source_owner
                 && t.source_effect_id == source_effect_id) {
@@ -728,7 +805,7 @@ public:
             || (counts <= 0 && rounds <= 0)) {
             return 0;
         }
-        const int sid = ++next_source_id_;   // 每次授予一个新句柄（刷新也换新 → 监听器不会认错盔）
+        const int sid = allocate_source_id();   // 每次授予一个新句柄（刷新也换新 → 监听器不会认错盔）
         // 覆盖键 (source_owner, source_effect_id, SEAL, kind) 刷新，不追加。
         for (RuleTicket& t : all_) {
             if (t.category == RuleCategory::SEAL
@@ -780,7 +857,7 @@ public:
         if (source_owner < 0 || source_owner > 1 || target < 0 || target > 1) {
             return 0;
         }
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         for (RuleTicket& t : all_) {
             if (t.category == RuleCategory::ARMOR_SUPPRESS
                 && t.source_owner == source_owner
@@ -845,7 +922,22 @@ public:
     }
 
     void revoke(int source_id) {
+        if (source_id <= 0) return;
         std::erase_if(all_, [source_id](const RuleTicket& t) { return t.source_id == source_id; });
+    }
+
+    // 返回句柄本局唯一，可精确跨侧撤；旧固定编号只能撤指定侧的免疫票。
+    void revoke_immunity(int owner, int source_id) {
+        if (source_id <= 0) return;
+        if (is_immunity_handle(source_id)) {
+            revoke(source_id);
+            return;
+        }
+        if (owner < 0 || owner > 1) return;
+        std::erase_if(all_, [owner, source_id](const RuleTicket& t) {
+            return t.category == RuleCategory::IMMUNE && t.source_owner == owner
+                && t.immunity_alias == source_id;
+        });
     }
 
     bool is_immune(int target, int type, uint64_t timing_bit, int current_round,
@@ -855,23 +947,10 @@ public:
             return false;
         }
         for (const RuleTicket& t : all_) {
-            if (t.category != RuleCategory::IMMUNE || t.target != target) continue;
-            if (t.subtype != type) continue;
-            if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) continue;
-            if (tier_filter >= 0 && t.tier != tier_filter) continue;
-            if (window_expired(t, current_round)) {
-                continue;  // 窗口已过
+            if (matches_immunity(t, target, type, timing_bit, current_round, status_id,
+                                 soul_filter, tier_filter, ctx)) {
+                return true;
             }
-            if (!(t.coverage & timing_bit)) continue;
-            if (type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
-                && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
-                continue;
-            }
-            // 条件免疫（动态）：静态 mask 命中后还要过条件回调；ctx 未传 = 条件不成立。
-            if (t.anomaly_condition && !(ctx && t.anomaly_condition(ctx, status_id))) {
-                continue;
-            }
-            return true;
         }
         return false;
     }
@@ -899,24 +978,11 @@ public:
             return false;
         }
         for (const RuleTicket& t : all_) {
-            if (t.category != RuleCategory::IMMUNE || t.target != target) continue;
-            if (t.subtype != type) continue;
-            if (t.remaining_counts != 0) continue;   // ★ 只认窗口/永久票
-            if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) continue;
-            if (tier_filter >= 0 && t.tier != tier_filter) continue;
-            if (window_expired(t, current_round)) {
-                continue;  // 窗口已过
+            if (t.category == RuleCategory::IMMUNE && t.remaining_counts == 0
+                && matches_immunity(t, target, type, timing_bit, current_round, status_id,
+                                    soul_filter, tier_filter, ctx)) {
+                return true;
             }
-            if (!(t.coverage & timing_bit)) continue;
-            if (type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
-                && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
-                continue;
-            }
-            // 条件免疫（动态）：静态 mask 命中后还要过条件回调；ctx 未传 = 条件不成立。
-            if (t.anomaly_condition && !(ctx && t.anomaly_condition(ctx, status_id))) {
-                continue;
-            }
-            return true;
         }
         return false;
     }
@@ -1041,6 +1107,34 @@ public:
     }
 
     // ── 回弹（免疫命中时反弹给施放方）──────────────────
+    int grant_reflect_counts(int owner, int source_slot, int source_effect_id, int counts,
+                             EffectScope scope = EffectScope::ON_STAGE) {
+        if (owner < 0 || owner > 1 || counts <= 0) return 0;
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::ANOMALY_REFLECT_COUNTS && t.source_owner == owner
+                && t.source_effect_id == source_effect_id) {
+                t.remaining_counts = counts;
+                t.scope = scope;
+                t.source_slot = source_slot;
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = owner;
+        t.source_slot = source_slot;
+        t.source_effect_id = source_effect_id;
+        t.scope = scope;
+        t.source_id = kImmunityHandleBase + allocate_source_id();
+        t.target = owner;
+        t.category = RuleCategory::ANOMALY_REFLECT_COUNTS;
+        t.subtype = static_cast<int>(ImmunityType::ANOMALY);
+        t.coverage = ~uint64_t{0};
+        t.remaining_counts = counts;
+        const int sid = t.source_id;
+        all_.push_back(std::move(t));
+        return sid;
+    }
+
     void grant_reflect(int source_owner, int source_slot, int source_effect_id, int target,
                        int rounds, EffectScope scope = EffectScope::ON_STAGE,
                        int source_valid_id = 0) {
@@ -1099,7 +1193,7 @@ public:
         t.target = target;
         t.category = RuleCategory::OFF_FIELD_PROTECT;
         t.source_valid_id = source_valid_id;
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         return sid;
@@ -1146,7 +1240,7 @@ public:
         t.category = RuleCategory::ANOMALY_POOL_MOD;
         t.source_valid_id = source_valid_id;
         t.pool_mod = std::move(fn);
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         return sid;
@@ -1206,7 +1300,7 @@ public:
         t.remaining_rounds = rounds;
         t.register_round = register_round;
         t.source_valid_id = source_valid_id;   // 0 = 不参与断回合作废（封禁不可被断）
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1259,7 +1353,7 @@ public:
         t.remaining_rounds = rounds;
         t.register_round = register_round;
         t.source_valid_id = source_valid_id;   // 0 = 不参与断回合作废（纯查询族）
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1326,7 +1420,7 @@ public:
         t.source_valid_id = 0;
         t.condition = std::move(condition);
         t.reclass_offfield_exempt = outfield_block_exempt;
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1355,6 +1449,73 @@ public:
                 && (!outfield_gate
                     || !outfield_gate(ctx, t.source_owner, t.source_effect_id))) {
                 continue;   // 场域门不通过：场域开启 + 源在场下（薇尔诗 2513 场下源抑制）
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // ── 附加穿透凭证（ATTACH_PIERCE）：授予 / 查询 ───────────────
+    // 见 RuleCategory::ATTACH_PIERCE 注。授予方（圣光灵神SP 2567④）deploy 授一次
+    // （mask=0），记录移除时**重授刷新** mask（覆盖键刷新不追加）；生效门全在
+    // condition（SP 存活于场下 + 场域门——④官方受薇尔诗/帝皇侠场域抑制，与玄武线
+    // 的官方双标相反，门显式写在授予方 condition 里，不走全局常量）。
+    int grant_attach_pierce(
+        int source_owner, int source_effect_id, int category_mask,
+        std::function<bool(BattleContext*, int, int, bool)> condition,
+        EffectScope scope = EffectScope::TEAM) {
+        if (source_owner < 0 || source_owner > 1) {
+            return 0;
+        }
+        for (RuleTicket& t : all_) {
+            if (t.category == RuleCategory::ATTACH_PIERCE
+                && t.source_owner == source_owner
+                && t.source_effect_id == source_effect_id) {
+                t.scope = scope;
+                t.attach_pierce_mask = category_mask;
+                t.condition = std::move(condition);
+                return t.source_id;
+            }
+        }
+        RuleTicket t;
+        t.source_owner = source_owner;
+        t.source_effect_id = source_effect_id;
+        t.source_slot = -1;
+        t.scope = scope;
+        t.target = source_owner;   // 凭证归 SP 方（同 side 的施加者共享，查询按 side 匹配）
+        t.category = RuleCategory::ATTACH_PIERCE;
+        t.remaining_rounds = 0;   // 永久窗口（纯查询族；生效门 = condition 现场判）
+        t.register_round = 0;
+        t.source_valid_id = 0;
+        t.attach_pierce_mask = category_mask;
+        t.condition = std::move(condition);
+        const int sid = allocate_source_id();
+        t.source_id = sid;
+        all_.push_back(std::move(t));
+        recount();
+        return sid;
+    }
+    // 查询：actor 一侧（施加方）持有覆盖 category_bit 的 armed 凭证即 true。
+    // condition 现场判（SP 存活于场下 + 场域门）；mask 按位测。多来源（理论上未来
+    // 其他"移除记录"类效果）OR 叠加。
+    bool has_attach_pierce(BattleContext* ctx, int actor, int category_bit,
+                           int current_round) const {
+        if (actor < 0 || actor > 1) {
+            return false;
+        }
+        for (const RuleTicket& t : all_) {
+            if (t.category != RuleCategory::ATTACH_PIERCE || t.source_owner != actor) {
+                continue;
+            }
+            if (window_expired(t, current_round)) {
+                continue;
+            }
+            if (t.condition && !t.condition(ctx, /*user=*/0, /*power=*/0,
+                                            /*is_attribute_skill=*/false)) {
+                continue;
+            }
+            if ((t.attach_pierce_mask & category_bit) == 0) {
+                continue;   // 该类别记录未移除 → 本票不含此位
             }
             return true;
         }
@@ -1391,7 +1552,7 @@ public:
         t.remaining_rounds = rounds;
         t.register_round = register_round;
         t.source_valid_id = source_valid_id;
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1448,7 +1609,7 @@ public:
         t.remaining_rounds = rounds;
         t.register_round = register_round;
         t.source_valid_id = source_valid_id;
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1502,7 +1663,7 @@ public:
         t.remaining_rounds = rounds;
         t.register_round = register_round;
         t.source_valid_id = source_valid_id;
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1565,7 +1726,7 @@ public:
         t.remaining_rounds = rounds;
         t.register_round = register_round;
         t.source_valid_id = source_valid_id;   // 0 = 不参与断回合作废（同封禁，不可被断）
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1636,7 +1797,7 @@ public:
         t.remaining_rounds = rounds;
         t.register_round = register_round;
         t.source_valid_id = 0;            // 纯查询类别：不参与断回合作废（同禁令/封禁）
-        const int sid = ++next_source_id_;
+        const int sid = allocate_source_id();
         t.source_id = sid;
         all_.push_back(std::move(t));
         recount();
@@ -1834,6 +1995,33 @@ public:
     }
 
 private:
+    // 低段供旧免疫别名及其它票的返回句柄；高段只给引擎分配的免疫句柄。
+    // 两段不能重叠，否则 revoke_immunity(owner, int) 无法无歧义分流。
+    static constexpr int kImmunityHandleBase = 1 << 30;
+    static bool is_immunity_handle(int id) { return id >= kImmunityHandleBase; }
+
+    int allocate_source_id() {
+        if (next_source_id_ >= kImmunityHandleBase - 1) {
+            throw std::overflow_error("RuleCenter handle space exhausted");
+        }
+        return ++next_source_id_;
+    }
+
+    bool matches_immunity(const RuleTicket& t, int target, int type, uint64_t timing_bit,
+                          int current_round, int status_id, int soul_filter, int tier_filter,
+                          const BattleContext* ctx) const {
+        if (!is_immunity_category(t.category) || t.target != target || t.subtype != type) return false;
+        if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) return false;
+        if (tier_filter >= 0 && t.tier != tier_filter) return false;
+        if (!(t.coverage & timing_bit) || window_expired(t, current_round)) return false;
+        if (type == static_cast<int>(ImmunityType::ANOMALY) && t.anomaly_mask != 0
+            && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
+            return false;
+        }
+        // 动态条件是只读查询；未传 ctx 时条件不成立。
+        return !t.anomaly_condition || (ctx && t.anomaly_condition(ctx, status_id));
+    }
+
     // 绝对窗口是否已过期（**唯一判定式**，2026-09-21 从 10 处复制粘贴中抽取）：
     // register_round 起算 remaining_rounds 回合；remaining_rounds==0 = 永久有效
     // （由授予方 revoke）。tick 递减模型的票不走这里——它们的过期由 tick_rounds
@@ -1852,6 +2040,7 @@ private:
         return t.category == RuleCategory::SWITCH_LOCK ? t.target : t.source_owner;
     }
     // 回合类（非免断，is_round_type）规则计数，per-owner。见 has_round_type。
+    // 优化候选：统一授予、刷新、撤销和生命周期清理的修改入口后，按绑定方增量维护，免全表重计。
     void recount() {
         round_count_[0] = round_count_[1] = 0;
         for (const RuleTicket& t : all_) {

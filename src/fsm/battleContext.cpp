@@ -1,4 +1,5 @@
 #include <fsm/battleContext.h>
+#include <effects/display_registry.h>
 #include <fsm/battleFsm.h>
 #include <entities/soul_mark_manager.h>
 #include <primitives/battle_primitives.h>
@@ -224,9 +225,33 @@ void BattleContext::install_default_pink_mitigation() {
                 // 抗性按来源分型：FIXED 走固定抗性、百分比走百分比抗性（官方：暴击/固定/百分比）。
                 // ⚠️ 读的是 ws **有效视图**而非 pet 本体——临时 buff 可修改抗性，
                 //    视图基线由 sync_damage_resist_view 在回合开始/换宠重基。
-                const int resist_pct = (r.tier == PinkDamageTier::PERCENT)
-                    ? ctx->ws.eff_percent_resist_pct[r.target]
-                    : ctx->ws.eff_fixed_resist_pct[r.target];
+                // ★ 三档读取（2026-11-22 三层模型，用户定稿）：
+                //   ① SP④（kPierceResistBoost）→ base 底层（"无视抗性提升"= 回落本体）；
+                //   ② 星皇之怒二段（ws.ignore_top_resist[actor]）→ base+mid 中层以下
+                //     （官方观测推断：本体未开抗性 + 天尊buff 仍受二段粉伤 → 二段忽略
+                //     **最上层**；旗标生命周期归星皇效果，本批只建查询口——
+                //     pink_damage_pipeline.h:113 挂账）；
+                //   ③ 常态 → eff（三层合成）。
+                const bool resist_pierced =
+                    r.actor >= 0 && r.actor <= 1
+                    && ctx->rule_center_.has_attach_pierce(ctx, r.actor, kPierceResistBoost,
+                                                           ctx->roundCount);
+                const int kind_idx = (r.tier == PinkDamageTier::PERCENT) ? 2 : 1;
+                int resist_pct;
+                if (resist_pierced) {
+                    resist_pct = ctx->ws.base_resist_pct[r.target][kind_idx];
+                } else if (r.actor >= 0 && r.actor <= 1
+                           && ctx->ws.ignore_top_resist[r.actor]) {
+                    const int t_slot = ctx->on_stage[r.target];
+                    resist_pct = std::clamp(
+                        ctx->ws.base_resist_pct[r.target][kind_idx]
+                            + ctx->ws.resist_mid_pct[r.target][t_slot][kind_idx],
+                        0, 100);
+                } else {
+                    resist_pct = (r.tier == PinkDamageTier::PERCENT)
+                        ? ctx->ws.eff_percent_resist_pct[r.target]
+                        : ctx->ws.eff_fixed_resist_pct[r.target];
+                }
                 r.final -= r.final * resist_pct / 100;
                 if (r.final < 0) {
                     r.final = 0;
@@ -253,6 +278,18 @@ void BattleContext::install_default_pink_mitigation() {
                     return;
                 }
                 if (r.final <= 0) {
+                    return;
+                }
+                // ★ ATTACH_PIERCE（2026-11-22 圣光灵神SP 2567④免粉穿透）：施加方持免粉位
+                //   凭证 → 免粉票**本段不查不消费**，伤害照落本体。多段粉是 N 次独立结算
+                //   → 每段各自判穿透（与次数型免粉"只挡一段"同构）。与格劳瑞 ARMOR_SUPPRESS
+                //   盔遮蔽同型（持有方让对方防御票本段不触发），作用对象/时点不同。
+                //   ⚠️ 「免疫并反弹粉伤」未实现（见下注）：反弹量=免疫量，被穿后无量不弹
+                //   （语料 post497"无法附加免疫量的反弹粉"）——落地时反弹半边读本次免疫量，
+                //   本穿透路径无需特判。
+                if (r.actor >= 0 && r.actor <= 1
+                    && ctx->rule_center_.has_attach_pierce(ctx, r.actor, kPiercePink,
+                                                           ctx->roundCount)) {
                     return;
                 }
                 if (!ctx->is_immune(r.target, ImmunityType::PINK_DAMAGE, ctx->currentState)) {
@@ -1194,6 +1231,183 @@ std::string BattleContext::getStateJson() const {
         oss << "]";
     };
 
+    // ── 效果显示 G3（规范 docs/07-工具与测试/效果显示gate规范.md §3/§4）──────────
+    // 快照是"立刻可渲染"出口：驻留显示态在此给出渲染就绪的摘要（§1.1 只锁驻留态）。
+    // 场上宠印记：形状与 fullstate marks 一致（id+name+count；name 是过渡字段，
+    // Mark id→描述固定表随 G4 display 段落地后退役，见规范债务 #4）。
+    auto append_onstage_marks = [this, &json_escape](std::ostringstream& oss, int robot_id) {
+        oss << "\"marks\":[";
+        const int slot = on_stage[robot_id];
+        bool first = true;
+        if (slot >= 0 && slot < 6) {
+            for (const Mark& m : seerRobot[robot_id].elfPets[slot].marks) {
+                if (!first) {
+                    oss << ",";
+                }
+                first = false;
+                oss << "{\"id\":" << m.id
+                    << ",\"name\":\"" << json_escape(m.name)
+                    << "\",\"count\":" << m.count << "}";
+            }
+        }
+        oss << "]";
+    };
+    // 效果摘要：回合类桶条目（四桶，duration>0）+ RuleCenter 活票，按 robot 分组。
+    // 过滤（规范 §4 G4 枚举器口径）：expired / ON_STAGE epoch 不符（已断回合/切出作废，
+    // 等 cleanup 移除）/ actionOneShot（一次性在途节点，无显示义务）/ 常驻条目
+    // （duration<0：魂印本体已在 soulMark 字段显示，更新器条目是内核机械，均非 buff 面）。
+    // C3 口径：桶条目在此**现算** remaining（渲染面）；fullstate 审计出口仍只出原始两维
+    // duration/registeredRound——字段名不同（remaining vs duration/registeredRound），
+    // 不混口径。按 (effectId, sourceId) 排序保证输出稳定（桶容器是无序 map）。
+    auto append_effects_summary = [this](std::ostringstream& oss, int robot_id) {
+        struct SummaryEntry {
+            int effect_id = 0;
+            int source_id = 0;
+            int remaining = 0;
+            int scope = 0;
+            std::vector<int> args;
+        };
+        std::vector<SummaryEntry> entries;
+        const auto collect = [&](const TimedBucket& bucket) {
+            for (const auto& [state, per_player] : bucket.all()) {
+                (void)state;
+                for (const auto& [key, eff] : per_player[robot_id]) {
+                    (void)key;
+                    if (!eff || !eff->isRoundEffect() || eff->isActionOneShot()
+                        || eff->isExpired(roundCount)) {
+                        continue;
+                    }
+                    if (eff->scope_ == EffectScope::ON_STAGE
+                        && eff->valid_id_ != round_effect_valid_id[robot_id]) {
+                        continue;
+                    }
+                    SummaryEntry e;
+                    e.effect_id = eff->getEffectId();
+                    e.source_id = eff->source_id_;
+                    e.remaining = eff->getDurationRounds()
+                        - (roundCount - eff->getRegisteredRound());
+                    e.scope = eff->scope_ == EffectScope::TEAM ? 1 : 0;
+                    if (const Effect* pe = eff->getEffect(); pe && pe->args.int_count > 0) {
+                        for (int ai = 0; ai < pe->args.int_count; ++ai) {
+                            e.args.push_back(pe->args.int_args[ai]);
+                        }
+                    }
+                    entries.push_back(std::move(e));
+                }
+            }
+        };
+        collect(skills_effects);
+        collect(soul_mark_effects);
+        collect(suit_effects);
+        collect(updater_effects);
+        std::sort(entries.begin(), entries.end(),
+                  [](const SummaryEntry& a, const SummaryEntry& b) {
+                      if (a.effect_id != b.effect_id) {
+                          return a.effect_id < b.effect_id;
+                      }
+                      return a.source_id < b.source_id;
+                  });
+        oss << "\"effects\":{";
+        oss << "\"round\":[";
+        for (std::size_t i = 0; i < entries.size(); ++i) {
+            const SummaryEntry& e = entries[i];
+            if (i > 0) {
+                oss << ",";
+            }
+            oss << "{\"effectId\":" << e.effect_id
+                << ",\"sourceId\":" << e.source_id
+                << ",\"remaining\":" << e.remaining
+                << ",\"scope\":" << e.scope;
+            if (!e.args.empty()) {
+                oss << ",\"args\":[";
+                for (std::size_t ai = 0; ai < e.args.size(); ++ai) {
+                    if (ai > 0) {
+                        oss << ",";
+                    }
+                    oss << e.args[ai];
+                }
+                oss << "]";
+            }
+            oss << "}";
+        }
+        oss << "],\"tickets\":[";
+        bool first_ticket = true;
+        for (const RuleTicket& t : rule_center_.entries()) {
+            if (t.source_owner != robot_id || rule_center_.is_expired(t, roundCount)) {
+                continue;
+            }
+            if (!first_ticket) {
+                oss << ",";
+            }
+            first_ticket = false;
+            oss << "{\"sourceEffectId\":" << t.source_effect_id
+                << ",\"category\":" << static_cast<int>(t.category)
+                << ",\"counts\":" << t.remaining_counts
+                << ",\"rounds\":" << t.remaining_rounds << "}";
+        }
+        oss << "],\"watchers\":[";
+        // 事件 watcher 窗口（G3 新收编的驻留显示态，2026-11-23 考古发现）：
+        // j5_arm 族的"N 回合窗口"不住时点桶也不住 RuleCenter，住 event_center_ 的
+        // watcher 表——摘要第三来源。活跃口径与投递侧一致：duration>0 且
+        // roundCount < register_round+duration（0=永久窗口，remaining 出 -1，
+        // 与桶条目"负=永久"渲染口径统一）；ON_STAGE scope 且 epoch 不符 = 已被
+        // 切换作废，跳过。回调 fn 不可序列化（C1：只出窗口维度）。
+        struct WatcherEntry {
+            int event = 0;
+            int start = 0;
+            int rounds = 0;
+            int remaining = 0;
+            bool once = false;
+            int scope = 0;
+            int source_effect_id = 0;   // G4 债务 #8：登记效果归属（0 = 未归属）
+        };
+        std::vector<WatcherEntry> wentries;
+        for (const auto& [id, w] : event_center_.watchers()) {
+            (void)id;
+            if (w.owner != robot_id) {
+                continue;
+            }
+            const bool permanent = w.duration_rounds == 0;
+            if (!permanent && roundCount >= w.register_round + w.duration_rounds) {
+                continue;
+            }
+            if (w.scope_ == WatcherScope::ON_STAGE
+                && w.valid_id_ != watcher_valid_id[robot_id]) {
+                continue;
+            }
+            WatcherEntry e;
+            e.event = static_cast<int>(w.type);
+            e.start = w.register_round;
+            e.rounds = w.duration_rounds;
+            e.remaining = permanent ? -1 : (w.register_round + w.duration_rounds - roundCount);
+            e.once = w.once;
+            e.scope = w.scope_ == WatcherScope::TEAM ? 1 : 0;
+            e.source_effect_id = w.source_effect_id;
+            wentries.push_back(e);
+        }
+        std::sort(wentries.begin(), wentries.end(),
+                  [](const WatcherEntry& a, const WatcherEntry& b) {
+                      if (a.event != b.event) {
+                          return a.event < b.event;
+                      }
+                      return a.start < b.start;
+                  });
+        for (std::size_t i = 0; i < wentries.size(); ++i) {
+            const WatcherEntry& w = wentries[i];
+            if (i > 0) {
+                oss << ",";
+            }
+            oss << "{\"event\":" << w.event
+                << ",\"start\":" << w.start
+                << ",\"rounds\":" << w.rounds
+                << ",\"remaining\":" << w.remaining
+                << ",\"once\":" << (w.once ? "true" : "false")
+                << ",\"scope\":" << w.scope
+                << ",\"sourceEffectId\":" << w.source_effect_id << "}";
+        }
+        oss << "]}";    // watchers 数组 + effects 对象收口（player 的 "}" 由调用方出）
+    };
+
     auto append_party = [this, &append_skills](std::ostringstream& oss, int robot_id) {
         oss << "\"party\":[";
         for (int slot = 0; slot < 6; ++slot) {
@@ -1258,6 +1472,10 @@ std::string BattleContext::getStateJson() const {
     append_party(oss, 0);
     oss << ",";
     append_abnormals(oss, 0);
+    oss << ",";
+    append_onstage_marks(oss, 0);
+    oss << ",";
+    append_effects_summary(oss, 0);
     oss << "},";
 
     // Player 1 info
@@ -1281,6 +1499,10 @@ std::string BattleContext::getStateJson() const {
     append_party(oss, 1);
     oss << ",";
     append_abnormals(oss, 1);
+    oss << ",";
+    append_onstage_marks(oss, 1);
+    oss << ",";
+    append_effects_summary(oss, 1);
     oss << "},";
 
     // Last actions
@@ -1302,6 +1524,51 @@ std::string BattleContext::getStateJson() const {
     oss << "\"final\":" << ws.resolvedDamage.final;
     oss << "}";
     oss << "}";
+
+    // ── 效果显示 G4（2026-11-23）：快照 storage 摘要（渲染面）────────────────
+    // 只出**已登记** key（STATE_DISPLAY/内核种子），解码就绪立刻可渲染；未登记 key
+    // 是审计面的事（fullstate registered:false），不进"立刻可渲染"出口。
+    oss << ",\"storage\":{";
+    auto append_storage_summary = [&](std::ostringstream& oss,
+                                      const std::map<int, std::any>& store,
+                                      int robot, int slot, const char* container) {
+        bool first = true;
+        for (const auto& [key, value] : store) {
+            const auto* spec = display_reg::DisplayRegistry::instance().find_storage(key);
+            if (spec == nullptr) {
+                continue;
+            }
+            if (!first) {
+                oss << ",";
+            }
+            first = false;
+            DecodedValue dv;
+            const bool ok = spec->decode != nullptr
+                ? spec->decode(value, dv)
+                : display_reg::DisplayRegistry::decode_generic(*spec, value, dv);
+            oss << "{";
+            if (robot >= 0) {
+                oss << "\"robot\":" << robot << ",\"slot\":" << slot << ",";
+            }
+            oss << "\"key\":" << key
+                << ",\"container\":\"" << container << "\""
+                << ",\"name\":\"" << json_escape(spec->name_zh) << "\""
+                << ",\"kind\":\"" << spec->kind << "\""
+                << ",\"value\":\"" << (ok ? dv.text : "?") << "\"}";
+        }
+    };
+    std::ostringstream battle_probe;
+    append_storage_summary(battle_probe, plugin_storage, -1, -1, "battle");
+    std::ostringstream pets_probe;
+    for (int r = 0; r < 2; ++r) {
+        for (int sl = 0; sl < 6; ++sl) {
+            const ElfPet& pet = seerRobot[r].elfPets[sl];
+            append_storage_summary(pets_probe, pet.soulmark_storage, r, sl, "soulmark");
+            append_storage_summary(pets_probe, pet.on_stage_storage, r, sl, "onStage");
+        }
+    }
+    oss << "\"battle\":[" << battle_probe.str() << "],\"pets\":["
+        << pets_probe.str() << "]}";
 
     oss << "}";
     return oss.str();
@@ -1722,7 +1989,7 @@ std::string BattleContext::getFullStateJson() const {
                 << "\"soul\":" << (t.soul ? "true" : "false") << ","
                 << "\"tier\":" << t.tier;
             // 类别专属载荷（客户端按 category 取用，其余忽略）
-            if (t.category == RuleCategory::IMMUNE) {
+            if (is_immunity_category(t.category)) {
                 oss << ",\"coverage\":" << t.coverage
                     << ",\"anomalyMask\":" << t.anomaly_mask
                     << ",\"conditional\":" << (t.anomaly_condition ? "true" : "false");
@@ -1748,6 +2015,56 @@ std::string BattleContext::getFullStateJson() const {
         }
     }
     oss << "],";
+
+    // ── 效果显示 G4（2026-11-23）：storage 段（规范 §4 G4）──────────────────
+    // 审计面：三个 std::any 存储**全部键**导出——已登记 key（DisplayRegistry）给
+    // name/kind/value（decode 或按 kind 通用解码，bad_any_cast → "?"），未登记
+    // key 给 registered:false 裸键（C4 优雅降级）。键族 "+side/+owner" 的归属
+    // 编在登记名里（如 "蚩庸之锁层数(方1)"）。
+    oss << "\"storage\":{";
+    auto append_storage_list = [&](std::ostringstream& oss,
+                                   const std::map<int, std::any>& store,
+                                   int robot, int slot, const char* container,
+                                   bool registered_only) {
+        bool first = true;
+        for (const auto& [key, value] : store) {
+            const auto* spec = display_reg::DisplayRegistry::instance().find_storage(key);
+            if (registered_only && spec == nullptr) {
+                continue;
+            }
+            if (!first) {
+                oss << ",";
+            }
+            first = false;
+            oss << "{\"key\":" << key
+                << ",\"container\":\"" << container << "\"";
+            if (robot >= 0) {
+                oss << ",\"robot\":" << robot << ",\"slot\":" << slot;
+            }
+            if (spec == nullptr) {
+                oss << ",\"registered\":false}";
+                continue;
+            }
+            oss << ",\"name\":\"" << json_escape(spec->name_zh)
+                << "\",\"kind\":\"" << spec->kind << "\"";
+            DecodedValue dv;
+            const bool ok = spec->decode != nullptr
+                ? spec->decode(value, dv)
+                : display_reg::DisplayRegistry::decode_generic(*spec, value, dv);
+            oss << ",\"value\":\"" << (ok ? dv.text : "?") << "\"}";
+        }
+    };
+    oss << "\"battle\":[";
+    append_storage_list(oss, plugin_storage, -1, -1, "battle", false);
+    oss << "],\"pets\":[";
+    for (int r = 0; r < 2; ++r) {
+        for (int sl = 0; sl < 6; ++sl) {
+            const ElfPet& pet = seerRobot[r].elfPets[sl];
+            append_storage_list(oss, pet.soulmark_storage, r, sl, "soulmark", false);
+            append_storage_list(oss, pet.on_stage_storage, r, sl, "onStage", false);
+        }
+    }
+    oss << "]},";
 
     // Operation log
     oss << "\"operationLog\":\"" << json_escape(operation_log_) << "\",";

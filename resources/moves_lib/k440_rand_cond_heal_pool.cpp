@@ -215,7 +215,7 @@ EffectResult effect_75_rand_fear_sleep_paralysis(BattleContext* ctx, const Effec
         return EffectResult::kOk;
     }
     constexpr int kDeclaredP = 30;   // 模板文案「30%概率」——零参宏写死（勿改行参）
-    bool before[44] = {false};
+    bool before[kOfficialAbnormalStatusSlotCount] = {};
     for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
         before[id] = g_core->has_active_anomaly(ctx, opp, id);
     }

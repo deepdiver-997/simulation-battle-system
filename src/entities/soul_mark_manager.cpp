@@ -1,4 +1,6 @@
 #include <entities/soul_mark_manager.h>
+
+#include <effects/display_registry.h>
 #include <utils/registration_arbiter.h>
 #include <entities/soul_mark.h>
 #include <effects/continuousEffect.h>
@@ -314,6 +316,14 @@ void SoulMarkManager::registerSoulMarkPreBattle(int soulmark_id, PreBattlePhase 
     id_collision::instance().record(id_collision::Category::PreBattlePatch, soulmark_id,
                                     source, static_cast<int>(phase));
     pre_battle_patches_.push_back(PreBattlePatchEntry{soulmark_id, phase, fn, source});
+}
+
+void SoulMarkManager::registerStorageDisplay(const StorageDisplaySpec& spec) {
+    display_reg::DisplayRegistry::instance().register_storage(spec);
+}
+
+void SoulMarkManager::registerMarkType(const MarkTypeSpec& spec) {
+    display_reg::DisplayRegistry::instance().register_mark_type(spec);
 }
 
 void SoulMarkManager::registerCarryEffect(int effect_id, CarryEffectFn fn,

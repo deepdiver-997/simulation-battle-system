@@ -52,7 +52,7 @@ ElfPet mk_foe(std::array<int, 5> skills) {
 
 int foe_anomaly_count(const BattleContext& ctx) {
     int cnt = 0;
-    for (int id = 0; id <= 43; ++id) {
+    for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
         if (ctx.has_active_abnormal_status(1, id)) {
             ++cnt;
         }
@@ -80,9 +80,12 @@ int main() {
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
-            CHECK(ctx.getPet(1).hp <= 99999 - 300,
-                  "T1780.a 前置：红伤高于 300（对手掉 " +
-                      std::to_string(99999 - ctx.getPet(1).hp) + "）");
+            // 全池扩入 44 改变固定种子下的抽样，可能抽到回合末回血的星哲。
+            // 门判据看本刀红伤，不看回合后的净掉血。
+            const auto& hit = ctx.last_landed_hit[1][ctx.on_stage[1]];
+            CHECK(hit.valid && hit.actor == 0 && hit.kind == static_cast<int>(DamageKind::NORMAL)
+                      && hit.amount > 300,
+                  "T1780.a 前置：红伤高于 300（本刀 " + std::to_string(hit.amount) + "）");
             CHECK(foe_anomaly_count(ctx) == 1,
                   "T1780.a 1291：随机附加 1 种异常（实测 " +
                       std::to_string(foe_anomaly_count(ctx)) + "）");
@@ -97,9 +100,10 @@ int main() {
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
-            CHECK(ctx.getPet(1).hp > 99999 - 300,
-                  "T1780.b 前置：红伤低于 300（对手掉 " +
-                      std::to_string(99999 - ctx.getPet(1).hp) + "）");
+            const auto& hit = ctx.last_landed_hit[1][ctx.on_stage[1]];
+            CHECK(hit.valid && hit.actor == 0 && hit.kind == static_cast<int>(DamageKind::NORMAL)
+                      && hit.amount < 300,
+                  "T1780.b 前置：红伤低于 300（本刀 " + std::to_string(hit.amount) + "）");
             CHECK(foe_anomaly_count(ctx) == 0,
                   "T1780.b 1291 对照：阈值下不附加（实测 " +
                       std::to_string(foe_anomaly_count(ctx)) + "）");

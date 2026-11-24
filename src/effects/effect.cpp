@@ -1,6 +1,8 @@
 #include <utils/sbs_rand.h>
 #include <utils/registration_arbiter.h>
 #include <effects/effect.h>
+
+#include <effects/display_registry.h>
 #include <fsm/battleContext.h>
 #include <plugin/plugin_interface.h>
 #include <plugin/core_api.h>
@@ -327,6 +329,14 @@ void EffectFactory::registerSkillEffects(
     for (const auto& [id, fn] : effects) {
         registerEffect(id, fn, "EffectFactory::registerSkillEffects [batch]");
     }
+}
+
+void EffectFactory::registerStorageDisplay(const StorageDisplaySpec& spec) {
+    display_reg::DisplayRegistry::instance().register_storage(spec);
+}
+
+void EffectFactory::registerMarkType(const MarkTypeSpec& spec) {
+    display_reg::DisplayRegistry::instance().register_mark_type(spec);
 }
 
 void EffectFactory::registerUnitAdmission(UnitAdmissionFn fn) {

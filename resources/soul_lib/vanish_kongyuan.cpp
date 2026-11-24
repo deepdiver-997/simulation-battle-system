@@ -28,6 +28,21 @@
 #include "common.h"
 #include "../kongyuan_runtime.h"
 
+// ── 效果显示 G4（2026-11-23）：空妄诗章发布槽（kongyuan_runtime.h 键族，+side 逐侧）
+// ⚠️ 插件侧解码器（同 mistike_skills.cpp 注：std::any 跨 dylib type_info 不统一）。
+namespace {
+bool kongyuan_decode_int(const std::any& stored, DecodedValue& out) {
+    try {
+        std::snprintf(out.text, sizeof(out.text), "%d", std::any_cast<int>(stored));
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+}  // namespace
+STATE_DISPLAY_FN(21751000, "空妄诗章篇数(方0)", kongyuan_decode_int);
+STATE_DISPLAY_FN(21751001, "空妄诗章篇数(方1)", kongyuan_decode_int);
+
 namespace {
 
 constexpr int kKongYuanMarkId = 2175;

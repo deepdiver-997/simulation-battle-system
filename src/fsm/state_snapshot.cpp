@@ -301,6 +301,12 @@ void snapshot_record(const BattleContext& ctx, const std::string& phase) {
             std::snprintf(key, sizeof key, "tk[%zu].slot", i); c.put(key, t.source_slot);
             std::snprintf(key, sizeof key, "tk[%zu].eid", i); c.put(key, t.source_effect_id);
             std::snprintf(key, sizeof key, "tk[%zu].sid", i); c.put(key, t.source_id);
+            if (t.immunity_alias != 0) {
+                std::snprintf(key, sizeof key, "tk[%zu].alias", i); c.put(key, t.immunity_alias);
+            }
+            if (t.category == RuleCategory::ANOMALY_REFLECT_COUNTS) {
+                std::snprintf(key, sizeof key, "tk[%zu].cat", i); c.put(key, static_cast<int>(t.category));
+            }
             std::snprintf(key, sizeof key, "tk[%zu].vid", i); c.put(key, t.source_valid_id);
             std::snprintf(key, sizeof key, "tk[%zu].tgt", i); c.put(key, t.target);
             std::snprintf(key, sizeof key, "tk[%zu].sub", i); c.put(key, t.subtype);

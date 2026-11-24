@@ -110,10 +110,18 @@ int main() {
                                      plain_pet()};
         ScenarioBattle b(own, scenario::make_party(plain_pet()));
         b.start();
+        // ★ 2026-11-22 SP④拆分线迁移：御的抗性 100% 从本体写迁 ws boost 层（per-slot
+        //   增量、每回合 ROUND_START 重写）——原 pre-battle 本体写在开战前就位，新模型
+        //   的 boost 在回合 1 的 ROUND_START 桶才就位 → 先推进一回合再断言。
+        //   SP④武装时消费读 base → 帝君抗性回落本体（官方口径，语料 post497 点名清单）。
+        b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
+        b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
+        b.drive();
         BattleContext& x = b.ctx();
         ElfPet& dj = x.seerRobot[0].elfPets[0];
-        CHECK_EQ(dj.damage_resist.fixed_pct, 100, "B 前置：固定抗性 100");
-        CHECK_EQ(dj.damage_resist.percent_pct, 100, "B 前置：百分比抗性 100");
+        CHECK_EQ(x.ws.eff_fixed_resist_pct[0], 100, "B 前置：固定抗性有效视图 100（boost 层）");
+        CHECK_EQ(x.ws.eff_percent_resist_pct[0], 100, "B 前置：百分比抗性有效视图 100");
+        CHECK_EQ(dj.damage_resist.fixed_pct, 0, "B 前置：本体回落自带值（提升在 boost 层）");
         // 免异常（Ancient 层：连主动毒一起挡 → TARGET_IMMUNE）
         const ApplyAnomalyResult r =
             apply_anomaly(&x, 0, static_cast<int>(AbnormalStatusId::Burn), 2, 1);
@@ -471,10 +479,14 @@ int main() {
                                      plain_pet(100, 5, 3000), plain_pet(100, 5, 3000)};
         ScenarioBattle b(own, opp, kMeds, {});
         b.start();
+        // 推进一回合：boost 节点（ROUND_START 桶）就位后断言（2026-11-22 迁移）
+        b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
+        b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
+        b.drive();
         BattleContext& x = b.ctx();
         CHECK_EQ(x.seerRobot[1].elfPets[1].hp, 3000, "K 前置：帝君在场下背包，罚不触发");
-        CHECK_EQ(x.seerRobot[0].elfPets[1].damage_resist.fixed_pct, 100,
-                 "K0 御抗性战前补丁与上下场无关（场下也 100）");
+        CHECK_EQ(x.ws.resist_mid_pct[0][1][1], 100,
+                 "K0 御抗性中层（魂印赋予）场下也武装（ROSTER 节点写自己槽，与上下场无关）");
         // 回合1：帝君从背包登场（首发=首次 → 1/3）
         b.submit_operation(0, BattleFsm::ActionType::CHOOSE_PET, 1);
         b.submit_operation(1, BattleFsm::ActionType::USE_MEDICINE, 0);

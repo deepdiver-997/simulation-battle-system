@@ -214,8 +214,8 @@ std::vector<int> k437_pool_named_five() {
 //   非 inline，插件不可直调——core_api.h:218-222 记档）。
 void k437_attach_and_audit(BattleContext* ctx, int owner, int opp, int audit_base,
                            const std::vector<int>& pool, int pct, int kinds, int declared0) {
-    // 前提快照（目标侧 0..43 全集——Modern 通道只可能新增不可能立即消除）。
-    bool before[44] = {false};
+    // 前提快照（目标侧有效异常全集——Modern 通道只可能新增不可能立即消除）。
+    bool before[kOfficialAbnormalStatusSlotCount] = {};
     for (int id = 0; id <= kOfficialAbnormalStatusMaxId; ++id) {
         before[id] = g_core->has_active_anomaly(ctx, opp, id);
     }

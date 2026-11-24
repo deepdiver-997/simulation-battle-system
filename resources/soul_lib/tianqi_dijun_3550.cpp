@@ -24,7 +24,8 @@
 //   · 罚/赐都只作用于**不在场**（场下）且存活、未消逝的精灵；罚的削减**钳底 1**
 //     （"致死时残留1点"——罚自己打出的击杀永远留 1 血，不需要死亡漏斗）。
 //     场下扣血前查武心婵保护门 off_field_stats_protected（咤克斯连锁先例）。
-//   · 御：① 面板抗性 fixed/percent 100%（pet.damage_resist 永久写、sync 每回合重基视图）
+//   · 御：① 固定/百分比抗性视为 100%（2026-11-22 迁 ws boost 层 per-slot 增量，每回合
+//     ROUND_START 重写——SP④"无视抗性提升"消费读 base 时帝君回落本体；无④时行为不变）
 //     ② PINK_DAMAGE + ANOMALY 全 mask 免疫票（ROSTER、永久、Ancient 层——语料
 //     《浅谈主动毒与魂印免控判定》把天启帝君列进"老魂免"名单，Ancient 层连主动毒一起挡）。
 //   · 阵 ±10%：ws 加算通道（damage_add_pct / damage_reduce_add）+ ROUND_START 节点
@@ -353,27 +354,47 @@ EffectResult soulmark_1128_array_after_action(BattleContext* ctx, const EffectAr
     return EffectResult::kOk;
 }
 
-// ── 战前魂印补丁（STAT_MODIFY）：帝君之御的抗性两槽 ────────────────────────
-// "天生……将固定伤害和百分比伤害始终抗性视为100%"是**游戏开始前**的面板事实——
-// 走战前补丁注册面（init_battle 扫 12 槽、魂印 id 命中即执行），不随登场触发
-// （用户 2026-09-20 口径）。写 pet.damage_resist 两槽，ws 抗性视图由 sync 每回合重基。
-void dijun_1128_pre_battle(BattleContext* ctx, int side, int slot) {
-    if (!ctx || side < 0 || side > 1 || slot < 0 || slot > 5) {
-        return;
-    }
-    ElfPet& pet = ctx->seerRobot[side].elfPets[slot];
-    pet.damage_resist.fixed_pct = 100;
-    pet.damage_resist.percent_pct = 100;
-}
+// ── 帝君之御的抗性（2026-11-22 SP④拆分线迁移）────────────────────────────
+// "天生……将固定伤害和百分比伤害始终抗性视为100%"原走战前补丁写 pet.damage_resist
+// 本体——但语料 post497 把帝君明确列进 SP④"会被无视的抗性提升"清单：写本体 = 混进
+// base 基线，④穿透（读 base）永远穿不动它。已迁 ws **boost 层**（per-slot 增量、
+// 每回合 ROUND_START 重写，见 dijun_1128_resist_boost_round_start）：
+//   eff = clamp(base + boost) —— 无 SP④ 时行为不变（boost 100 → clamp 封顶 100）；
+//   SP④武装时消费读 base → 帝君抗性回落本体（官方口径）。
 
 }  // namespace
 
+// 御（boost 层版）：每回合 ROUND_START 给自己槽位写 fixed/percent=100 增量。
+// ROSTER scope——帝君存活于背包即提供（"天生…始终"）；阵亡停刷新 → 下回合 boost=0
+// → eff 回本体。add_resist_boost 内部在场即重算 eff，时序：ROUND_START resetWorkspace
+// → sync（boost=0 → eff=base）→ 本桶写入（eff=100）→ 首段攻击结算读到 100，与旧
+// 本体模型逐点等价（2026-11-22 迁移记档）。
+EffectResult dijun_1128_resist_boost_round_start(BattleContext* ctx, const EffectArgs& args) {
+    if (!ctx) {
+        return EffectResult::kOk;
+    }
+    const int owner = resolve_owner_from_args(ctx, args);
+    if (owner < 0 || owner > 1) {
+        return EffectResult::kOk;
+    }
+    const int holder = ctx->find_mark_in_roster(owner, kDijunMarkId);
+    if (holder < 0) {
+        return EffectResult::kOk;   // 存活于出战背包前提（阵亡/消逝不提供）
+    }
+    // 御 = 魂印赋予（"天生"）→ **中层 SoulMark**（三层模型 2026-11-22：常态参考层；
+    // 星皇二段读 base+mid 时帝君抗性照常生效，SP④才穿到 base）。
+    ctx->add_resist_boost(owner, holder, BattleContext::ResistLayer::SoulMark,
+                          /*crit=*/0, /*fixed=*/100, /*percent=*/100);
+    return EffectResult::kOk;
+}
+
 // ── 效果注册（静态自注册）──
-SOUL_PRE_BATTLE(kDijunMarkId, PreBattlePhase::STAT_MODIFY, dijun_1128_pre_battle);
 SOUL_PROGRAM(kDijunMarkId,
              {SoulMarkNodeRef(State::OPERATION_ENTER_EXIT_STAGE, &soulmark_1128_arm,
                               /*once=*/false, /*early=*/false, SoulScope::ROSTER),
               SoulMarkNodeRef(State::BATTLE_FIRST_MOVE_RIGHT, &soulmark_1128_aid_move_right,
+                              /*once=*/false, /*early=*/false, SoulScope::ROSTER),
+              SoulMarkNodeRef(State::BATTLE_ROUND_START, &dijun_1128_resist_boost_round_start,
                               /*once=*/false, /*early=*/false, SoulScope::ROSTER),
               SoulMarkNodeRef(State::BATTLE_ROUND_START, &soulmark_1128_array_round_start,
                               /*once=*/false, /*early=*/false, SoulScope::STAGE),

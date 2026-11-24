@@ -858,21 +858,64 @@ public:
     // 调用点：sync_workspace_from_on_stage（回合开始 / 换宠）——两者都要，因为 ws 每回合
     // reset 会清视图，而换宠要换成新精灵的本体值。
     //
-    // ⚠️ 临时 buff 只改 ws.eff_*_resist_pct，**不要**回头调本方法（会被本体覆盖）。
-    //     buff 的典型形态是"把非 0 的抗性视为 100%"——本体为 0（未开抗性）时 buff 不生效。
+    // ★ 三层模型（2026-11-22 用户定稿）：base 重基本体（底层，对局只读）；eff =
+    //   clamp(base + mid[slot] + top[slot], 0, 100)。mid=魂印赋予层（战螳螂/帝君，
+    //   常态参考）、top=临时层（天尊死亡buff）——均 per-slot + 每回合 reset 清零。
+    //   三档读取见 battleWorkspace.h 注（常态 eff / 星皇二段 base+mid / SP④ base）。
     void sync_damage_resist_view(int owner) {
         if (owner < 0 || owner > 1) {
             return;
         }
         const ElfPet& pet = seerRobot[owner].elfPets[on_stage[owner]];
-        ws.eff_crit_resist_pct[owner] = pet.damage_resist.crit_pct;
-        ws.eff_fixed_resist_pct[owner] = pet.damage_resist.fixed_pct;
-        ws.eff_percent_resist_pct[owner] = pet.damage_resist.percent_pct;
+        const int slot = on_stage[owner];
+        ws.base_resist_pct[owner][0] = pet.damage_resist.crit_pct;
+        ws.base_resist_pct[owner][1] = pet.damage_resist.fixed_pct;
+        ws.base_resist_pct[owner][2] = pet.damage_resist.percent_pct;
+        for (int k = 0; k < 3; ++k) {
+            const int merged = ws.base_resist_pct[owner][k]
+                + ws.resist_mid_pct[owner][slot][k]
+                + ws.resist_top_pct[owner][slot][k];
+            const int eff = std::clamp(merged, 0, 100);
+            if (k == 0) {
+                ws.eff_crit_resist_pct[owner] = eff;
+            } else if (k == 1) {
+                ws.eff_fixed_resist_pct[owner] = eff;
+            } else {
+                ws.eff_percent_resist_pct[owner] = eff;
+            }
+        }
     }
 
     void sync_damage_resist_view_all() {
         sync_damage_resist_view(0);
         sync_damage_resist_view(1);
+    }
+
+    // 抗性修改层（add_resist_boost 的 layer 参）：
+    //   SoulMark = 中层·魂印赋予（战螳螂/帝君——常态参考层）
+    //   Temp     = 顶层·临时（天尊死亡buff类）
+    // 两层语义差 = 星皇之怒二段只忽略顶层（读 base+mid）；SP④两层全穿（读 base）。
+    enum class ResistLayer { SoulMark = 0, Temp = 1 };
+
+    // **抗性修改写入**（三层模型，2026-11-22）：效果层的"抗性提高/视为X%"统一走这里
+    // ——选层 += pct 后立即重算 eff（clamp 0..100）。per-slot（帝君抗性不跟人走）；
+    // 每回合 ws reset 清零 → 提升类效果每回合 ROUND_START 重写（776/32 套路）。
+    // kind 位：crit/fixed/percent 三参（与 ws.base_resist_pct 第二维同序）。
+    // ⚠️ 替代旧的"直接写 eff_*"路径——直接写会被下一次 sync（换宠）重算冲掉，且无法
+    //   被任何无视档（星皇二段/SP④）分离。
+    void add_resist_boost(int owner, int slot, ResistLayer layer,
+                          int crit, int fixed, int percent) {
+        if (owner < 0 || owner > 1 || slot < 0 || slot >= 6) {
+            return;
+        }
+        auto& b = (layer == ResistLayer::SoulMark)
+            ? ws.resist_mid_pct[owner][slot] : ws.resist_top_pct[owner][slot];
+        b[0] += crit;
+        b[1] += fixed;
+        b[2] += percent;
+        if (slot == on_stage[owner]) {
+            sync_damage_resist_view(owner);   // 在场即重算 eff
+        }
     }
 
     //--- 效果注册（插件内联入口）---
@@ -1193,7 +1236,7 @@ public:
 
     /**
      * 授予免疫。coverage 用 state_coverage_bit / coverage_all / coverage_union 构造。
-     * @param source_id 0 = 新建; >0 = 复用更新（快照程序每回合 re-grant 同句柄）
+     * @param source_id 0 = 按覆盖键授予；1..(2^30-1) = 本侧固定别名；更高的正数 = 引擎返回的免疫句柄（快照 re-grant）
      * @param tier 免疫层级（ImmunityTier）：Ancient=古代层（官方"带补丁"老免控，两种施加都挡，
      *             如 effect 48）；Modern=现代层（默认，只挡现代施加）。古早施加原语只查 Ancient。
      * @return source_id（revoke 用）
@@ -1222,8 +1265,7 @@ public:
     }
 
     void revoke_immunity(int owner, int source_id) {
-        (void)owner;  // 句柄唯一，按 source_id 撤销
-        rule_center_.revoke(source_id);
+        rule_center_.revoke_immunity(owner, source_id);
     }
 
     // ── 概率闸门（亮节族；2026-09-22）────────────────────────────────────
@@ -1285,23 +1327,15 @@ public:
 
     /**
      * consume_immune - 查询并**消费**次数型免疫（"免下N次"）。
-     * 与 is_immune（纯查询）配对：先 is_immune 判定是否免疫，命中后调本方法扣一次。
-     * 命中窗口/永久免疫（counts==0）返回 false 不扣——那些不随施加消耗。
-     * @param status_id    ANOMALY 专用（0 = 不按 mask 过滤）
-     * @param soul_filter  -1=不限 / 0=仅次免(抗性前) / 1=仅魂免(抗性后)
-     *
-     * ⚠️ **异常族走 all-once**（用户 2026-09-20 拍板）：同一异常落到目标头上时，**所有**
-     *    条件命中的次数型异常免疫票**各扣一次**（两张次免盾并存 → 一次异常两条都消耗）。
-     *    免伤/免粉/免杀族保持"一层一威胁"（`consume_all=false`）——多个"抵挡下N次攻击"
-     *    是各自独立的层，一次攻击只消耗最外那层。详见 RuleCenter::consume_immune 注释。
+     * 与 is_immune（纯查询）配对；窗口/永久免疫（counts==0）不扣。
+     * 异常施加用 resolve_anomaly_protection 一次结算免疫、扣次和回弹，避免重复求值。
      */
     bool consume_immune(int owner, ImmunityType type, State timing, int status_id = 0,
                         int soul_filter = -1, int tier_filter = -1) {
         const bool consume_all = (type == ImmunityType::ANOMALY);
         return rule_center_.consume_immune(owner, static_cast<int>(type),
                                            state_coverage_bit(timing), roundCount,
-                                           status_id, soul_filter, tier_filter, this,
-                                           consume_all);
+                                           status_id, soul_filter, tier_filter, this, consume_all);
     }
 
     //--- 伤害管线便利方法 ---

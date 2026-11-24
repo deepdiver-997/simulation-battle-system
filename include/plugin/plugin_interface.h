@@ -1,6 +1,7 @@
 #ifndef PLUGIN_INTERFACE_H
 #define PLUGIN_INTERFACE_H
 
+#include <any>
 #include <map>
 #include <string>
 #include <utility>
@@ -16,6 +17,33 @@ enum class EffectResult : int;
 
 // Effect function type (same as defined in effect.h)
 using EffectFn = EffectResult (*)(BattleContext*, const EffectArgs&);
+
+// ── 效果显示 G4（2026-11-23）：显示面跨库契约（效果显示gate规范 §4 G4）──────
+// storage key 的显示身份（STATE_DISPLAY 宏登记）。未登记 key 在显示面 = 裸键值
+// 黑盒（优雅降级）；登记后 fullstate/快照/registry dump 三处出口都能给出名字与值。
+struct DecodedValue {
+    char text[96];    // 显示文本（插件填充，内核读；定长缓冲——不跨库传 std::string 构造）
+    int robot = -1;   // 归属方（-1 = 战斗级/未声明；键族 +side/+owner 的归属由登记名区分）
+    int slot = -1;    // 归属槽（-1 = 未声明）
+};
+using StorageDecodeFn = bool (*)(const std::any& stored, DecodedValue& out);
+
+struct StorageDisplaySpec {
+    int key = 0;                    // storage 的 int 键（具体值；"+side 键族"逐侧登记）
+    const char* name_zh = nullptr;  // 显示名（如 "蚩庸之锁层数(方1)"）
+    const char* kind = "int";       // "int"/"bool"/"str"——decode=nullptr 时内核按此通用解码
+    StorageDecodeFn decode = nullptr;   // 自定义解码（nullptr = 通用）；返回 false = 显示 "?"
+    std::string source;             // 登记来源（宏自动携带 文件:行；审计用）
+};
+
+// Mark 类型固定表条目（债务 #4：mark id → 描述）。name 字段（施加方自传）过渡期保留，
+// 表齐后退役。Mark 0（异常免疫）由内核种子登记；效果侧自定义 Mark 暂走 name 兜底。
+struct MarkTypeSpec {
+    int id = 0;
+    const char* name_zh = nullptr;
+    const char* des = nullptr;
+    std::string source;
+};
 
 // 魂印节点的注册作用域。
 //   STAGE （默认）：随精灵上下场——只在宿主精灵于场上时注册；离场时由 epoch 作废。
@@ -219,6 +247,19 @@ public:
     // Register multiple skill effects at once
     virtual void registerSkillEffects(
         const std::vector<std::pair<int, EffectFn>>& effects) = 0;
+
+    // ── 效果显示 G4（2026-11-23）：storage key 显示身份登记 ────────────────
+    // STATE_DISPLAY 宏 → 本 dylib 静态表 → flush → 本方法 → 内核 DisplayRegistry。
+    // 未登记 key 在 fullstate 以 registered:false 裸键导出（优雅降级，规范 C4）；
+    // decode=nullptr = 按 kind 通用解码（int/bool/str，内核侧实现）。
+    // 重复 key：首注保留，重复键记入 registry dump 的 display.duplicateKeys（审计）。
+    // 追加在接口尾部（旧调用方 vtable 槽位不变）；CoreApi ABI 已随本改动 bump v3。
+    virtual void registerStorageDisplay(const StorageDisplaySpec& spec) {
+        (void)spec;
+    }
+    virtual void registerMarkType(const MarkTypeSpec& spec) {
+        (void)spec;
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -377,6 +418,26 @@ inline bool add_soul_hook(int soulmark_id, const SoulMarkHooks& hooks,
     return true;
 }
 
+// ── 显示面表（G4，2026-11-23）：STATE_DISPLAY / STATE_MARK_TYPE 静态登记 ──────
+inline std::vector<StorageDisplaySpec>& storage_displays() {
+    static std::vector<StorageDisplaySpec> table;
+    return table;
+}
+inline std::vector<MarkTypeSpec>& mark_types() {
+    static std::vector<MarkTypeSpec> table;
+    return table;
+}
+inline bool add_storage_display(StorageDisplaySpec spec, const std::string& source = {}) {
+    spec.source = source;
+    storage_displays().push_back(std::move(spec));
+    return true;
+}
+inline bool add_mark_type(MarkTypeSpec spec, const std::string& source = {}) {
+    spec.source = source;
+    mark_types().push_back(std::move(spec));
+    return true;
+}
+
 // 把本 dylib 的三张表一次性推给 registry（在 `plugin_register` 里调一次）。
 // ⚠️ source：插件侧由注册宏直接带进来（文件:行 [宏名]），宿主侧据此做 id 撞号审计。
 inline void flush(IEffectRegistry* registry) {
@@ -403,6 +464,15 @@ inline void flush(IEffectRegistry* registry) {
     }
     for (const SoulHookEntry& e : soul_hooks()) {
         registry->registerSoulMarkHooks(e.soulmark_id, e.hooks, e.source);
+    }
+    // 效果显示 G4（2026-11-23）：storage key 显示身份随 flush 推给内核。
+    // 三个 plugin dylib 的 flush 各落一份（表是每 dylib 一份）——内核 DisplayRegistry
+    // 撞 key 首注保留，跨 dylib 重复键进 display.duplicateKeys 审计。
+    for (const StorageDisplaySpec& spec : storage_displays()) {
+        registry->registerStorageDisplay(spec);
+    }
+    for (const MarkTypeSpec& spec : mark_types()) {
+        registry->registerMarkType(spec);
     }
 }
 
@@ -433,7 +503,32 @@ SBS_HIDDEN_VIS_END
     namespace {                                                                     \
     [[maybe_unused]] const bool kSoulProgramReg_##id =                              \
         ::plugin_reg::add_soul_program((id), {__VA_ARGS__},                         \
-            ::id_collision::source_of(__FILE__, __LINE__, "SOUL_PROGRAM"));       \
+            ::id_collision::source_of(__FILE__, __LINE__, "SOUL_PROGRAM"));         \
+    }
+
+// 效果显示 G4（2026-11-23）：storage key 显示身份（通用解码版 + 自定义解码器版）。
+// 键族 "+side/+owner"（如 4676000+side）逐侧登记，name 里带（方0/方1）归属。
+#define STATE_DISPLAY(key, name_zh, kind_)                                          \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kStateDisplayReg_##key =                            \
+        ::plugin_reg::add_storage_display({(key), (name_zh), (kind_), nullptr},     \
+            ::id_collision::source_of(__FILE__, __LINE__, "STATE_DISPLAY"));        \
+    }
+
+#define STATE_DISPLAY_FN(key, name_zh, decode_fn)                                   \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kStateDisplayFnReg_##key =                          \
+        ::plugin_reg::add_storage_display({(key), (name_zh), "custom", (decode_fn)},\
+            ::id_collision::source_of(__FILE__, __LINE__, "STATE_DISPLAY_FN"));     \
+    }
+
+// Mark 类型描述表登记（内核固定语义由 display_registry.cpp 种子；效果侧自定义 Mark
+// 暂走 name 兜底，此宏给"已定 id 的效果侧 Mark"用）。
+#define STATE_MARK_TYPE(id, name_zh, des)                                           \
+    namespace {                                                                     \
+    [[maybe_unused]] const bool kStateMarkTypeReg_##id =                            \
+        ::plugin_reg::add_mark_type({(id), (name_zh), (des)},                       \
+            ::id_collision::source_of(__FILE__, __LINE__, "STATE_MARK_TYPE"));      \
     }
 
 // 类型化魂印行参（T4，K5 用户裁定）在 <plugin/soul_node_args.h>：shim 需要完整

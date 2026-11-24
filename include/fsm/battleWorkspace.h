@@ -318,13 +318,34 @@ public:
     int view_elementalAttributes[2][2]{};
 
     //========== 伤害抗性有效视图（本回合计算用）==========
-    // 伤害计算一律读这里，不直接读 pet.damage_resist——因为临时 buff 可以修改抗性
-    // （如混元天尊死亡 buff：己方精灵抗性**被视为 100%**，3 回合后恢复）。
-    // 基线由 sync_damage_resist_view 在回合开始 / 换宠时从 pet.damage_resist 重基；
-    // 临时 buff 在本回合内直接改视图（回合 reset 后由 buff 效果重新施加）。
-    int eff_crit_resist_pct[2]{};     // 暴击伤害抗性%（有效值）
+    // 伤害计算一律读这里，不直接读 pet.damage_resist。
+    // ★ 三层模型（2026-11-22 用户定稿，SP④拆分线）：
+    //   底层 base   = 训练刷出的本体抗性——对局中**只读**，不受魂印/套装影响
+    //                 （语料 post497"自带的 35% 伤害抗性不受影响"）；
+    //   中层 mid    = 魂印赋予的修改（战螳螂/帝君类）——**常态以这层为参考**（无任何
+    //                 无视时它正常叠加进 eff）；
+    //   顶层 top    = 更临时的修改（天尊死亡buff类）——最上层。
+    //   eff = clamp(base + mid[slot] + top[slot], 0, 100)；两层都 per-slot（帝君抗性
+    //   不跟人走）+ 每回合随 ws reset 清零 → 效果每回合 ROUND_START 重写（776/32 套路）。
+    //   三档读取（消费者按语义选层）：
+    //     常态                        → eff
+    //     星皇之怒二段（ignore_top）   → clamp(base + mid)——官方观测推断：有辛之印记
+    //                                   且本体未开抗性的精灵，有天尊buff仍受粉伤
+    //                                   （post497 线）→ 二段忽略的是**最上层**；
+    //     SP④（kPierceResistBoost）   → base（"无视抗性提升"= 回落本体；帝君/天尊/
+    //                                   战螳螂的提升和视为全被无视）。
+    //   ⚠️ 两层写入统一走 add_resist_boost（layer 参）；直接写 eff 会被换宠 sync 冲掉
+    //   且无法被任何无视档分离。
+    int eff_crit_resist_pct[2]{};     // 暴击伤害抗性%（有效值 = clamp(base+mid+top)）
     int eff_fixed_resist_pct[2]{};    // 固定伤害抗性%（有效值）
     int eff_percent_resist_pct[2]{};  // 百分比伤害抗性%（有效值）
+    int base_resist_pct[2][3]{};      // [side][0=crit 1=fixed 2=percent] 底层（sync 重基）
+    int resist_mid_pct[2][6][3]{};    // [side][slot][kind] 中层·魂印赋予（per-slot）
+    int resist_top_pct[2][6][3]{};    // [side][slot][kind] 顶层·临时（per-slot）
+    // **忽略顶层抗性**旗标（2026-11-22 三层模型预留查询口）：actor 侧置位 → 本次伤害
+    // 的抗性读取跳过顶层（星皇之怒二段语义）。生命周期归设置方效果（本批只建查询口，
+    // 星皇之怒二段粉伤无视本体未实现——pink_damage_pipeline.h:113 挂账待做）。
+    bool ignore_top_resist[2]{};
 
     //========== 回合内状态 ==========
     bool has_attacked[2]{};           // 本回合是否已攻击

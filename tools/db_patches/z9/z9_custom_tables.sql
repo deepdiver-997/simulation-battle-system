@@ -15,7 +15,7 @@
 --
 -- 内容 = 2026-11-22 本地 DB（13a802c7 系）五张表全量 dump，语义零变更（纯资产化）。
 -- [verify] 每表行数应为：programs 6 / overrides 17 / equip_stats 16 / combo_rules 16 /
---          selection_routes 38（见文件尾注释的核对查询）
+--          selection_routes 39（K487 953 扩行 2026-11-23，j4/selection_routes_expansion_7 同步）
 --
 -- 回滚：DELETE FROM 各表（恢复 CI 旧空表态，相应场景回红）。
 
@@ -98,6 +98,7 @@ INSERT INTO custom_skill_selection_routes VALUES(750,'selection','FIRST_MOVE_RIG
 INSERT INTO custom_skill_selection_routes VALUES(779,'selection','FIRST_MOVE_RIGHT','plain',1,'对手提升→先制+2（盖亚武道 J11；插件 j_gaia_stance.cpp）');
 INSERT INTO custom_skill_selection_routes VALUES(785,'selection','FIRST_MOVE_RIGHT','plain',1,'判精灵系别视图微弱→先制+2（用户 2026-09-14 口径：读 ws.view_elementalAttributes；插件 selection_seal.cpp）');
 INSERT INTO custom_skill_selection_routes VALUES(881,'selection','FIRST_MOVE_RIGHT','plain',1,'自身下降→先制+3（神火剑阵 37221，2026-09-20 烧伤三精灵线；插件 burn_trio_skills.cpp/artemis_skills.cpp 双注册为既有撞号审计项，非本单改动）');
+INSERT INTO custom_skill_selection_routes VALUES(953,'selection','FIRST_MOVE_RIGHT','plain',1,'{0}回合恢复最大体力的1/{1}，体力低于{2}%时先制+{3}（effect_info 原文；5 载体 24921 坠天断魂曲/25269 地底核心/26577 冰霸霸之魂/28592 福龙临世/28714 风翼护体，切片[4,3,40,2]×4+[3,3,60,1]逐位自洽；先制半门=hp×100<max_hp×{2} 严格低于整数直乘（454/1397/K469 616 口径，恰{2}%门闭），出=ws.preemptive_level+={3} 优先级修改面；回血半=路由 continue 吞普通注册→插件体自挂当回合 SKILL_EFFECT 武装节点（539 双半直系）→ROUND_REDUCTION InRounds {0} 回合窗（762 tick 直系）；K469 616 同形（k469_lowhp_prio.cpp:36 先例 + j_cond_priority.cpp:454 同形），E 板 K487 行 616 先例直系授权（编排 2026-11-23 延续批准，z9 快照同步进位 38→39）；soul 空间 953 仅 effect_icon 模板行无运行时注册（审计基址免子块拆分）；插件 k487_regen_prio_and_foeboost_cap.cpp）');
 INSERT INTO custom_skill_selection_routes VALUES(954,'selection','FIRST_MOVE_RIGHT','plain',1,'当前体力低于对手→先制+1（协议I·激 37354 等 36 技通用模板；插件 crawford_skills.cpp）');
 INSERT INTO custom_skill_selection_routes VALUES(958,'selection','FIRST_MOVE_RIGHT','plain',1,'指定异常门→先制+{1}（J115，2参 has_active_anomaly(对手,码)；插件 j_cond_prio2.cpp）');
 INSERT INTO custom_skill_selection_routes VALUES(1081,'selection','FIRST_MOVE_RIGHT','plain',1,'对手提升→先制+1（J115 779 孪生；插件 j_cond_prio2.cpp）');
@@ -127,7 +128,7 @@ INSERT INTO custom_skill_selection_routes VALUES(2347,'selection','FIRST_MOVE_RI
 INSERT INTO custom_skill_selection_routes VALUES(2436,'selection','FIRST_MOVE_RIGHT','plain',1,'自身上回合每有1级先制，先制+1，最高+3（effect_info 原文；载体 神诗终幕 38328[2436,9,429] 零参切片 4888 专属；条件=上回合先制级数快照 102436000x+side 段（宠 id 消歧），K420 头注指名续单；插件 j332_cond_prio_expansion.cpp）');
 INSERT INTO custom_skill_selection_routes VALUES(2490,'selection','FIRST_MOVE_RIGHT','skill_static_elements',1,'微弱→先制+3/本系/神灵系奖励（args[2]/[3]=element[0]/[1]；官方无 side_effect 定义行、零参；插件 selection_seal.cpp）');
 
--- [verify] 应用后核对（应 6/17/16/16/38）：
+-- [verify] 应用后核对（应 6/17/16/16/39）：
 --   SELECT 'programs',COUNT(*) FROM custom_effect_programs
 --   UNION ALL SELECT 'overrides',COUNT(*) FROM custom_effect_overrides
 --   UNION ALL SELECT 'equip',COUNT(*) FROM custom_equip_stats
