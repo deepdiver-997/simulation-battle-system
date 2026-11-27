@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -427,7 +428,8 @@ void test_parallel_branches(EffectFn effect) {
             if (!branch.submit(kOwner, BattleCloneAction::Skip) ||
                 !branch.submit(kFoe, BattleCloneAction::Skip)) break;
             trace.damage[i] = probe_pink(branch.context());
-            trace.rolls[i] = branch.context().rng().next();
+            trace.rolls[i] = branch.context().sample_legacy_range(
+                0, std::numeric_limits<int>::max() - 1, ChanceSingleton::ConsumeDraw);
             ++trace.rounds;
         }
         return trace;

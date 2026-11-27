@@ -102,8 +102,6 @@ private:
 
 public:
     // Read-only diagnostics and test oracle snapshots; live draws go through chance APIs.
-    // Source compatibility while native callers migrate; old binaries still need rebuilding.
-    SbsRng& rng() noexcept { return rng_; }
     const SbsRng& rng() const noexcept { return rng_; }
     // Registering a site does not grant clone admission.
     int choose_weighted(std::span<const ChanceOption> options, ChancePoint& site,
