@@ -1,6 +1,7 @@
 #ifndef PINK_DAMAGE_PIPELINE_H
 #define PINK_DAMAGE_PIPELINE_H
 
+#include <effects/battle_callback_copy.h>
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -170,7 +171,8 @@ public:
     //   否则注册进来的条目会一直留到 clearAllEffects（用户 2026-09-15 发现的漏）。
     void register_effect(PinkDamagePhase phase, int owner,
                          std::function<void(BattleContext*, int)> fn,
-                         int valid_id = 0, bool team = false) {
+                         int valid_id = 0, bool team = false,
+                         BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
         if (owner < 0 || owner > 1) {
             return;
         }
@@ -180,7 +182,21 @@ public:
                                         return !e.team && e.valid_id != valid_id;
                                     }),
                      bucket.end());
-        bucket.push_back(PinkDamageEffect{std::move(fn), valid_id, team});
+        bucket.push_back(PinkDamageEffect{std::move(fn), valid_id, team,
+                                          copy == BattleCallbackCopy::Audited});
+    }
+
+    bool clone_into(PinkDamagePipeline& destination) const {
+        for (const auto& phase : buckets_) {
+            for (const auto& side : phase) {
+                for (const auto& effect : side) {
+                    if (!effect.clone_copyable) return false;
+                }
+            }
+        }
+        auto copy = buckets_;
+        destination.buckets_.swap(copy);
+        return true;
     }
 
     /**
@@ -216,6 +232,7 @@ private:
         std::function<void(BattleContext*, int)> fn;
         int valid_id = 0;
         bool team = false;
+        bool clone_copyable = false;
     };
     // [phase][owner] -> effects
     std::array<std::array<std::vector<PinkDamageEffect>, 2>, kPhaseCount> buckets_{};

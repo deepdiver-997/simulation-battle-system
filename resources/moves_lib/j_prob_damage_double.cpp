@@ -8,7 +8,7 @@
 //   - DETECT 攻方桶（register_damage_effect，541/1104 同通道）读管线后 resolvedDamage：
 //     自卡 attackerId==owner / defenderId==target / isRed / final>0。
 //   - 概率 p = {0}%；对手 6 槽（含命中）任一负等级 → p×2，封顶 100（"概率翻倍"）。
-//     p>=100 短路不掷骰；否则 sbs_rand()%100 < p。
+//     p>=100 短路不掷骰；否则 rng.next()%100 < p。
 //   - 命中 → final = checked_pct_mul(final, 100)（×2；计算乘区统一入口，溢出响亮报错）。
 //   - 审计槽 plugin_storage[k1481AuditBase+owner] = rolled*1000 + p（场景可精确断言
 //     "本次申报概率与是否命中"，不依赖随机结果猜分支）。
@@ -66,7 +66,7 @@ EffectResult effect_1481_prob_damage_double(BattleContext* ctx, const EffectArgs
             if (j196_foe_has_drop(c, target)) {
                 p = std::min(100, p * 2);   // 对手降态：概率翻倍（封顶 100）
             }
-            const bool rolled = (p >= 100) || ((sbs_rand() % 100) < p);
+            const bool rolled = (p >= 100) || ((c->rng().next() % 100) < p);
             c->plugin_storage[k1481AuditBase + owner] = (rolled ? 1000 : 0) + p;
             if (rolled) {
                 c->resolvedDamage.final =

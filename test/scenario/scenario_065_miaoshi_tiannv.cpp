@@ -240,6 +240,7 @@ int main() {
         CHECK(ctx.ws.preemptive_level[0] >= 1, "T9 拒赦怒威：所有技能先制+1");
         // 伤害提升 100%：AMP 加法槽——打一回合，对比无条件对照 ×2
         const int hp_before = b.pet(1).hp;
+        ctx.seed_rng(20260916);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -248,6 +249,7 @@ int main() {
         ctrl.start();
         // 对照：无两态标记（mode=0）打同技能
         const int hp_ctrl = ctrl.pet(1).hp;
+        ctrl.ctx().seed_rng(20260916);
         ctrl.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         ctrl.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         ctrl.drive();

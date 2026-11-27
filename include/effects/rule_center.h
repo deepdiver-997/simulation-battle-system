@@ -382,6 +382,9 @@ enum class ImmunityTier {
 };
 
 // 一条规则 ticket（纯数据）。
+// 概率票只在实际结算时运行，使用执行方传入的可变对局（含本局 RNG）。
+using ImmunityRoll = std::function<bool(BattleContext*, int)>;
+
 struct RuleTicket {
     // ── 挂载维度（"属于"谁 → 生命周期 + 覆盖键）────────────
     int source_owner = -1;         // 挂载方 (0/1)
@@ -457,6 +460,7 @@ struct RuleTicket {
     // 的条件，静态 anomaly_mask 表达不了（异常随时变，push 式改 mask 会有漏改窗口）。
     // ctx 由查询方传入（is_immune/consume_immune 的尾参）；为 nullptr 时条件不成立。
     std::function<bool(const BattleContext*, int status_id)> anomaly_condition;
+    ImmunityRoll anomaly_roll;
 
     // ── 下场成因改写票（LEAVE_CAUSE_RECLASS）参数 ─────────
     // true = **豁免**薇尔诗 2513 场下源抑制场域（官方双标现状：新精灵机制不受影响）。
@@ -516,7 +520,8 @@ public:
                      bool soul, EffectScope scope, int source_slot,
                      int counts = 0, int source_effect_id = -1,
                      int tier = static_cast<int>(ImmunityTier::Modern),
-                     std::function<bool(const BattleContext*, int)> condition = nullptr) {
+                     std::function<bool(const BattleContext*, int)> condition = nullptr,
+                     ImmunityRoll roll = nullptr) {
         if (owner < 0 || owner > 1 || source_id < 0) {
             return -1;
         }
@@ -535,6 +540,7 @@ public:
                     t.coverage = coverage;
                     t.anomaly_mask = anomaly_mask;
                     t.anomaly_condition = std::move(condition);
+                    t.anomaly_roll = std::move(roll);
                     t.soul = soul;
                     t.scope = scope;
                     t.source_slot = source_slot;
@@ -555,6 +561,7 @@ public:
                 t.coverage = coverage;
                 t.anomaly_mask = anomaly_mask;
                 t.anomaly_condition = std::move(condition);
+                t.anomaly_roll = std::move(roll);
                 t.soul = soul;
                 t.scope = scope;
                 t.source_slot = source_slot;
@@ -577,6 +584,7 @@ public:
         t.coverage = coverage;
         t.anomaly_mask = anomaly_mask;
         t.anomaly_condition = std::move(condition);
+        t.anomaly_roll = std::move(roll);
         t.remaining_rounds = duration_rounds;  // IMMUNE 视为完整窗口（is_immune/cleanup 过期判断，不 tick）
         t.remaining_counts = counts;           // 次数型免疫（>0）
         t.register_round = register_round;
@@ -607,7 +615,7 @@ public:
     bool consume_immune(int target, int type, uint64_t timing_bit, int current_round,
                         int status_id = 0, int soul_filter = -1,
                         int tier_filter = -1, const BattleContext* ctx = nullptr,
-                        bool consume_all = false) {
+                        bool consume_all = false, BattleContext* resolution = nullptr) {
         if (target < 0 || target > 1) {
             return false;
         }
@@ -616,7 +624,7 @@ public:
             RuleTicket& t = all_[i];
             if (t.remaining_counts <= 0
                 || !matches_immunity(t, target, type, timing_bit, current_round, status_id,
-                                     soul_filter, tier_filter, ctx)) {
+                                     soul_filter, tier_filter, ctx, resolution)) {
                 ++i;
                 continue;
             }
@@ -640,11 +648,10 @@ public:
     };
 
     // 原生施加的通用保护阶段。先收齐命中，再扣次；上一个响应不能改变下一个的资格。
-    // 回程只做 is_immune_effect 查询，魂免也不走此处。穿透时只消费参与回弹的次弹票。
+    // 回程只判免疫不扣次，魂免也不走此处。穿透时只消费参与回弹的次弹票。
     AnomalyProtection resolve_anomaly_protection(int target, uint64_t timing_bit, int current_round,
                                                  int status_id, int tier_filter,
-                                                 const BattleContext* ctx, bool pierced,
-                                                 bool can_reflect) {
+                                                 BattleContext* ctx, bool pierced, bool can_reflect) {
         AnomalyProtection result;
         if (target < 0 || target > 1 || (pierced && !can_reflect)) {
             return result;
@@ -656,7 +663,7 @@ public:
             const bool reflects = t.category == RuleCategory::ANOMALY_REFLECT_COUNTS;
             if (t.remaining_counts <= 0 || (pierced && !reflects)) continue;
             if (!matches_immunity(t, target, type, timing_bit, current_round, status_id,
-                                  /*soul_filter=*/0, tier_filter, ctx)) {
+                                  /*soul_filter=*/0, tier_filter, ctx, ctx)) {
                 continue;
             }
             counted.push_back(i);
@@ -665,7 +672,7 @@ public:
         // 次数票已能挡下时，纯免疫窗口不必额外判条件（条件可能要掷点）。
         result.blocked = !pierced && (!counted.empty()
             || is_immune_window(target, type, timing_bit, current_round, status_id,
-                                /*soul_filter=*/0, tier_filter, ctx));
+                                /*soul_filter=*/0, tier_filter, ctx, ctx));
         // 旧回合弹控仍是一个窗口响应；与各张次弹独立，不把重复登记的 REFLECT 票算成多发。
         if (can_reflect && (result.blocked || pierced) && has_reflect(target)) {
             ++result.reflections;
@@ -942,13 +949,14 @@ public:
 
     bool is_immune(int target, int type, uint64_t timing_bit, int current_round,
                    int status_id = 0, int soul_filter = -1,
-                   int tier_filter = -1, const BattleContext* ctx = nullptr) const {
+                   int tier_filter = -1, const BattleContext* ctx = nullptr,
+                   BattleContext* resolution = nullptr) const {
         if (target < 0 || target > 1) {
             return false;
         }
         for (const RuleTicket& t : all_) {
             if (matches_immunity(t, target, type, timing_bit, current_round, status_id,
-                                 soul_filter, tier_filter, ctx)) {
+                                 soul_filter, tier_filter, ctx, resolution)) {
                 return true;
             }
         }
@@ -973,14 +981,15 @@ public:
     // 特判）：窗口票覆盖期间断进来由窗口兜着、**不烧**次数票，"下1次"留给窗口结束后。
     bool is_immune_window(int target, int type, uint64_t timing_bit, int current_round,
                           int status_id = 0, int soul_filter = -1,
-                          int tier_filter = -1, const BattleContext* ctx = nullptr) const {
+                          int tier_filter = -1, const BattleContext* ctx = nullptr,
+                          BattleContext* resolution = nullptr) const {
         if (target < 0 || target > 1) {
             return false;
         }
         for (const RuleTicket& t : all_) {
             if (t.category == RuleCategory::IMMUNE && t.remaining_counts == 0
                 && matches_immunity(t, target, type, timing_bit, current_round, status_id,
-                                    soul_filter, tier_filter, ctx)) {
+                                    soul_filter, tier_filter, ctx, resolution)) {
                 return true;
             }
         }
@@ -2009,7 +2018,7 @@ private:
 
     bool matches_immunity(const RuleTicket& t, int target, int type, uint64_t timing_bit,
                           int current_round, int status_id, int soul_filter, int tier_filter,
-                          const BattleContext* ctx) const {
+                          const BattleContext* ctx, BattleContext* resolution) const {
         if (!is_immunity_category(t.category) || t.target != target || t.subtype != type) return false;
         if (soul_filter >= 0 && (t.soul ? 1 : 0) != soul_filter) return false;
         if (tier_filter >= 0 && t.tier != tier_filter) return false;
@@ -2018,8 +2027,10 @@ private:
             && status_id >= 0 && !((t.anomaly_mask >> status_id) & 1u)) {
             return false;
         }
-        // 动态条件是只读查询；未传 ctx 时条件不成立。
-        return !t.anomaly_condition || (ctx && t.anomaly_condition(ctx, status_id));
+        // 只读查询不抽随机点，也不把概率票当成确定免疫。
+        if (t.anomaly_roll && !resolution) return false;
+        if (t.anomaly_condition && (!ctx || !t.anomaly_condition(ctx, status_id))) return false;
+        return !t.anomaly_roll || t.anomaly_roll(resolution, status_id);
     }
 
     // 绝对窗口是否已过期（**唯一判定式**，2026-09-21 从 10 处复制粘贴中抽取）：
@@ -2049,6 +2060,7 @@ private:
             }
         }
     }
+    friend class BattleClone;
     int next_source_id_ = 1;
     int round_count_[2]{0, 0};
     std::vector<RuleTicket> all_;

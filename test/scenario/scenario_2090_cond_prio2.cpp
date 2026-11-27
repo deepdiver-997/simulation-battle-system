@@ -185,10 +185,12 @@ int main() {
         std::vector<int> loss_succ, loss_fail;
         loss_succ.reserve(kTrials);
         loss_fail.reserve(kTrials);
+        SbsRng trial_seeds(20261003);
         for (int t = 0; t < kTrials; ++t) {
             ScenarioBattle b(
                 make_party(mk_self({kNengYuan, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                 make_party(mk_foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             const int hp0 = ctx.getPet(1).hp;

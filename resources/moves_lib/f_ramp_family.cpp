@@ -177,7 +177,7 @@ EffectResult effect_482_priority_tick(BattleContext* ctx, const EffectArgs& args
     if (chance <= 0 || bonus == 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         ctx->ws.preemptive_level[owner] += bonus;
     }
     return EffectResult::kOk;

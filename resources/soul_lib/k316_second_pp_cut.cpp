@@ -101,7 +101,7 @@ EffectResult k316_394_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
         return EffectResult::kOk;
     }
     // 门②：概率掷骰（本地掷——本单不经施加通道，无亮节闸门可申报）。
-    if (!roll_percent(pct)) {
+    if (!roll_percent(ctx->rng(), pct)) {
         return EffectResult::kOk;
     }
     // 效果：对手**所有**技能 pp 各减 cut（钳 0，不为负）——K239 直改手法，

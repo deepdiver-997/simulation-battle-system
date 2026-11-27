@@ -86,7 +86,7 @@ ElfPet foe(std::array<int, 5> skills, int speed = 100) {
 
 // 标准局骨架：我方 speed 300 先手出载体，对手属性技空转（我方零受击）。
 void run_cast(ScenarioBattle& b, int skill_index, int seed) {
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, skill_index);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.drive();
@@ -300,7 +300,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         // 我方 roll=第 1 抽（51 拒）→ 红 float 第 2 抽；对手 roll=第 3 抽（17 过）→ 第 4 抽
-        sbs_srand(924566649);
+        ctx.seed_rng(924566649);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();

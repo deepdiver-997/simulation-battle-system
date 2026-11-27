@@ -66,7 +66,7 @@ EffectResult effect_915_hit_anomaly_tick(BattleContext* ctx, const EffectArgs& a
         || !is_valid_abnormal_status_id(anomaly)) {
         return EffectResult::kOk;
     }
-    if (!executed_skill_is_attack(ctx, self) || !roll_percent(chance)) {
+    if (!executed_skill_is_attack(ctx, self) || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), self);

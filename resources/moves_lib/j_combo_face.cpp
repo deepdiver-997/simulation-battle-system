@@ -108,8 +108,8 @@ EffectResult effect_612_chance_combo(BattleContext* ctx, const EffectArgs& args)
     const int count = args.int_args[3];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1 && chance > 0 && count > 1, 612, args,
                      "需要 概率>0 且 次数>1");
-    ctx->ws.combo_count_resolver[owner] = [chance, count](BattleContext*) {
-        return roll_percent(chance) ? count : 1;
+    ctx->ws.combo_count_resolver[owner] = [chance, count](BattleContext* c) {
+        return roll_percent(c->rng(), chance) ? count : 1;
     };
     return EffectResult::kOk;
 }
@@ -134,7 +134,7 @@ EffectResult effect_1454_perhit_fixed(BattleContext* ctx, const EffectArgs& args
         if (defender < 0 || defender > 1) {
             return;
         }
-        if (roll_percent(chance)) {
+        if (roll_percent(c->rng(), chance)) {
             (void)g_core->fixed_damage(c, defender, fixed);
         }
     };
@@ -182,7 +182,7 @@ EffectResult effect_1685_status_cap_combo(BattleContext* ctx, const EffectArgs& 
         if (up <= lo) {
             return lo;
         }
-        return lo + (sbs_rand() % (up - lo + 1));
+        return lo + (c->rng().next() % (up - lo + 1));
     };
     return EffectResult::kOk;
 }

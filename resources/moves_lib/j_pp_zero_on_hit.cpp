@@ -62,7 +62,7 @@ int j258_zero_random_pp(BattleContext* ctx, int side, int count) {
     }
     int zeroed = 0;
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(candidates.size());
+        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
         pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
         candidates.erase(candidates.begin() + pick);
         ++zeroed;

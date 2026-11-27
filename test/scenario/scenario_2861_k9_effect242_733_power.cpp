@@ -51,7 +51,7 @@ int probe_power_view(int effect_id, std::vector<int> db_args, int monster_id,
     ScenarioBattle b(scenario::make_party(attacker_pet(effect_id, std::move(db_args), monster_id)),
                      scenario::make_party(dummy_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     if (force_dummy_hp > 0) {
         ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp = force_dummy_hp;

@@ -99,7 +99,7 @@ ScenarioBattle make_battle(const SkillArr& s0 = all_gaosu(), const SkillArr& s1 
 //    之间 rand 序列位置不同，伤害不可直接比。这里每回合先播同一个种子，让所有测量
 //    （基线 / 带异常）拿到**同一条 rand 序列** → 比值才有意义。
 void run_round(ScenarioBattle& b, int s0 = 0, int s1 = 0) {
-    sbs_srand(20260918u);
+    b.ctx().seed_rng(20260918u);
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, s0);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, s1);
     b.drive();
@@ -529,7 +529,6 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         apply_anomaly(&ctx, 0, kThunderRelease, 3, 1);
-        sbs_srand(20260918u);
         const int hp0 = ctx.getPet(1).hp;
         run_round(b);
         const int dealt = hp0 - ctx.getPet(1).hp;

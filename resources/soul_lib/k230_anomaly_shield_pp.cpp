@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K230 · 异常护盾/PP归零+受击门恢复族 —— effect 1562（1 宏 2 行）
 //                                                            （2026-10-08，夜跑 k-prod-6，worktree ../agents/k230）
 //
@@ -205,7 +204,7 @@ EffectResult soulmark_1562_round_end(BattleContext* ctx, const EffectArgs& args)
         int guard = 0;
         while (done < pp_count && guard < 100) {
             ++guard;
-            const int slot = sbs_rand() % 5;   // 5 技能槽随机（无限 PP 槽由原语拒并跳过计数外重试）
+            const int slot = ctx->rng().next() % 5;   // 5 技能槽随机（无限 PP 槽由原语拒并跳过计数外重试）
             if (g_core->pp_zero_slot(ctx, opp, slot, owner) ==
                 PpReduceResult::SUCCESS) {
                 ++done;

@@ -206,7 +206,7 @@ int main() {
             ScenarioBattle b(make_party(me), make_party(foe));
             BattleContext& ctx = b.ctx();
             b.start();
-            sbs_srand(static_cast<unsigned>(seeds[i]));
+            ctx.seed_rng(static_cast<unsigned>(seeds[i]));
             cast(b, 0, 0);
             const int roll = read_key(b, k1908Base);
             CHECK_EQ(roll, static_cast<int>(minstd_draw(seeds[i], 1) % 100),

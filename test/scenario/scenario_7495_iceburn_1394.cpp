@@ -91,7 +91,7 @@ int find_seed_foe_low(int which, bool land) {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(1).hp = 400000;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         if (b.ctx().has_active_abnormal_status(1, kBurn) == land) {
             return s;
@@ -105,7 +105,7 @@ int find_seed(const std::vector<int>& args, int own_hp, int which, bool land) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = own_hp;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         if (which == 0) {
             own_hit_round(b);
             const bool got = b.ctx().has_active_abnormal_status(1, kIncinerate);
@@ -136,7 +136,7 @@ int main() {
         CHECK(s > 0, "T7495a 自校准");
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIncinerate), "T7495a 焚烬落地");
         CHECK_EQ(read_key(b, kIncAudit), 25, "T7495a 攻击支高体 25%");
@@ -150,7 +150,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 400000;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIncinerate), "T7495b 焚烬落地");
         CHECK_EQ(read_key(b, kIncAudit), 50, "T7495b 低血翻倍 50%");
@@ -166,7 +166,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(1).hp = 400000;   // 对手压血：挨打后 own 仍高于对手
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kBurn), "T7495c 烧伤落地");
         CHECK(!b.ctx().has_active_abnormal_status(1, kIncinerate), "T7495c 无焚烬串扰");
@@ -179,7 +179,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 400000;
-        sbs_srand(7511);   // 任意种子：100 档确定性
+        b.ctx().seed_rng(7511);   // 任意种子：100 档确定性
         foe_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kBurn), "T7495d 100% 烧伤确定性落地");
         CHECK_EQ(read_key(b, kBurnAudit), 100, "T7495d 低血翻倍 100%");
@@ -190,7 +190,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(7512);
+        b.ctx().seed_rng(7512);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 1);   // 属性技
         b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
         b.drive();
@@ -207,7 +207,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kVar)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 400000;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kIncAudit), 80, "T7495f args 驱动：db0=40 低体=80");
 
@@ -216,7 +216,7 @@ int main() {
         ScenarioBattle b2(make_party(mark_pet(kVar)), make_party(foe_pet()));
         b2.start();
         b2.ctx().getPet(0).hp = 200000;   // 挨打后仍低于对手 → 翻倍档
-        sbs_srand(s2);
+        b2.ctx().seed_rng(s2);
         foe_hit_round(b2);
         CHECK_EQ(read_key(b2, kBurnAudit), 40, "T7495f args 驱动：db1=20 低体=40");
         std::cout << "  [T7495f] args 变体 通过\n";
@@ -227,7 +227,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(1).hp = 400000;   // 对手压血：双方全程高体档（inc 25%/burn 50%）
-        sbs_srand(7513);
+        b.ctx().seed_rng(7513);
         for (int r = 0; r < 40; ++r) {
             b.ctx().getPet(1).hp = 400000;   // 防打死 + 保持高体档
             own_hit_round(b);
@@ -247,11 +247,11 @@ int main() {
         b.ctx().is_boss_challenge = true;
         b.start();
         b.ctx().getPet(0).hp = 400000;   // 低体也绝不触发（票未武装）
-        sbs_srand(7514);
+        b.ctx().seed_rng(7514);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kIncAudit), -1, "T7495h boss：攻击支不申报");
         CHECK(!b.ctx().has_active_abnormal_status(1, kIncinerate), "T7495h boss：无焚烬");
-        sbs_srand(7515);
+        b.ctx().seed_rng(7515);
         foe_hit_round(b);
         CHECK_EQ(read_key(b, kBurnAudit), -1, "T7495h boss：受击支不申报");
         CHECK(!b.ctx().has_active_abnormal_status(1, kBurn), "T7495h boss：无烧伤");

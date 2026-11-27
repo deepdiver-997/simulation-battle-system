@@ -43,7 +43,7 @@ EffectResult j30_651_round_tick(BattleContext* ctx, const EffectArgs& args) {
     if (owner < 0 || owner > 1 || lo < 0 || hi < lo) {
         return EffectResult::kOk;
     }
-    const int roll = lo + (hi > lo ? sbs_rand() % (hi - lo + 1) : 0);
+    const int roll = lo + (hi > lo ? ctx->rng().next() % (hi - lo + 1) : 0);
     if (roll > 0) {
         (void)g_core->heal_amount(ctx, owner, roll);
     }

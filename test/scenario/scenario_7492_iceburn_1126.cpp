@@ -87,7 +87,7 @@ int find_ladder_seed(const std::vector<int>& args) {
     for (int s = 1; s < 500; ++s) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         bool all_miss = true;
         for (int r = 0; r < 4; ++r) {
             own_hit_round(b);
@@ -107,7 +107,7 @@ int find_land_seed(const std::vector<int>& args) {
     for (int s = 1; s < 400; ++s) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         if (b.ctx().has_active_abnormal_status(1, kIce)) {
             return s;
@@ -131,7 +131,7 @@ int main() {
         CHECK(s > 0, "T7492a 自校准找到 4 连歪种子");
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), 40, "T7492a R1 申报=基础40");
         CHECK_EQ(read_key(b, kRamp), 50, "T7492a R1 歪 → 爬坡 50");
@@ -154,7 +154,7 @@ int main() {
         CHECK(s > 0, "T7492b 自校准找到落地种子");
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIce), "T7492b 冰封落地");
         CHECK_EQ(read_key(b, kAudit), 40, "T7492b 审计=40");
@@ -166,12 +166,12 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(7497);
+        b.ctx().seed_rng(7497);
         own_attr_round(b);   // R1：属性技 → pending=1
         CHECK_EQ(read_key(b, kPend), 1, "T7492c R1 属性技 → pending=1");
         // R2 own 出 NONE：无再掷点 → 消费后清账断言不被重写污染。
         // 停泊形（7430 直系）：debug 先开再 submit（FSM 停在回合中段），再 step_past。
-        sbs_srand(7498);
+        b.ctx().seed_rng(7498);
         b.ctx().debug_step_mode = true;
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
@@ -194,7 +194,7 @@ int main() {
         CHECK(s > 0, "T7492d 自校准");
         ScenarioBattle b(make_party(mark_pet(kVar)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), 10, "T7492d R1 申报=10");
         CHECK_EQ(read_key(b, kRamp), 30, "T7492d R1 歪 → 10+20=30");
@@ -210,7 +210,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(7499);
+        b.ctx().seed_rng(7499);
         for (int r = 0; r < 40; ++r) {
             b.ctx().getPet(1).hp = kMaxHp;   // 冻伤 DOT 防打死
             own_hit_round(b);
@@ -225,7 +225,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
-        sbs_srand(7500);
+        b.ctx().seed_rng(7500);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), -1, "T7492f boss：无申报");
         CHECK(!b.ctx().has_active_abnormal_status(1, kIce), "T7492f boss：无冰封");

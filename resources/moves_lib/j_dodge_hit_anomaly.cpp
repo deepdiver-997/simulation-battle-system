@@ -13,7 +13,7 @@
 //   ② 命中段 = EVENT_HIT watcher（e_state_window 477 同款：actor=攻击方、
 //      target=防御方；filter ev.target==self）→ 只认**攻击技能**命中
 //      （executed_skill_is_attack，属性技的 EVENT_HIT 也算命中，必须过滤）→
-//      sbs_rand()%2 抽 {2}/{3} 其一 → apply_anomaly_checked(攻击方, code, 100)
+//      rng.next()%2 抽 {2}/{3} 其一 → apply_anomaly_checked(攻击方, code, 100)
 //      （申报制 100%=不消耗掷点）。
 //   - 审计槽 991975000 + owner = 本次实际抽中的异常码（-1 = 未触发），场景可无随机断言。
 //   - {1} 在位即消费（显式 0 = 不闪避，但命中段照常生效；不拿 >0 守卫盖掉 0 档）。
@@ -100,7 +100,7 @@ EffectResult effect_1975_dodge_hit_anomaly(BattleContext* ctx, const EffectArgs&
             if (!executed_skill_is_attack(c, attacker)) {
                 return;
             }
-            const int code = (sbs_rand() % 2 == 0) ? anomaly_a : anomaly_b;
+            const int code = (c->rng().next() % 2 == 0) ? anomaly_a : anomaly_b;
             c->plugin_storage[kAuditBase + self] = code;
             (void)g_core->apply_anomaly_checked(c, attacker, code, random_anomaly_duration(),
                                                 self, 100, ChanceSource::Skill);

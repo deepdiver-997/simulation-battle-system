@@ -82,7 +82,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;   // 缺口 99000 > 400 → 实际治疗 == 名义
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -112,7 +112,7 @@ int main() {
                         scenario::make_party(foe({kAttr, kZero, kZero, kZero, kZero})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -128,7 +128,7 @@ int main() {
                         scenario::make_party(foe({kAttr, kZero, kZero, kZero, kZero})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：武装窗 [0,5)（对手属性技，无事件）
@@ -151,13 +151,13 @@ int main() {
                         scenario::make_party(foe({kAttr, kZero, kZero, kZero, kZero})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：武装窗 [0,5)（对手属性技，无事件）
         CHECK_EQ(aint(ctx, 0, 1, -1), 5, "T4 前置：窗终点=5");
         ctx.getPet(0).hp = 1000;   // 压低血量：缺口 > 400 → 治疗不被满血钳制
-        sbs_srand(7);
+        ctx.seed_rng(7);
         for (int r = 0; r < 3; ++r) {   // R1..R3：双方 NONE（零抽取空转回合）
             b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
             b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
@@ -166,7 +166,7 @@ int main() {
         CHECK_EQ(ctx.roundCount, 4, "T4 前置：3 个空转回合后 roundCount=4（窗内末回合）");
         CHECK_EQ(aint(ctx, 0, 4), 0, "T4 空转回合零事件（不合格不误触发）");
         // R5（roundCount=4）：窗内末回合受击 → 仍治疗（钉种子 1463021119：hit-only draw2=17→200）
-        sbs_srand(1463021119);
+        ctx.seed_rng(1463021119);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();
@@ -177,7 +177,7 @@ int main() {
         CHECK(hp_last >= 1199 && hp_last <= 1200,
               "T4 hp=1000-伤害(0~1)+200");
         // R6（roundCount=5）：窗过期受击 → 拒绝原因 2、零治疗（钉种子 424242：hit-only 伤害=1）
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();
@@ -196,7 +196,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -206,7 +206,7 @@ int main() {
         CHECK_EQ(aint(ctx, 0, 11), 0, "T5 该事件未进回调（evr=0）");
         CHECK_EQ(ctx.getPet(0).hp, 999, "T5 R1 掉 1 点、无治疗");
         // R2（roundCount=1 = 窗起点）：窗内首回合受击 → 治疗（钉种子 424242：hit-only draw2=17→200）
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -224,12 +224,12 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：武装 [0,5)
         CHECK_EQ(aint(ctx, 0, 0, -1), 0, "T6 R0 窗起点=0");
-        sbs_srand(7);
+        ctx.seed_rng(7);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R1：重放使用（刷新窗界；对手属性技无事件）
@@ -237,7 +237,7 @@ int main() {
         CHECK_EQ(aint(ctx, 0, 0, -1), 1, "T6 窋起点刷新为 R1");
         CHECK_EQ(aint(ctx, 0, 1, -1), 6, "T6 窋终点刷新为 1+5");
         // R2：受击一次（钉种子 765971402：hit-only draw2=50→300 档）
-        sbs_srand(765971402);
+        ctx.seed_rng(765971402);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();
@@ -255,12 +255,12 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：根系 P=100 N=5
         CHECK_EQ(aint(ctx, 0, 2, -1), 100, "T7 R0 申报 P=100");
-        sbs_srand(7);
+        ctx.seed_rng(7);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R1：暗香疏影阵 P=80 N=3（刷新窗界+P）
@@ -268,7 +268,7 @@ int main() {
         CHECK_EQ(aint(ctx, 0, 0, -1), 1, "T7 窋起点刷新为 R1");
         CHECK_EQ(aint(ctx, 0, 1, -1), 4, "T7 窋终点按 31893 的 N=3 刷新（1+3）");
         // R2：受击（钉种子 608939394：hit-only draw2=79<80 过闸 → draw3=53→300 档）
-        sbs_srand(608939394);
+        ctx.seed_rng(608939394);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();
@@ -291,7 +291,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
         ctx.getPet(1).hp = 1000;
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：我先武装+先出手（根系 45 威力真伤对手），对手后武装+后出手（0~1 伤我）
@@ -305,7 +305,7 @@ int main() {
         // hp0 = 1000 - 37 + 400 = 1363
         CHECK_EQ(ctx.getPet(0).hp, 1363, "T8 R0 己方 hp=1000-37(对手根系实伤,钉种子)+400");
         // R1：双方 power-0 互拍 → 两窗各自合格、各自掷档（己方第 2 次、对方第 1 次）
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();

@@ -1,10 +1,22 @@
-#include <utils/sbs_rand.h>
 #include <effects/effect_unit.h>
 
-#include <cstdlib>
-#include <vector>
+#include <stdexcept>
 
 #include <fsm/battleContext.h>
+
+ParsedEffectProgram::ParsedEffectProgram(const std::vector<EffectUnit>& units)
+    : units_(units) {
+    for (std::size_t index = 0; index < units_.size(); ++index) {
+        const EffectUnit& unit = units_[index];
+        // 严格前向的分支既保证下标有效，也排除了环。
+        for (int child : {unit.on_success, unit.on_immune, unit.on_blocked, unit.on_other}) {
+            if (child != -1 && (child < 0 || static_cast<std::size_t>(child) <= index
+                                || static_cast<std::size_t>(child) >= units_.size())) {
+                throw std::invalid_argument("ParsedEffectProgram: invalid branch index");
+            }
+        }
+    }
+}
 
 namespace {
 
@@ -35,7 +47,7 @@ bool roll_chance(BattleContext* ctx, const EffectArgs& args, int chance_value, i
     if (percent >= 100) {
         return true;
     }
-    return (sbs_rand() % 100) < percent;
+    return (ctx->rng().next() % 100) < percent;
 }
 
 // 解析真实 owner：优先 args.int_args[0]（bind_participants 绑定），缺省回退 unit.actor。
@@ -220,18 +232,20 @@ BranchKey run_primitive(BattleContext* ctx, const EffectArgs& args, const Effect
     return BranchKey::Invalid;
 }
 
-}  // namespace
-
 // 执行器主体。skip_condition = 单元准入门放行（"该条已永久无条件"）：跳过**本单元顶层**
 // 的条件求值，其余（概率 roll、原语、分支递归）不变；递归进分支子单元时各自按条件判。
 BranchKey execute_effect_unit_impl(BattleContext* ctx, const EffectArgs& args,
-                                   const EffectUnit& unit, bool skip_condition) {
-    if (!ctx) {
+                                   const ParsedEffectProgram& program, int index,
+                                   bool skip_condition) {
+    const EffectUnit* node = program.unit_at(index);
+    if (!ctx || !node) {
         return BranchKey::Invalid;
     }
+    const EffectUnit& unit = *node;
     // 前置条件（第二刀）：不满足 → 效果不触发（走 on_other/无动作），先于概率 roll。
     if (!skip_condition && !condition_holds(ctx, args, unit)) {
-        return unit.on_other ? execute_effect_unit(ctx, args, *unit.on_other) : BranchKey::Never;
+        return unit.on_other != -1 ? execute_effect_unit(ctx, args, program, unit.on_other)
+                                   : BranchKey::Never;
     }
     // 概率前置：未触发 → on_other 兜底（或返回 Never）
     // ⚠️ 只有异常附加类单元把 actor/target 交给闸门（见 roll_chance 注）；其余传 -1。
@@ -240,13 +254,13 @@ BranchKey execute_effect_unit_impl(BattleContext* ctx, const EffectArgs& args,
         const int gate_actor = is_anomaly ? resolve_actor(args, unit) : -1;
         if (!roll_chance(ctx, args, unit.chance_value, unit.chance_arg, gate_actor,
                          is_anomaly ? resolve_target(gate_actor, unit) : -1)) {
-            return unit.on_other ? execute_effect_unit(ctx, args, *unit.on_other)
-                                 : BranchKey::Never;
+            return unit.on_other != -1 ? execute_effect_unit(ctx, args, program, unit.on_other)
+                                       : BranchKey::Never;
         }
     }
     // 主动作 → 归一化细码 → 选分支
     const BranchKey key = run_primitive(ctx, args, unit);
-    const EffectUnit* branch = nullptr;
+    int branch = -1;
     switch (key) {
         case BranchKey::Success:
             branch = unit.on_success;
@@ -261,19 +275,22 @@ BranchKey execute_effect_unit_impl(BattleContext* ctx, const EffectArgs& args,
             branch = unit.on_other;
             break;
     }
-    if (branch) {
-        return execute_effect_unit(ctx, args, *branch);
+    if (branch != -1) {
+        return execute_effect_unit(ctx, args, program, branch);
     }
     return key;
 }
 
-BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args, const EffectUnit& unit) {
-    return execute_effect_unit_impl(ctx, args, unit, /*skip_condition=*/false);
+}  // namespace
+
+BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args,
+                              const ParsedEffectProgram& program, int root_index) {
+    return execute_effect_unit_impl(ctx, args, program, root_index, /*skip_condition=*/false);
 }
 
 BranchKey execute_effect_unit_unconditional(BattleContext* ctx, const EffectArgs& args,
-                                            const EffectUnit& unit) {
-    return execute_effect_unit_impl(ctx, args, unit, /*skip_condition=*/true);
+                                            const ParsedEffectProgram& program, int root_index) {
+    return execute_effect_unit_impl(ctx, args, program, root_index, /*skip_condition=*/true);
 }
 
 // ── 单元准入门存储（进程全局）──

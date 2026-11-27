@@ -132,8 +132,10 @@ int main() {
         CHECK_EQ(drop1, taken1 / 3, "T3 核心 R1：反弹 = 受伤 1/3");
         // 统计：R3 反弹 ⇔ roll 出 3 回合；R3 不反弹 ⇔ roll 出 2。范围 roll 两者都该出现。
         int seen2 = 0, seen3 = 0;
+        SbsRng trial_seeds(20261004);
         for (int i = 0; i < 30; ++i) {
             ScenarioBattle bi(make_party(shielder(kLingguang)), make_party(striker()));
+            bi.ctx().seed_rng(trial_seeds.next());
             bi.start();
             (void)arm_round(bi);              // R1：挂盾 + 挨打（推进到窗口内）
             (void)round_strike(bi);           // R2：必在窗内（仅推进回合）

@@ -386,7 +386,7 @@ EffectResult effect_1952_ignore_boosts(BattleContext* ctx, const EffectArgs& arg
             }
         }
     }
-    if (g_core->apply_anomaly && is_valid_abnormal_status_id(anomaly) && roll_percent(pct)) {
+    if (g_core->apply_anomaly && is_valid_abnormal_status_id(anomaly) && roll_percent(ctx->rng(), pct)) {
         g_core->apply_anomaly(ctx, target, anomaly, random_anomaly_duration(), owner);
     }
     return EffectResult::kOk;

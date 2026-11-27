@@ -68,6 +68,8 @@ int main() {
                 ScenarioBattle b(
                     make_party(self_pet({kLeiGuang, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                     make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+                // 独立对局显式使用不同的固定种子；正反例共用同一组种子。
+                b.ctx().seed_rng(1000U + static_cast<unsigned>(g) * 7919U);
                 b.start();
                 BattleContext& ctx = b.ctx();
                 b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);   // R1 挂窗
@@ -93,6 +95,8 @@ int main() {
                 ScenarioBattle b(
                     make_party(self_pet({kLeiGuang, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                     make_party(foe_pet({kXiuFu, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+                // 独立对局显式使用不同的固定种子；正反例共用同一组种子。
+                b.ctx().seed_rng(1000U + static_cast<unsigned>(g) * 7919U);
                 b.start();
                 BattleContext& ctx = b.ctx();
                 b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

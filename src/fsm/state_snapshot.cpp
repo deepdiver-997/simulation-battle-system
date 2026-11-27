@@ -123,8 +123,8 @@ void snapshot_record(const BattleContext& ctx, const std::string& phase) {
     Canon c;
     const BattleWorkspace& ws = ctx.ws;
 
-    // ── 首要漂移探测器：全局 rand 状态 ──
-    c.put("rand", static_cast<long long>(sbs_rand_state()));
+    // ── 首要漂移探测器：当前对局的 rand 状态 ──
+    c.put("rand", static_cast<long long>(ctx.rng().state()));
 
     // ── FSM 标量 ──
     c.put("fsm.state", static_cast<int>(ctx.currentState));

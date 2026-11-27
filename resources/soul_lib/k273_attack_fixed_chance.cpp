@@ -72,7 +72,7 @@ EffectResult k273_603_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             int pct = 50;
             int points = 200;
             k273_read_row(c, owner, pct, points);
-            if (pct <= 0 || !roll_percent(pct)) {
+            if (pct <= 0 || !roll_percent(c->rng(), pct)) {
                 return;   // 0% 关闸 / 概率未中（本地单掷，K164 109 同款）
             }
             (void)g_core->fixed_damage(c, 1 - owner, points);

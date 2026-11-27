@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 星盘族（星辰万象·天启星魂 4677：星启 + 条件免疫 + 星盘 12 刻 + 覆宙星回）
 //
 // 官方魂印（4399 图鉴 996676，机制解析=语料 idx=300）：
@@ -153,7 +152,7 @@ void zero_random_pp(BattleContext* ctx, int victim) {
     if (candidates.empty()) {
         return;
     }
-    pet.skills[candidates[sbs_rand() % candidates.size()]].pp = 0;
+    pet.skills[candidates[ctx->rng().next() % candidates.size()]].pp = 0;
 }
 
 // ── 到期事件监听（④）：自然到期 → 转盘（满盘不再转）──

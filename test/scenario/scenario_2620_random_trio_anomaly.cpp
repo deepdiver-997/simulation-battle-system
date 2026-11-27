@@ -44,7 +44,9 @@ void run_one(int seed, int& pool_hits, bool& outside_anomaly) {
                                          100, 1, 99999)));
     b.start();
     BattleContext& ctx = b.ctx();
-    sbs_srand(seed);
+    ctx.seed_rng(static_cast<unsigned>(seed));
+    CHECK_EQ(ctx.rng().state(), static_cast<std::uint64_t>(seed),
+             "T2620 每个对局使用本次试验指定的种子");
     for (Skills& s : ctx.seerRobot[0].elfPets[0].skills) {
         (void)s;
     }

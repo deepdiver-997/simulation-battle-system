@@ -112,7 +112,7 @@ EffectResult k288_627_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             }
             // 审计槽：本次申报概率%（F9 口径）。
             c->plugin_storage[kChanceAuditBase + owner] = chance;
-            if (!roll_percent(chance)) {
+            if (!roll_percent(c->rng(), chance)) {
                 return;
             }
             const int opp = c->opponent(owner);

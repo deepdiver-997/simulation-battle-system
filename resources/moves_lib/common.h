@@ -99,10 +99,10 @@ inline bool executed_skill_is_attack(const BattleContext* ctx, int owner) {
     return ctx->ws.skill_type_view[owner] != static_cast<int>(SkillType::Attribute);
 }
 
-inline bool roll_percent(int percent) {
+inline bool roll_percent(SbsRng& rng, int percent) {
     if (percent <= 0) return false;
     if (percent >= 100) return true;
-    return (sbs_rand() % 100) < percent;
+    return (rng.next() % 100) < percent;
 }
 
 // Helper: 天敌判定——**对手的固有属性克制自身固有属性**（倍数 > 1）。

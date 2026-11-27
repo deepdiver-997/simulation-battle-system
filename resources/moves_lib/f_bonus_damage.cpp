@@ -55,7 +55,7 @@
 //   - "处于能力下降状态" = 对手 ability_levels 六槽（0攻..5命中）任一 **< 0**
 //     （权威态在 BattleContext::ability_levels，stat_drop 落点）→ 区间取
 //     [{2},{3}]，否则 [{0},{1}]。随机 roll = e_power_crit_ramp 同款
-//     lo + sbs_rand()%(hi-lo+1)。两档都是 FIXED 点数。
+//     lo + rng.next()%(hi-lo+1)。两档都是 FIXED 点数。
 //
 // 前置三查（2026-09-29）：①内核无 593/455/1004/1244 硬编码（grep src/ include/
 // 仅 plugin_interface.h 注释里 SOUL_MARK 1004 示例，非实现）②custom_effect_overrides
@@ -230,7 +230,7 @@ EffectResult effect_1244_random_fixed(BattleContext* ctx, const EffectArgs& args
     }
     const int lo_use = foe_dropped ? lo_drop : lo;
     const int hi_use = foe_dropped ? hi_drop : hi;
-    const int amount = lo_use + (hi_use > lo_use ? sbs_rand() % (hi_use - lo_use + 1) : 0);
+    const int amount = lo_use + (hi_use > lo_use ? ctx->rng().next() % (hi_use - lo_use + 1) : 0);
     if (amount <= 0) {
         return EffectResult::kOk;
     }

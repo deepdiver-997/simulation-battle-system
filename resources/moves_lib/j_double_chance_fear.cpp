@@ -60,7 +60,7 @@ EffectResult effect_460_double_chance_fear(BattleContext* ctx, const EffectArgs&
     if (j206_has_boost(ctx, opp)) {
         pct = std::min(100, base_pct + extra_pct);   // 对手处于能力提升状态 → 额外附加
     }
-    const bool rolled = roll_percent(pct);
+    const bool rolled = roll_percent(ctx->rng(), pct);
     int landed = 0;
     if (rolled) {
         const ApplyAnomalyResult r = g_core->apply_anomaly_checked(

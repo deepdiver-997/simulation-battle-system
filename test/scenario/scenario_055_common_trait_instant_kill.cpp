@@ -279,24 +279,24 @@ int main() {
 
     //========== R1 掷点统计 + forced 语义（固定种子 → 确定性序列）==========
     {
-        sbs_srand(7);
+        SbsRng rng(7);
         EffectiveTrait t;
         t.kind = TraitKind::InstantKill;
         t.args[0] = 3;   // 0 星真实概率 0.3%
         int hits = 0;
         constexpr int kTrials = 200000;
         for (int i = 0; i < kTrials; ++i) {
-            hits += trait_proc_roll(t) ? 1 : 0;
+            hits += trait_proc_roll(t, rng) ? 1 : 0;
         }
         CHECK(hits > 400 && hits < 800, "R1) 0.3% × 20万次 ≈ 600 次（实测序列）");
         t.proc_forced = true;
-        CHECK(trait_proc_roll(t), "R1) proc_forced → 必发");
+        CHECK(trait_proc_roll(t, rng), "R1) proc_forced → 必发");
         t.proc_forced = false;
         t.args[0] = 0;
-        CHECK(!trait_proc_roll(t), "R1) 0‰ 且未 forced → 永不触发");
+        CHECK(!trait_proc_roll(t, rng), "R1) 0‰ 且未 forced → 永不触发");
         t.kind = TraitKind::Hardness;   // 非概率触发机制：没有 forced 就永不触发
         t.args[0] = 30;
-        CHECK(!trait_proc_roll(t), "R1) 坚硬无概率触发机制 → 永不触发");
+        CHECK(!trait_proc_roll(t, rng), "R1) 坚硬无概率触发机制 → 永不触发");
         std::cout << "  [R1] 0.3% × " << kTrials << " 次 = " << hits
                   << " 次；forced=true 必发；0‰/非概率机制 永不发\n";
     }

@@ -93,7 +93,7 @@ void drive_round(ScenarioBattle& b, int skill_index) {
     b.drive();
 }
 void run_cast(ScenarioBattle& b, int skill_index, unsigned seed) {
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     drive_round(b, skill_index);
 }
 

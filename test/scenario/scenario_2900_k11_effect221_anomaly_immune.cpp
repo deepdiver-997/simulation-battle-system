@@ -78,7 +78,7 @@ int main() {
         scenario::make_party(scenario::make_pet(2, "对手", {10005, 10005, 10005, 10005, 10005},
                                                 100, 10, 1000000)));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
 
     // A round1：免疫

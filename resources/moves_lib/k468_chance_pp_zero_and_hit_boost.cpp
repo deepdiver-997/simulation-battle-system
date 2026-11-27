@@ -53,7 +53,7 @@
 //     SUCCESS/REPLACED_EXISTING/DURATION_EXTENDED/CONVERTED（K457 四档）；
 //     **"未触发"含免疫/抗性/反弹/被挡全档**——K457 M8 免疫判据同面）。
 //   掷歪回退 = 对手随机 {3} 项技能 PP 归零：K458 k458_zero_random_slots **逐字同构**
-//     （部分 Fisher-Yates：池 {0..槽位数-1}，j=i+sbs_rand()%(size-i) 抽不重；
+//     （部分 Fisher-Yates：池 {0..槽位数-1}，j=i+rng.next()%(size-i) 抽不重；
 //     g_core->pp_zero_slot 原语逐槽——pp=-1 无限槽 INVALID_PARAM 不参与、pp<=0 幂等、
 //     实际归零 emit EVENT_PP_REDUCED；actor=施放方——pp_retain 琼华之庇对**对手来源**
 //     保留的语义成立；MINSTD 固定随机源选槽可复现断言）。
@@ -207,7 +207,7 @@ int k468_zero_random_slots(BattleContext* ctx, int target, int want, int actor,
     }
     const int n = std::min(want, static_cast<int>(pool.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(pool.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(pool.size()) - i));
         std::swap(pool[static_cast<std::size_t>(i)], pool[static_cast<std::size_t>(j)]);
         const int slot = pool[static_cast<std::size_t>(i)];
         const int before = ctx->getPet(target).skills[static_cast<std::size_t>(slot)].pp;

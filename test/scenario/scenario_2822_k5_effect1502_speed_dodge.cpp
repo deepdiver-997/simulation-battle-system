@@ -52,7 +52,7 @@ ElfPet attacker_pet() {
 std::unique_ptr<ScenarioBattle> drive_none_rounds(std::vector<int> db_args, int rounds) {
     auto b = std::make_unique<ScenarioBattle>(scenario::make_party(holder_pet(std::move(db_args))),
                                               scenario::make_party(attacker_pet()));
-    sbs_srand(20261004);
+    b->ctx().seed_rng(20261004);
     b->start();
     for (int r = 0; r < rounds; ++r) {
         b->submit_operation(0, BattleFsm::ActionType::NONE, -1);
@@ -66,7 +66,7 @@ int probe_loss(std::vector<int> db_args) {
     ScenarioBattle b(scenario::make_party(holder_pet(std::move(db_args))),
                      scenario::make_party(attacker_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     const int hp0 = ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp;
     b.submit_operation(0, BattleFsm::ActionType::NONE, -1);

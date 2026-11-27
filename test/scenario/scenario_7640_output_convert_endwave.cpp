@@ -145,7 +145,7 @@ bool petro_probe(const std::vector<int>& args, int seed) {
     ScenarioBattle b(make_party(mark_pet(1460, args, 3870)),
                      make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_use(b);
     return b.ctx().has_active_abnormal_status(1, kPetrify);
 }
@@ -169,12 +169,12 @@ int main() {
 
     // ══ T7640a 1460① 解除成功：当回合先制+1（speed 100 翻盘）+ 增伤 50% ════════
     {
-        sbs_srand(76401);
         ScenarioBattle b(make_party(mark_pet(1460, kRow1460Body, 3870, /*speed=*/100)),
                          make_party(foe_pet(/*use_gaoshu=*/false, /*speed=*/300)));
         // 造自身能力下降（start 前置：R1 回合开始的 ROUND_START 清降→当回合先制+1+增伤）
         b.ctx().ability_levels[0][0] = -1;
         b.start();
+        b.ctx().seed_rng(76401);
         const int hp0 = b.pet(1).hp;
         own_use(b);      // R1：RS 清降→戳→FMR 先制+1+增伤 50% → 攻击 ×1.5
         CHECK_EQ(b.ctx().ability_levels[0][0], 0, "T7640a R1 回合开始解除成功（字段归零）");
@@ -192,10 +192,10 @@ int main() {
 
     // ══ T7640b 1460① 门闭对照：无下降→无解除成功→无先制无增伤 ════════════════
     {
-        sbs_srand(76402);
         ScenarioBattle b(make_party(mark_pet(1460, kRow1460Body, 3870)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76402);
         idle_round(b);   // R1：无下降 → clear_stat_drops=0 → 不结
         CHECK_EQ(b.ctx().ws.preemptive_level[0], 0, "T7640b 无下降不先制");
         CHECK(b.ctx().ws.damage_add_pct[0] > -0.1f && b.ctx().ws.damage_add_pct[0] < 0.1f,
@@ -211,10 +211,10 @@ int main() {
 
     // ══ T7640c 1460② 提升计数附加：2 种提升 → +160（本体）/ +200（伙伴行≠宏）═══
     {
-        sbs_srand(76403);
         ScenarioBattle b(make_party(mark_pet(1460, kRow1460Body, 3870)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76403);
         b.ctx().ability_levels[1][0] = 2;   // 对手攻+2（1 种提升）
         b.ctx().ability_levels[1][kSpeedSlot] = 1;   // 速+1（第 2 种）
         const int hp0 = b.pet(1).hp;
@@ -229,10 +229,10 @@ int main() {
         std::cout << "  [T7640c] 1460② 本体行计数附加 通过 (d=" << d << ")\n";
     }
     {
-        sbs_srand(76404);
         ScenarioBattle b(make_party(mark_pet(1460, kRow1460Partner, 3870)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76404);
         b.ctx().ability_levels[1][0] = 2;
         b.ctx().ability_levels[1][kSpeedSlot] = 1;
         const int hp0 = b.pet(1).hp;
@@ -250,10 +250,10 @@ int main() {
     REQUIRE(s_land > 0);
     REQUIRE(s_miss > 0);
     {
-        sbs_srand(s_land);
         ScenarioBattle b(make_party(mark_pet(1460, kRow1460Body, 3870)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(s_land);
         own_use(b);   // R1 攻击：掷中 → 石化
         CHECK(b.ctx().has_active_abnormal_status(1, kPetrify),
               "T7640d 落地支：对手石化在身（seed " + std::to_string(s_land) + "）");
@@ -263,10 +263,10 @@ int main() {
         std::cout << "  [T7640d] 1460② 石化落地支 通过 (seed " << s_land << ")\n";
     }
     {
-        sbs_srand(s_miss);
         ScenarioBattle b(make_party(mark_pet(1460, kRow1460Body, 3870)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(s_miss);
         own_use(b);   // R1 攻击：掷败 → 未触发 → 下回合增伤戳
         CHECK(!b.ctx().has_active_abnormal_status(1, kPetrify),
               "T7640d 未触发支：无石化（seed " + std::to_string(s_miss) + "）");
@@ -286,11 +286,11 @@ int main() {
 
     // ══ T7640e 1460 boss 门：不解除/无先制/无增伤/无附加/无石化 ═══════════════
     {
-        sbs_srand(76405);
         ScenarioBattle b(make_party(mark_pet(1460, kRow1460Body, 3870)),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;   // start 前置位（K294 勘误）
         b.start();
+        b.ctx().seed_rng(76405);
         b.ctx().ability_levels[0][2] = -1;   // 自身防槽下降（不污染自身输出带；应残留）
         b.ctx().ability_levels[1][0] = 2;    // 对手提升（应无附加）
         b.ctx().ability_levels[1][kSpeedSlot] = 1;
@@ -310,10 +310,10 @@ int main() {
 
     // ══ T7640f 1463① 吸血：heal = final/2 整除精确关系 ═══════════════════════
     {
-        sbs_srand(76406);
         ScenarioBattle b(make_party(mark_pet(1463, kRow1463Body, 3875)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76406);
         b.pet(0).hp = 90000;   // 留回复空间（满血 heal 封顶看不到量）
         const int own0 = b.pet(0).hp;
         const int hp0 = b.pet(1).hp;
@@ -329,10 +329,10 @@ int main() {
 
     // ══ T7640g 1463② 战阶末 1 次机会：高体保留 → 低体触发 → 一次性 ═══════════
     {
-        sbs_srand(76407);
         ScenarioBattle b(make_party(mark_pet(1463, kRow1463Body, 3875)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76407);
         idle_round(b);   // R1 满体空跑：低体旗 0 → 不触发不耗机会
         CHECK_EQ(read_key(b, k1463OnceUsed), -1, "T7640g 高体回合不耗机会");
         b.pet(0).hp = 40000;   // < max/2（R2 回合开始快照）
@@ -356,12 +356,12 @@ int main() {
 
     // ══ T7640h 1463 boss 门：不吸血/不附加 ═══════════════════════════════════
     {
-        sbs_srand(76408);
         ScenarioBattle b(make_party(mark_pet(1463, kRow1463Body, 3875)),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.pet(0).hp = 40000;   // 低体（pre-start，R1 RS 快照）
         b.start();
+        b.ctx().seed_rng(76408);
         const int own0 = b.pet(0).hp;
         const int hp0 = b.pet(1).hp;
         own_use(b);
@@ -375,10 +375,10 @@ int main() {
 
     // ══ T7640i 1464 基线附加 1/3 + 低伤支次回合转吸取 1/3（本体行）════════════
     {
-        sbs_srand(76409);
         ScenarioBattle b(make_party(mark_pet(1464, kRow1464Body, 3876)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76409);
         const int hp0 = b.pet(1).hp;
         own_use(b);   // R1：命中 → 战阶末附加 100000/3=33333；raw<300 → 下回合转吸取
         const int d = hp0 - b.pet(1).hp;
@@ -402,21 +402,21 @@ int main() {
 
     // ══ T7640j 1464 高伤支次回合封属（本体行 atk1200）+ 未封对照 ══════════════
     {
-        sbs_srand(76410);
         ScenarioBattle b(make_party(mark_pet(1464, kRow1464Body, 3876, /*speed=*/300,
                                                    /*atk=*/1200)),
                          make_party(foe_pet(/*use_gaoshu=*/true)));
         b.start();
+        b.ctx().seed_rng(76410);
         own_use(b);   // R1：raw [348,408] > 300 → 下回合封属（基线附加照发）
         const int lv = foe_uses_attr(b);   // R2：对手高速移动 → 被封
         CHECK_EQ(lv, 0, "T7640j 高伤支次回合封属：高速移动速度等级实测 0");
         std::cout << "  [T7640j] 1464 高伤支封属 通过\n";
     }
     {
-        sbs_srand(76411);
         ScenarioBattle c(make_party(mark_pet(1464, kRow1464Body, 3876)),   // atk300 → raw<300
                          make_party(foe_pet(/*use_gaoshu=*/true)));
         c.start();
+        c.ctx().seed_rng(76411);
         own_use(c);   // R1：raw [87,102] < 300 → 无封属戳
         const int lv = foe_uses_attr(c);
         CHECK(lv > 0, "T7640j 对照：低伤回合不封属（速度等级实测 " + std::to_string(lv) +
@@ -426,11 +426,11 @@ int main() {
 
     // ══ T7640k 1464 伙伴行重叠区间 (200,400) 双发：吸取 1/2 + 封属同回合齐证 ═══
     {
-        sbs_srand(76412);
         ScenarioBattle b(make_party(mark_pet(1464, kRow1464Partner, 3876, /*speed=*/300,
                                                    /*atk=*/900)),
                          make_party(foe_pet(/*use_gaoshu=*/true)));
         b.start();
+        b.ctx().seed_rng(76412);
         const int hp0 = b.pet(1).hp;
         own_use(b);   // R1：raw [261,306] ⊂ (200,400) → 附加 1/3 + 低伤戳 + 高伤戳
         const int d = hp0 - b.pet(1).hp;
@@ -458,10 +458,10 @@ int main() {
 
     // ══ T7640l 1464 未攻击回合字面低伤档（台账 0 <300，记档行为钉住）══════════
     {
-        sbs_srand(76413);
         ScenarioBattle b(make_party(mark_pet(1464, kRow1464Body, 3876)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76413);
         idle_round(b);   // R1 空跑：raw=0 → drain 戳（字面低伤档）
         b.pet(0).hp = 50000;
         const int own0 = b.pet(0).hp;
@@ -477,11 +477,11 @@ int main() {
 
     // ══ T7640m 1464 boss 门 + 无印对照 ═══════════════════════════════════════
     {
-        sbs_srand(76414);
         ScenarioBattle b(make_party(mark_pet(1464, kRow1464Body, 3876)),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
+        b.ctx().seed_rng(76414);
         const int hp0 = b.pet(1).hp;
         own_use(b);
         const int d = hp0 - b.pet(1).hp;
@@ -490,9 +490,9 @@ int main() {
         std::cout << "  [T7640m] 1464 boss 门 通过 (d=" << d << ")\n";
     }
     {
-        sbs_srand(76415);
         ScenarioBattle c(make_party(plain_pet()), make_party(foe_pet()));
         c.start();
+        c.ctx().seed_rng(76415);
         const int hp0 = c.pet(1).hp;
         own_use(c);
         const int d = hp0 - c.pet(1).hp;

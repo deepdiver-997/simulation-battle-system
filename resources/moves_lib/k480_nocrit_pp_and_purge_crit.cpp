@@ -162,7 +162,7 @@ int k480_zero_random_slots(BattleContext* ctx, int target, int want, int actor,
     }
     const int n = std::min(want, static_cast<int>(pool.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(pool.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(pool.size()) - i));
         std::swap(pool[static_cast<std::size_t>(i)], pool[static_cast<std::size_t>(j)]);
         const int slot = pool[static_cast<std::size_t>(i)];
         const int before = ctx->getPet(target).skills[static_cast<std::size_t>(slot)].pp;

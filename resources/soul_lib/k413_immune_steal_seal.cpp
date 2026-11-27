@@ -109,7 +109,6 @@
 #include "common.h"
 
 #include <primitives/battle_primitives.h>
-#include <utils/sbs_rand.h>
 
 #include <array>
 
@@ -180,7 +179,7 @@ int read_int(BattleContext* ctx, int key) {
 }
 
 // 随机 n 个互不相同的槽（0..5）——K267 645/shenjue_mistike_4676 同款去重取法。
-std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(int n) {
+std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(SbsRng& rng, int n) {
     std::array<int, BattleContext::kAbilityLevelSlotCount> picked{};
     const int total = BattleContext::kAbilityLevelSlotCount;
     const int count = (n < 0) ? 0 : ((n > total) ? total : n);
@@ -188,7 +187,7 @@ std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(int
     for (int i = 0; i < count; ++i) {
         int slot = 0;
         for (int attempt = 0; attempt < 64; ++attempt) {
-            slot = sbs_rand() % total;
+            slot = rng.next() % total;
             if (!used[slot]) {
                 break;
             }
@@ -266,14 +265,13 @@ EffectResult k413_274_grant(BattleContext* ctx, const SoulNodeArgs& a) {
                         /*source_id=*/k274ImmuneTicket, /*soul_immunity=*/true,
                         EffectScope::ON_STAGE, /*counts=*/0,
                         /*source_effect_id=*/274, ImmunityTier::Modern,
-                        [owner, slot, pct, gated](const BattleContext* c, int) {
+                        /*condition=*/nullptr, [owner, slot, pct, gated](BattleContext* c, int) {
                             if (gated && !full_hp_at(c, owner, slot)) {
                                 return false;   // 满体门（逐次现场判，K171 口径）
                             }
-                            // 审计槽：掷前写申报概率（const 写透有 4677 先例）。
-                            auto* cc = const_cast<BattleContext*>(c);
-                            cc->plugin_storage[k274Audit + owner] = pct;
-                            return roll_percent(pct);
+                            // 审计槽：实际结算时才写申报概率。
+                            c->plugin_storage[k274Audit + owner] = pct;
+                            return roll_percent(c->rng(), pct);
                         });
     return EffectResult::kOk;
 }
@@ -323,7 +321,7 @@ EffectResult k413_748_steal(BattleContext* ctx, const SoulNodeArgs& a) {
         return EffectResult::kOk;
     }
     const std::array<int, BattleContext::kAbilityLevelSlotCount> slots =
-        random_distinct_slots(count);
+        random_distinct_slots(ctx->rng(), count);
     int landed = 0;
     for (int i = 0; i < count && i < BattleContext::kAbilityLevelSlotCount; ++i) {
         const int slot = slots[i];

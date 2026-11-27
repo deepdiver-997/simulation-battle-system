@@ -107,7 +107,7 @@ int find_seed(int speed_own, int speed_foe, int which, bool land) {
         ScenarioBattle b(make_party(mark_pet(kRow, speed_own)),
                          make_party(foe_pet(speed_foe)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         if (which == 0) {
             own_hit_round(b);
             if (b.ctx().has_active_abnormal_status(1, kIce) == land) {
@@ -138,7 +138,7 @@ int main() {
         CHECK(s > 0, "T7496a 自校准");
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIce), "T7496a 己先手冰封落地");
         CHECK_EQ(read_key(b, kSelfAudit), 50, "T7496a 己支审计=50");
@@ -153,11 +153,11 @@ int main() {
         CHECK(s > 0, "T7496b 自校准");
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(!b.ctx().has_active_abnormal_status(1, kIce), "T7496b 未冰封");
         CHECK_EQ(read_key(b, kSelfPend), 2, "T7496b 己 pending=2");
-        sbs_srand(s + 500);
+        b.ctx().seed_rng(s + 500);
         const int pl = park_read_preempt(b, 0);
         CHECK_EQ(pl, 2, "T7496b R2 FMR preemptive_level[0] += 2");
         b.drive();
@@ -171,7 +171,7 @@ int main() {
         CHECK(s > 0, "T7496c 自校准");
         ScenarioBattle b(make_party(mark_pet(kRow, 100)), make_party(foe_pet(300)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kFear), "T7496c 敌先手害怕落地");
         CHECK_EQ(read_key(b, kOppAudit), 50, "T7496c 敌支审计=50");
@@ -185,11 +185,11 @@ int main() {
         CHECK(s > 0, "T7496d 自校准");
         ScenarioBattle b(make_party(mark_pet(kRow, 100)), make_party(foe_pet(300)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK(!b.ctx().has_active_abnormal_status(1, kFear), "T7496d 未害怕");
         CHECK_EQ(read_key(b, kOppPend), 2, "T7496d 敌 pending=2");
-        sbs_srand(s + 500);
+        b.ctx().seed_rng(s + 500);
         const int pl = park_read_preempt(b, 1);   // 读对手侧
         CHECK_EQ(pl, -2, "T7496d R2 FMR preemptive_level[1] -= 2");
         b.drive();
@@ -205,7 +205,7 @@ int main() {
                 ScenarioBattle b(make_party(mark_pet(kVar, 300)),
                                  make_party(foe_pet(100)));
                 b.start();
-                sbs_srand(t);
+                b.ctx().seed_rng(t);
                 own_hit_round(b);
                 if (!b.ctx().has_active_abnormal_status(1, kIce)) {
                     return t;
@@ -216,7 +216,7 @@ int main() {
         CHECK(s > 0, "T7496e 自校准");
         ScenarioBattle b(make_party(mark_pet(kVar, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kSelfPend), 3, "T7496e args 驱动：db2=3 → pending=3");
 
@@ -225,7 +225,7 @@ int main() {
                 ScenarioBattle b(make_party(mark_pet(kVar, 100)),
                                  make_party(foe_pet(300)));
                 b.start();
-                sbs_srand(t);
+                b.ctx().seed_rng(t);
                 foe_hit_round(b);
                 if (!b.ctx().has_active_abnormal_status(1, kFear)) {
                     return t;
@@ -236,7 +236,7 @@ int main() {
         CHECK(s2 > 0, "T7496e 敌支自校准");
         ScenarioBattle b2(make_party(mark_pet(kVar, 100)), make_party(foe_pet(300)));
         b2.start();
-        sbs_srand(s2);
+        b2.ctx().seed_rng(s2);
         foe_hit_round(b2);
         CHECK_EQ(read_key(b2, kOppPend), 1, "T7496e args 驱动：db5=1 → 敌 pending=1");
         std::cout << "  [T7496e] args 变体 通过\n";
@@ -246,7 +246,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(7516);
+        b.ctx().seed_rng(7516);
         for (int r = 0; r < 40; ++r) {
             b.ctx().getPet(1).hp = kMaxHp;   // 冻伤 DOT 防打死
             own_hit_round(b);
@@ -261,11 +261,11 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.ctx().is_boss_challenge = true;
         b.start();
-        sbs_srand(7517);
+        b.ctx().seed_rng(7517);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kSelfAudit), -1, "T7496g boss：己支不申报");
         CHECK(!b.ctx().has_active_abnormal_status(1, kIce), "T7496g boss：无冰封");
-        sbs_srand(7518);
+        b.ctx().seed_rng(7518);
         foe_hit_round(b);
         CHECK_EQ(read_key(b, kOppAudit), -1, "T7496g boss：敌支不申报");
         CHECK(!b.ctx().has_active_abnormal_status(1, kFear), "T7496g boss：无害怕");

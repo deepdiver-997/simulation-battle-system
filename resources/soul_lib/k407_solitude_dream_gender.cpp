@@ -328,7 +328,7 @@ EffectResult k407_1646_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                                 ? read_int(c, base + k1646BLedger)
                                 : b_base_pct;   // 0=未记→基础档
             write_int(c, base + k1646BAudit, pct);   // 审计槽：掷前写申报值
-            if (!roll_percent(pct)) {
+            if (!roll_percent(c->rng(), pct)) {
                 // 掷败：当回合失败旗（ROUND_END 补偿）+ 爬坡（记档⑦）。
                 write_int(c, base + k1646BFail, 1);
                 write_int(c, base + k1646BLedger, pct + b_step);   // 爬坡（记档⑦）
@@ -359,7 +359,7 @@ EffectResult k407_1646_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                                 ? read_int(c, base + k1646CLedger)
                                 : c_base_pct;
             write_int(c, base + k1646CAudit, pct);   // 审计槽：掷前写申报值
-            if (!roll_percent(pct)) {
+            if (!roll_percent(c->rng(), pct)) {
                 write_int(c, base + k1646CFail, 1);
                 write_int(c, base + k1646CLedger, pct + c_step);   // 爬坡（记档⑦）
                 return;
@@ -449,7 +449,7 @@ EffectResult k407_1646_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
                 pct = death_base * 2;
             }
             write_int(ctx, base + k1646DeathAudit, pct);   // 审计槽：掷前写申报值
-            if (roll_percent(pct)) {
+            if (roll_percent(ctx->rng(), pct)) {
                 (void)g_core->force_hp_to_zero(ctx, foe, owner);   // 秒杀通道（记档④）
                 write_int(ctx, base + k1646DeathLand,
                           read_int(ctx, base + k1646DeathLand) + 1);

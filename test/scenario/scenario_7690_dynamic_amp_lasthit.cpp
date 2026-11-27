@@ -116,7 +116,7 @@ bool para_probe(int seed) {
     ScenarioBattle b(make_party(mark_pet(1006, kRow1006Body, 3408)),
                      make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_use(b);
     own_use(b);
     return b.ctx().has_active_abnormal_status(1, kPara);
@@ -141,10 +141,10 @@ int main() {
 
     // ══ T7690a 1398 梯度中档（门外）：损 20% → amp 40（审计槽+字段+行为带）═══════
     {
-        sbs_srand(76901);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76901);
         b.ctx().getPet(0).hp = 72000;   // 损 18000 = 20%（72000×3>90000 门外观）
         const int hp0 = b.pet(1).hp;
         own_use(b);      // R1：RS 梯度 20×2=40 → 攻击 ×1.4
@@ -159,10 +159,10 @@ int main() {
 
     // ══ T7690b 1398 满体：0 步 → 无 amp（关闸对照）══════════════════════════════
     {
-        sbs_srand(76902);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76902);
         const int hp0 = b.pet(1).hp;
         own_use(b);
         CHECK_EQ(read_key(b, k1398AmpAudit), -1, "T7690b 满体审计槽不写");
@@ -174,10 +174,10 @@ int main() {
 
     // ══ T7690c 1398 %-2% 梯度步进：损 21% → amp 42（每 1% 步进 +2，已知血量直接算）══
     {
-        sbs_srand(76903);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76903);
         b.ctx().getPet(0).hp = 71100;   // 损 18900 = 21%
         own_use(b);
         CHECK_EQ(read_key(b, k1398AmpAudit), 42,
@@ -187,10 +187,10 @@ int main() {
 
     // ══ T7690d 1398 门内翻倍（row1090 门 1/3）：损 70% → 140×2=280 ══════════════
     {
-        sbs_srand(76904);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76904);
         b.ctx().getPet(0).hp = 27000;   // 27000×3=81000<90000 → 门内
         const int hp0 = b.pet(1).hp;
         own_use(b);
@@ -206,10 +206,10 @@ int main() {
 
     // ══ T7690e 1398 门对照：恰等不结（1/3、1/2）+ 双行档位差 ════════════════════
     {
-        sbs_srand(76905);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76905);
         b.ctx().getPet(0).hp = 30000;   // 恰等 1/3：30000×3=90000 不小于 → 不结
         own_use(b);
         CHECK_EQ(read_key(b, k1398AmpAudit), 132,
@@ -217,10 +217,10 @@ int main() {
         std::cout << "  [T7690e] 1398 恰等 1/3=132 通过\n";
     }
     {
-        sbs_srand(76906);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Partner, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76906);
         b.ctx().getPet(0).hp = 45000;   // 恰等 1/2（伙伴行门 1/2）→ 不结
         own_use(b);
         CHECK_EQ(read_key(b, k1398AmpAudit), 100,
@@ -228,10 +228,10 @@ int main() {
         std::cout << "  [T7690e] 1398 恰等 1/2=100 通过\n";
     }
     {
-        sbs_srand(76907);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Partner, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76907);
         b.ctx().getPet(0).hp = 44999;   // 恰等下沿一步 → 1/2 门内 → 翻倍
         own_use(b);
         CHECK_EQ(read_key(b, k1398AmpAudit), 200,
@@ -240,20 +240,20 @@ int main() {
     }
     {
         // 同 hp=40000：本体行（门 1/3）不翻倍 110 vs 伙伴行（门 1/2）翻倍 220——args 档位差直证
-        sbs_srand(76908);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76908);
         b.ctx().getPet(0).hp = 40000;   // 120000>90000 本体门外；损 50000→55 步→110
         own_use(b);
         CHECK_EQ(read_key(b, k1398AmpAudit), 110, "T7690e 本体行 hp40000 门外=110");
         std::cout << "  [T7690e] 1398 本体行门外=110 通过\n";
     }
     {
-        sbs_srand(76909);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Partner, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76909);
         b.ctx().getPet(0).hp = 40000;   // 80000<90000 伙伴门内 → 110×2=220
         own_use(b);
         CHECK_EQ(read_key(b, k1398AmpAudit), 220,
@@ -263,11 +263,11 @@ int main() {
 
     // ══ T7690f 1398 boss 门：节点整体跳过（尾注 tips 末位全句尾，K406 判）════════
     {
-        sbs_srand(76910);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
+        b.ctx().seed_rng(76910);
         b.ctx().getPet(0).hp = 27000;   // 门内数值，boss 局应整体不结
         const int hp0 = b.pet(1).hp;
         own_use(b);
@@ -279,10 +279,10 @@ int main() {
 
     // ══ T7690g 1398 当回合语义：R2 重写不叠加（ws 回合界清零+RS 重算）════════════
     {
-        sbs_srand(76911);
         ScenarioBattle b(make_party(mark_pet(1398, kRow1398Body, 3815, 300, kMaxHp1398)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76911);
         b.ctx().getPet(0).hp = 72000;
         own_use(b);      // R1：amp 40
         own_use(b);      // R2：hp 未变 → RS 重算仍 40（不叠 80）
@@ -295,10 +295,10 @@ int main() {
     // ══ T7691a 1006 首回合：无台账无附加（纯红伤带）+ 台账/翻倍戳落账 ═══════════
     int d1_low = 0;   // 供 T7691b 复用（R1 实测裸伤）
     {
-        sbs_srand(76921);
         ScenarioBattle b(make_party(mark_pet(1006, kRow1006Body, 3408)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76921);
         const int hp0 = b.pet(1).hp;
         own_use(b);      // R1：台账 0 → 无附加；raw<300 → 翻倍戳
         d1_low = hp0 - b.pet(1).hp;
@@ -327,10 +327,10 @@ int main() {
         // （裸伤台账=管线前公式值不含 AMP，R2 翻倍后 raw 仍 [87,102] → R3 再翻倍）
     }
     {
-        sbs_srand(76922);
         ScenarioBattle b(make_party(mark_pet(1006, kRow1006Body, 3408)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76922);
         own_use(b);      // R1
         own_use(b);      // R2（翻倍）
         own_use(b);      // R3：R2 raw（<300）→ 仍翻倍
@@ -342,10 +342,10 @@ int main() {
 
     // ══ T7691c 1006 高伤门外对照（atk1200）：raw≥300 → 次回合无翻倍无窗 ═════════
     {
-        sbs_srand(76923);
         ScenarioBattle b(make_party(mark_pet(1006, kRow1006Body, 3408, /*atk=*/1200)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(76923);
         const int hp0 = b.pet(1).hp;
         own_use(b);      // R1：raw [348,408] ≥300
         const int d1 = hp0 - b.pet(1).hp;
@@ -370,10 +370,8 @@ int main() {
     REQUIRE(s_land > 0);
     REQUIRE(s_miss > 0);
     {
-        sbs_srand(s_land);
         CHECK(para_probe(s_land), "T7691e 落地支：对手瘫痪在身（seed " + std::to_string(s_land)
                                       + "）");
-        sbs_srand(s_miss);
         CHECK(!para_probe(s_miss), "T7691e 未中支：无瘫痪（seed " + std::to_string(s_miss)
                                        + "）");
         std::cout << "  [T7691e] 1006 瘫痪双支 通过 (land=" << s_land << " miss=" << s_miss
@@ -382,11 +380,11 @@ int main() {
 
     // ══ T7691f 1006 boss 门：附加/台账/翻倍全节点不结 ═══════════════════════════
     {
-        sbs_srand(76924);
         ScenarioBattle b(make_party(mark_pet(1006, kRow1006Body, 3408)),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
+        b.ctx().seed_rng(76924);
         const int hp0 = b.pet(1).hp;
         own_use(b);      // R1：boss 局 DETECT 票/ROUND_END 节点全跳
         const int d = hp0 - b.pet(1).hp;
@@ -401,9 +399,9 @@ int main() {
 
     // ══ T7691g 无印对照 ════════════════════════════════════════════════════════
     {
-        sbs_srand(76925);
         ScenarioBattle c(make_party(plain_pet()), make_party(foe_pet()));
         c.start();
+        c.ctx().seed_rng(76925);
         const int hp0 = c.pet(1).hp;
         own_use(c);
         const int d = hp0 - c.pet(1).hp;

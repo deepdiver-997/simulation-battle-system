@@ -107,6 +107,7 @@ int main() {
             int misses = 0;
             for (int i = 0; i < kTrials; ++i) {
                 ScenarioBattle b(make_party(mk_self(kHuang)), make_party(mk_foe()));
+            b.ctx().seed_rng(1 + i * 104729u);  // 每局独立且可复现的抽样序列
                 b.start();
                 BattleContext& ctx = b.ctx();
                 self_cast(b);

@@ -92,7 +92,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
             b.start();
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             round_with_hp(b, 60000, 50000);   // 高体
             BattleContext& ctx = b.ctx();
             if (ctx.abnormal_status_end_round[1][kFearId] > 0) {
@@ -104,7 +104,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
             b.start();
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             round_with_hp(b, 40000, 50000);   // 低体
             BattleContext& ctx = b.ctx();
             if (ctx.getPet(1).hp < 50000) {
@@ -123,7 +123,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(seed_hi_hit);
+        b.ctx().seed_rng(seed_hi_hit);
         round_with_hp(b, 60000, 50000);
         CHECK(b.ctx().abnormal_status_end_round[1][kFearId] > 0,
               "T3860 1414：高体触发 → 对手害怕");
@@ -136,7 +136,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(seed_hi_fail);
+        b.ctx().seed_rng(seed_hi_fail);
         round_with_hp(b, 60000, 50000);
         CHECK_EQ(b.ctx().abnormal_status_end_round[1][kFearId], 0,
                  "T3861 1414：未触发不害怕");
@@ -148,7 +148,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(seed_lo_hit);
+        b.ctx().seed_rng(seed_lo_hit);
         round_with_hp(b, 40000, 50000);
         BattleContext& ctx = b.ctx();
         CHECK_EQ(50000 - ctx.getPet(1).hp, kMaxHp / 3,
@@ -163,7 +163,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(seed_lo_fail);
+        b.ctx().seed_rng(seed_lo_fail);
         round_with_hp(b, 40000, 50000);
         CHECK_EQ(b.ctx().getPet(1).hp, 50000, "T3863 1414：未触发不吸取");
         CHECK(foe_all_dropped(b.ctx()), "T3863 1414：未触发 → 全属性-1");

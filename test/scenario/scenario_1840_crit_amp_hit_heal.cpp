@@ -4,9 +4,9 @@
 // 断言口径：
 //   - 1840（镇土铁碎阵 [50] 物150 短链）：必暴档（crit 旗 → amp +50%，且暴击本身
 //     ×2.3 实测倍率）对零暴对照 → 伤害比 ≈3.46（带 [2.9, 3.5]，双方各吃浮动）；
-//   - 1073（惊天战意 [4,4,3,300] 属 短链——191/47 兄弟均实现良性）：预置缺口 3000
-//     → 对手一击 480（>300 阈值）→ 触发：回满 5000 整 + 等量反噬 = 恢复量 2480
-//     （fixed 无浮动、我方载体属性技无红伤 → 对手掉血精确 2480）；
+//   - 1073（惊天战意 [4,4,3,300] 属 短链——191/47 兄弟均实现良性）：预置缺口 2000
+//     → 对手一击超过 300 阈值 → 回满 5000，并按实际恢复量等量反噬；
+//     我方不攻击，避免红伤污染对手损血量；
 //     对照 = 对手小攻击（~2 <300）→ 不触发。
 #include <iostream>
 
@@ -93,7 +93,7 @@ int main() {
 
     // ══ T1841 1073 受击>300 → 回满+等量反噬（惊天战意 [3,300]）══
     {
-        // a) 对手一击 480（>300）→ 回满 5000 + 反噬 = 恢复量 2480（精确）
+        // a) 对手一击超过 300 → 回满 5000，反噬精确等于实际恢复量
         {
             ScenarioBattle b(
                 make_party(mk_self({kJingTian, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
@@ -105,16 +105,16 @@ int main() {
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
             // R2：对手攻击 ~480（>300）→ 触发
-            b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 1);
+            b.submit_operation(0, BattleFsm::ActionType::NONE, -1); // 避免己方红伤混入反噬
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();
             CHECK_EQ(ctx.getPet(0).hp, kMaxHp,
                      "T1841.a 1073：受击 >300 → 回满（实测 " +
                          std::to_string(ctx.getPet(0).hp) + "）");
             const int foe_loss = 99999 - ctx.getPet(1).hp;
-            CHECK(foe_loss >= 2480 && foe_loss <= 2510,
-                  "T1841.a 1073：反噬=恢复量 2480（实测掉 " +
-                      std::to_string(foe_loss) + "）");
+            const int healed = ctx.ws.last_heal_amount[0];
+            CHECK(healed > 2300, "T1841.a 前置：含受击的恢复量超过 2300");
+            CHECK_EQ(foe_loss, healed, "T1841.a 1073：反噬精确等于实际恢复量");
         }
         // b) 对照：小攻击（~2 <300）→ 不触发
         {

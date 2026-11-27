@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
@@ -35,16 +36,12 @@ using TimedEffectMap = std::map<uint64_t, std::unique_ptr<ContinuousEffect>>;
 // 桶本体：[State][owner] → 效果集合。
 using TimedBucketMap = std::unordered_map<State, std::array<TimedEffectMap, 2>>;
 
-// 效果桶 key：同源去重用 (source_id << 32) | effect_id；
-// source_id==0（无来源）用进程内自增唯一 key，不参与去重。
+// 有来源效果的键占高 32 位非零空间。匿名键由各桶独立分配，
+// 克隆时复制分配游标，避免分支共享进程级可变计数器。
 inline uint64_t timed_effect_key(const ContinuousEffect& effect) {
-    if (effect.source_id_ > 0) {
-        const int eid = effect.getEffectId();
-        const uint64_t lo = static_cast<uint32_t>(eid > 0 ? eid : 0);
-        return (static_cast<uint64_t>(effect.source_id_) << 32) | lo;
-    }
-    static uint64_t counter = 1;
-    return counter++;
+    const int eid = effect.getEffectId();
+    const uint64_t lo = static_cast<uint32_t>(eid > 0 ? eid : 0);
+    return (static_cast<uint64_t>(effect.source_id_) << 32) | lo;
 }
 
 class TimedBucket {
@@ -63,13 +60,25 @@ public:
         if (!effect || owner < 0 || owner > 1) {
             return;
         }
+        TimedEffectMap& effects = buckets_[trigger][owner];
+        uint64_t key;
+        if (effect->source_id_ > 0) {
+            key = timed_effect_key(*effect);
+        } else {
+            // Low 32 bits are reserved for anonymous entries. Check even keys
+            // inserted directly through at(); never overwrite an existing entry.
+            while (next_anonymous_key_ <= UINT32_MAX && effects.count(next_anonymous_key_)) {
+                ++next_anonymous_key_;
+            }
+            if (next_anonymous_key_ > UINT32_MAX) {
+                throw std::overflow_error("timed bucket anonymous key space exhausted");
+            }
+            key = next_anonymous_key_++;
+        }
         if (effect->isRoundEffect() && !effect->isActionOneShot()) {
             ++active_round_count_[owner];
         }
         effect->valid_id_ = epoch_valid_id;
-
-        TimedEffectMap& effects = buckets_[trigger][owner];
-        const uint64_t key = timed_effect_key(*effect);
         auto it = effects.find(key);
         if (it != effects.end() && it->second->isRoundEffect()
             && !it->second->isActionOneShot()) {
@@ -161,7 +170,9 @@ public:
     const TimedBucketMap& all() const { return buckets_; }
 
 private:
+    friend class BattleClone;
     TimedBucketMap buckets_;
+    uint64_t next_anonymous_key_ = 1;
     // 本桶内回合类效果的计数（O(1) 查"是否还有回合类效果"，供 break_round_effects 用）。
     // 与桶内容在一处维护，故不存在与桶不同步的可能。
     int active_round_count_[2] = {0, 0};

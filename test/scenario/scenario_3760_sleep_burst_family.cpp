@@ -76,7 +76,7 @@ int main() {
     for (int s = 1; s <= 400 && (seed_fail < 0 || seed_sleep < 0); ++s) {
         ScenarioBattle b(make_party(mark_pet(row1)), make_party(plain_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         mark_attacks(b);
         const bool asleep = b.ctx().abnormal_status_end_round[1][kSleepId] > 0;
         if (asleep && seed_sleep < 0) {
@@ -96,7 +96,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(row1)), make_party(plain_pet()));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(seed_fail);
+        b.ctx().seed_rng(seed_fail);
         mark_attacks(b);
         CHECK_EQ(ctx.abnormal_status_end_round[1][kSleepId], 0,
                  "T3760 834：未触发档对手不睡");
@@ -112,7 +112,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(row1)), make_party(plain_pet()));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(seed_sleep);
+        b.ctx().seed_rng(seed_sleep);
         mark_attacks(b);
         CHECK(ctx.abnormal_status_end_round[1][kSleepId] > 0,
               "T3761 834：睡眠档对手入睡");
@@ -147,7 +147,7 @@ int main() {
         for (int s = 1; s <= 400 && seed_fail2 < 0; ++s) {
             ScenarioBattle b(make_party(mark_pet(row2)), make_party(plain_pet()));
             b.start();
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             mark_attacks(b);
             if (b.ctx().abnormal_status_end_round[1][kSleepId] <= 0) {
                 seed_fail2 = s;
@@ -157,7 +157,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(row2)), make_party(plain_pet()));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(seed_fail2);
+        b.ctx().seed_rng(seed_fail2);
         mark_attacks(b);
         CHECK_EQ(ctx.abnormal_status_end_round[1][kSleepId], 0,
                  "T3763 834：行2 未触发档对手不睡");

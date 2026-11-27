@@ -341,24 +341,22 @@ int main() {
             auto b = make_battle();
             b.start();
             BattleContext& ctx = b.ctx();
-            BattleFsm fsm(/*enable_debug=*/false);
             apply_anomaly(&ctx, 0, restriction, 3, 1);
             constexpr int kSentinel = 99;   // 非法 ActionType → 未被改写即"被拦下"
             ctx.roundChoice[0][0] = kSentinel;
-            fsm.operation(&ctx, 0, BattleFsm::ActionType::CHOOSE_PET, 1);
+            ctx.m_fsm->operation(&ctx, 0, BattleFsm::ActionType::CHOOSE_PET, 1);
             CHECK_EQ(ctx.roundChoice[0][0], kSentinel,
                      "C 限制类异常（凝滞/瘫痪）应拦下主动切换");
             // C3 死后补位：is_forced=true 必须放行（否则宠物阵亡后无法补位 → 对局卡死）
-            fsm.operation(&ctx, 0, BattleFsm::ActionType::CHOOSE_PET, 1, /*is_forced=*/true);
+            ctx.m_fsm->operation(&ctx, 0, BattleFsm::ActionType::CHOOSE_PET, 1, /*is_forced=*/true);
             CHECK_EQ(ctx.roundChoice[0][0], static_cast<int>(BattleFsm::ActionType::CHOOSE_PET),
                      "C3 死后补位不受限制类异常影响");
             // 对照：无限制类异常时主动切换放行
             auto b2 = make_battle();
             b2.start();
             BattleContext& ctx2 = b2.ctx();
-            BattleFsm fsm2(/*enable_debug=*/false);
             ctx2.roundChoice[0][0] = kSentinel;
-            fsm2.operation(&ctx2, 0, BattleFsm::ActionType::CHOOSE_PET, 1);
+            ctx2.m_fsm->operation(&ctx2, 0, BattleFsm::ActionType::CHOOSE_PET, 1);
             CHECK_EQ(ctx2.roundChoice[0][0], static_cast<int>(BattleFsm::ActionType::CHOOSE_PET),
                      "C 对照：无限制类异常时主动切换应放行");
             std::cout << "C PASS " << abnormal_status_name_cn(restriction)

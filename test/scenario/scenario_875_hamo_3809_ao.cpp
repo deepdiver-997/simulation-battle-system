@@ -106,10 +106,12 @@ int main() {
     {
         int flag1_count = 0;
         int flag0_count = 0;
+        SbsRng trial_seeds(20261004);
         for (int trial = 0; trial < 20; ++trial) {
             ScenarioBattle b(scenario::make_party(hamo(/*speed=*/100, /*marked=*/true)),
                              scenario::make_party(dragon(/*speed=*/100)));
             BattleContext& ctx = b.ctx();
+            ctx.seed_rng(trial_seeds.next());
             b.start();
             submit(b, 0, 0);
             b.drive();
@@ -130,25 +132,47 @@ int main() {
 
     // ══ B 非龙系不压制（视图门确定性负例）══════════════════════════════════
     {
-        for (int trial = 0; trial < 6; ++trial) {
+        // 同种子伤害对照：无魂印时没有 ① 的 75% 与 ② 的 +50%。
+        ScenarioBattle baseline(scenario::make_party(hamo(/*speed=*/300, /*marked=*/false)),
+                                scenario::make_party(grass_foe()));
+        baseline.start();
+        baseline.ctx().debug_step_mode = true;
+        submit(baseline, 0, 0);
+        baseline.ctx().debug_step_mode = false;
+        baseline.step_until(State::BATTLE_FIRST_ATTACK_DAMAGE);
+        baseline.ctx().seed_rng(20261006);
+        baseline.step_past(State::BATTLE_FIRST_ATTACK_DAMAGE);
+        const int base_damage = 1000000 - baseline.ctx().getPet(1).hp;
+        CHECK(base_damage > 0, "B 前置：非龙系无魂印对照造成伤害");
+
+        int hit_count = 0;
+        SbsRng trial_seeds(20261007);
+        for (int trial = 0; trial < 20; ++trial) {
             ScenarioBattle b(scenario::make_party(hamo(/*speed=*/300, /*marked=*/true)),
-                             scenario::make_party(scenario::make_pet(
-                                 kGrassId, "布布种子",
-                                 {kYanFan, kGaoSu, kGaoSu, kGaoSu, kGaoSu}, 100, 100, 1000000)));
+                             scenario::make_party(grass_foe()));
             BattleContext& ctx = b.ctx();
-            must_hit(ctx.getPet(1));
+            ctx.seed_rng(trial_seeds.next());
             b.start();
+            ctx.debug_step_mode = true;
             submit(b, 0, 0);
-            b.drive();
+            ctx.debug_step_mode = false;
+            b.step_until(State::BATTLE_FIRST_ATTACK_DAMAGE);
+            CHECK(ctx.ws.view_elementalAttributes[1][0] != 15 &&
+                  ctx.ws.view_elementalAttributes[1][1] != 15, "B 前置：对手视图非龙系");
+            CHECK_EQ(ctx.ws.preemptive_level[1], 0, "B 非龙系：对手先制等级不被压低");
             if (flag_of(ctx) == 1) {
-                // 掷中但对手非龙系：先制不动（对手 100 < 300 本就后手，验证等级无 -1 的
-                // 直接证据 = 对手先制等级保持 0 → 哈莫以速度先手而非必先……此处以
-                // "伤害比不落 0.75 带宽"间接验证，见 C 组的龙系对照）。
+                ++hit_count;
                 CHECK(ctx.preemptive_right == PreemptiveRight::SEER_ROBOT_1,
-                      "B 非龙系：速度差决定先手（无 -1 干扰）");
+                      "B 非龙系：速度差决定先手");
+                ctx.seed_rng(20261006); // 掷点后才对齐伤害浮动
+                b.step_past(State::BATTLE_FIRST_ATTACK_DAMAGE);
+                const int damage = 1000000 - ctx.getPet(1).hp;
+                CHECK(damage * 100 > base_damage * 131 && damage * 100 < base_damage * 178,
+                      "B 掷中但非龙系：仅②增伤，不得叠①的75%压制");
             }
         }
-        std::cout << "  [B] 非龙系对手：压制不适用（视图门）✓" << std::endl;
+        CHECK(hit_count > 0, "B 前置：必须至少覆盖一次掷中分支");
+        std::cout << "  [B] 非龙系对手：压制不适用（掷中 " << hit_count << "/20）\n";
     }
 
     // ══ C 压制减伤 ×75%（比值带宽；基线 = 无魂印同配置）═════════════════════
@@ -160,19 +184,29 @@ int main() {
                              scenario::make_party(dragon(/*speed=*/100)));
             BattleContext& ctx = b.ctx();
             b.start();
+            ctx.debug_step_mode = true;
             submit(b, 0, 1);   // 对手属性技：不触发③固伤，伤害测量干净
+            ctx.debug_step_mode = false;
+            b.step_until(State::BATTLE_FIRST_ATTACK_DAMAGE);
+            ctx.seed_rng(20261006); // 仅对齐伤害浮动，不覆盖魂印分支掷点
             b.drive();
             baseline = 1000000 - ctx.getPet(1).hp;
         }
         CHECK(baseline > 0, "C 基线伤害 > 0");
         int flag1_seen = 0;
         int flag0_seen = 0;
+        SbsRng trial_seeds(20261005);
         for (int trial = 0; trial < 20; ++trial) {
             ScenarioBattle b(scenario::make_party(hamo(/*speed=*/300, /*marked=*/true)),
                              scenario::make_party(dragon(/*speed=*/100)));
             BattleContext& ctx = b.ctx();
+            ctx.seed_rng(trial_seeds.next());
             b.start();
+            ctx.debug_step_mode = true;
             submit(b, 0, 1);   // 对手属性技（同基线）
+            ctx.debug_step_mode = false;
+            b.step_until(State::BATTLE_FIRST_ATTACK_DAMAGE);
+            ctx.seed_rng(20261006); // 分支已确定，只同步红伤浮动
             b.drive();
             const int dmg = 1000000 - ctx.getPet(1).hp;
             const double ratio = static_cast<double>(dmg) / baseline;

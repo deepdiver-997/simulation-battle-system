@@ -107,7 +107,7 @@ EffectResult effect_5_change_opp_stat(BattleContext* ctx, const EffectArgs& args
     if (stat < 0 || stat >= 6) {
         return EffectResult::kOk;
     }
-    if (chance < 100 && (sbs_rand() % 100) >= chance) {
+    if (chance < 100 && (ctx->rng().next() % 100) >= chance) {
         return EffectResult::kOk;  // 概率未触发
     }
     // 负 delta = 弱化 → 走 stat_drop（查免弱 STAT_DROP，可穿强化保护，钳 -6）；
@@ -439,7 +439,7 @@ EffectResult effect_749_chance_all_stats_down(BattleContext* ctx, const EffectAr
     if (target < 0 || target > 1 || n <= 0) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     // "全属性-n"含**命中**（同一口径）；走 stat_drop → 各查免弱、各钳 -6

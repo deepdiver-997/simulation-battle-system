@@ -79,7 +79,7 @@ EffectResult k314_371_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             int pct = 50;
             int percent = 33;
             k314_read_row(c, owner, pct, percent);
-            if (pct <= 0 || !roll_percent(pct)) {
+            if (pct <= 0 || !roll_percent(c->rng(), pct)) {
                 return;   // 关闸 / 未中
             }
             int dmg = foe.hp * percent / 100;

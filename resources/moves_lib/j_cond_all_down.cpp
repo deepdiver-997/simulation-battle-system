@@ -55,7 +55,7 @@ EffectResult effect_857_conditional_all_down(BattleContext* ctx, const EffectArg
     const int chance = first ? args.int_args[4] : args.int_args[2];
     const int amount = first ? args.int_args[5] : args.int_args[3];
     EFFECT_ARG_GUARD(chance > 0 && amount > 0, 857, args, "需要 概率/级数 > 0");
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;   // 掷点失败（850 口径：>=100 短路必中）
     }
     if (!g_core || !g_core->stat_drop) {

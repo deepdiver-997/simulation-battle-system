@@ -101,7 +101,7 @@ EffectResult effect_449_conditional_anomaly(BattleContext* ctx, const EffectArgs
         || !is_valid_abnormal_status_id(anomaly)) {
         return EffectResult::kOk;
     }
-    if (!side_has_stat_drop(ctx, opp) || !roll_percent(chance)) {
+    if (!side_has_stat_drop(ctx, opp) || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), owner);
@@ -160,7 +160,7 @@ EffectResult effect_1428_all_down_then_roundly(BattleContext* ctx, const EffectA
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || rounds <= 0) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     // 即时半边：全属性-1（含命中，kAbilityLevelSlotCount 口径；逐项查免弱、钳 -6）。
@@ -289,7 +289,7 @@ EffectResult effect_1471_clear_then_fatigue(BattleContext* ctx, const EffectArgs
     }
     bool landed = false;
     if (g_core->clear_stat_boosts && g_core->clear_stat_boosts(ctx, opp) > 0
-        && roll_percent(chance)) {
+        && roll_percent(ctx->rng(), chance)) {
         const ApplyAnomalyResult r =
             g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), owner);
         landed = (r == ApplyAnomalyResult::SUCCESS
@@ -638,7 +638,7 @@ EffectResult effect_2214_locks_zero_pp(BattleContext* ctx, const EffectArgs& arg
     }
     int zeroed = 0;
     while (zeroed < locks && !candidates.empty()) {
-        const int pick = sbs_rand() % static_cast<int>(candidates.size());
+        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
         opp_pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
         candidates.erase(candidates.begin() + pick);
         ++zeroed;
@@ -673,7 +673,7 @@ EffectResult effect_1114_break_then_zero_pp(BattleContext* ctx, const EffectArgs
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(candidates.size());
+        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
         opp_pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
         candidates.erase(candidates.begin() + pick);
     }
@@ -704,7 +704,7 @@ EffectResult effect_907_reverse_then_zero_pp(BattleContext* ctx, const EffectArg
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(candidates.size());
+        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
         opp_pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
         candidates.erase(candidates.begin() + pick);
     }

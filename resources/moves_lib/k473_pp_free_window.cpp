@@ -153,7 +153,7 @@ bool k473_1559_try_free(BattleContext* ctx, int self, int chance) {
     set_storage_int_local(ctx, audit_key_of(k1559AuditBase, self, 5), ctx->roundCount);
     // {1} 在位即消费：0% = 永不掷中（本次照常消耗），不翻转默认（K314/K340 纪律；
     // roll_percent 对 <=0 短路 false、>=100 短路 true，区间内才耗 rand）。
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         set_storage_int_local(ctx, audit_key_of(k1559AuditBase, self, 0), 0);
         return false;
     }

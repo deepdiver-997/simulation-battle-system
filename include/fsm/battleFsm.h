@@ -47,7 +47,10 @@ public:
     void initHandler();
     void addStateAction(State state, HandlerType action);
 
-    // 使用 raw pointer，context 由 control block 持有
+    // 首次 run/operation 绑定本实例；此后不允许换 FSM（抛 std::logic_error），
+    // FSM 的生命周期必须覆盖该 context 的使用。空 context 抛 std::invalid_argument。
+    // run 自行持有 run_mutex；直接调用 operation 须由调用方保证与所有 context 操作
+    // 串行（例如持 run_mutex）。FSM 的内部 operation 调用已在 run_mutex 下。
     void run(BattleContext* battleContext);
     // is_forced = true 表示**非自愿**的换宠（死后补位，handle_ChooseAfterDeath）——限制类异常
     // （凝滞 32 / 瘫痪 19）只拦"主动切换"，拦不住死后补位，否则对局会卡死。
@@ -63,11 +66,14 @@ public:
     //    battle_pool_ 成员 + post() 转发（零读取/零调用，纯死重），已删；别再加回来。
 
 private:
+    friend class BattleClone;
     std::unordered_map<State, HandlerType> stateHandlerMap;
     bool verbose_trace_ = false;
 
     void trace_fsm(const BattleContext* battleContext, const std::string& phase) const;
 
+    // Caller must serialize access to the context.
+    void bind_context_locked(BattleContext& context);
     bool runInternal(BattleContext* battleContext);
 
     // 命中前全局锚点（EVENT_BEFORE_SKILL_HIT）：一回合只在第一次进入命中前时点发一次，

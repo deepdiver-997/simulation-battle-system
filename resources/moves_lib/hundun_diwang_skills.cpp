@@ -269,7 +269,7 @@ EffectResult effect_1752_shield_drain_deathrattle(BattleContext* ctx, const Effe
             // 随机 {slots} 个技能 PP 归零（打乱槽序取前 slots 个）
             int idx[5] = {0, 1, 2, 3, 4};
             for (int i = 4; i > 0; --i) {
-                const int j = sbs_rand() % (i + 1);
+                const int j = wctx->rng().next() % (i + 1);
                 const int t = idx[i];
                 idx[i] = idx[j];
                 idx[j] = t;

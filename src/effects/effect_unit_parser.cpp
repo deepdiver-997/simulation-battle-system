@@ -214,9 +214,7 @@ int parse_effect_unit(const std::string& info, const std::vector<int>& skill_arg
         if (wf != std::string::npos) {
             const std::string fallback_text = remainder.substr(wf + 4);
             const int fallback_idx = parse_fallback_unit(fallback_text, skill_args, storage);
-            if (fallback_idx >= 0) {
-                storage[root_idx].on_other = &storage[fallback_idx];  // 概率未触发 → 兜底
-            }
+            storage[root_idx].on_other = fallback_idx;  // 概率未触发 → 兜底（-1=无）
         }
         return root_idx;
     }

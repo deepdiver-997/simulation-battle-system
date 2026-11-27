@@ -81,7 +81,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet<718>(row_zhangfei)),
                          make_party(plain_pet()));
         b.start();
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         act_and_drive(b, 0);   // 撞击（攻击技）
         CHECK(b.ctx().has_active_abnormal_status(1, kBurn),
               "T3088 718 张飞：攻击技 100% → 对手烧伤（短路确定）");
@@ -91,7 +91,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet<718>(row_zhangfei)),
                          make_party(plain_pet()));
         b.start();
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         act_and_drive(b, 1);   // 缩头（属性技）
         CHECK(!b.ctx().has_any_active_abnormal_status(1),
               "T3088 718 张飞：属性技 → 攻支门闭 + 属支缺参，无异常");
@@ -104,7 +104,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet<718>(row_fenggui)),
                          make_party(plain_pet()));
         b.start();
-        sbs_srand(49);
+        b.ctx().seed_rng(49);
         act_and_drive(b, 0);
         CHECK(b.ctx().has_active_abnormal_status(1, kParalysis),
               "T3089 718 烈鬼：攻击支落地 → 麻痹（db[1]=0 逐 id 断言）");
@@ -115,7 +115,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet<718>(row_fenggui)),
                          make_party(plain_pet()));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         act_and_drive(b, 1);
         CHECK(b.ctx().has_active_abnormal_status(1, kBurn),
               "T3089 718 烈鬼：属性支落地 → 烧伤（db[4]=2）");
@@ -126,7 +126,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet<718>(row_fenggui)),
                          make_party(plain_pet()));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         act_and_drive(b, 0);
         CHECK(!b.ctx().has_any_active_abnormal_status(1),
               "T3089 718 烈鬼：攻击支失手 → 无异常");

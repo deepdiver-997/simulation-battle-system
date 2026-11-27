@@ -91,7 +91,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         REQUIRE(try_apply_anomaly(&ctx, 1, kBurn, /*duration=*/3, /*actor=*/0));
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         act(b, 0);
         CHECK(ctx.has_active_abnormal_status(1, kIcebound),
               "T3245 827：对手烧伤 → 攻击命中冰封（落地 seed）");
@@ -103,7 +103,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         REQUIRE(try_apply_anomaly(&ctx, 1, kFrostbite, /*duration=*/3, /*actor=*/0));
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         act(b, 0);
         CHECK(!ctx.has_active_abnormal_status(1, kIcebound),
               "T3245 827：失手 seed → 无冰封（冻伤门向）");
@@ -114,7 +114,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet<827>(row_1)), make_party(plain_pet()));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         act(b, 0);
         CHECK(!ctx.has_active_abnormal_status(1, kIcebound),
               "T3245 827：门闭（无烧伤/冻伤）→ 不冰封");
@@ -169,7 +169,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         REQUIRE(try_apply_anomaly(&ctx, 1, kBurn, /*duration=*/3, /*actor=*/0));
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         act(b, 0);
         CHECK(ctx.has_active_abnormal_status(1, kIcebound),
               "T3248 827：row2 冰封支同参生效（互锚）");

@@ -69,7 +69,7 @@ EffectResult effect_186_second_mover_stat_up(BattleContext* ctx, const EffectArg
     if (acting_side_is_first(ctx)) {
         return EffectResult::kOk;   // 先出手：条件不成立（不掷骰）
     }
-    if (!roll_percent(percent)) {
+    if (!roll_percent(ctx->rng(), percent)) {
         return EffectResult::kOk;   // 概率未触发
     }
     (void)g_core->stat_change(ctx, owner, slot, levels);

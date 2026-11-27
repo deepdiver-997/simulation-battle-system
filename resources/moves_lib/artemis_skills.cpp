@@ -197,7 +197,7 @@ EffectResult effect_2273_priority_vs_attack(BattleContext* ctx, const EffectArgs
     }
     ctx->ws.preemptive_level[owner] += 3;
     if (g_core && g_core->apply_anomaly && is_valid_abnormal_status_id(anomaly)
-        && roll_percent(pct)) {
+        && roll_percent(ctx->rng(), pct)) {
         g_core->apply_anomaly(ctx, target, anomaly, random_anomaly_duration(), owner);
     }
     return EffectResult::kOk;
@@ -243,7 +243,7 @@ EffectResult effect_2198_shield_sleep(BattleContext* ctx, const EffectArgs& args
         return EffectResult::kOk;
     }
     if (g_core && g_core->apply_anomaly && is_valid_abnormal_status_id(anomaly)
-        && roll_percent(pct)) {
+        && roll_percent(ctx->rng(), pct)) {
         g_core->apply_anomaly(ctx, target, anomaly, random_anomaly_duration(), owner);
     }
     return EffectResult::kOk;

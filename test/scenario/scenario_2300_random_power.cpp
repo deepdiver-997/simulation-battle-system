@@ -55,6 +55,8 @@ int main() {
         for (int t = 0; t < 10; ++t) {
             ScenarioBattle b(make_party(self_pet({kFengHui, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                              make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+            // 每个独立对局使用可复现但不同的种子，避免重复采同一个首抽。
+            b.ctx().seed_rng(1000U + static_cast<unsigned>(t) * 7919U);
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -77,6 +79,8 @@ int main() {
         for (int t = 0; t < 10; ++t) {
             ScenarioBattle b(make_party(self_pet({kYuanGu, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                              make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+            // 每个独立对局使用可复现但不同的种子，避免重复采同一个首抽。
+            b.ctx().seed_rng(1000U + static_cast<unsigned>(t) * 7919U);
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

@@ -160,7 +160,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, kGrass)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261107);
+        b.ctx().seed_rng(20261107);
         cast_round(b, 0);
         CHECK_EQ(a640(ctx, 0, 0), 50, "T1 申报 P=50");
         CHECK_EQ(a640(ctx, 0, 1), 7, "T1 申报异常码=7（疲惫）");
@@ -191,7 +191,7 @@ int main() {
                             scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(kSeed);
+            b.ctx().seed_rng(kSeed);
             cast_round(b, 0);
             CHECK_EQ(a640(ctx, 0, 3), 0, "T2a 天敌观测=0");
             CHECK_EQ(a640(ctx, 0, 4), 40, "T2a declared=40（不翻倍）");
@@ -210,7 +210,7 @@ int main() {
                             scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, kGrass)));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(kSeed);
+            b.ctx().seed_rng(kSeed);
             cast_round(b, 0);
             CHECK_EQ(a640(ctx, 0, 3), 1, "T2b 天敌观测=1");
             CHECK_EQ(a640(ctx, 0, 4), 80, "T2b declared=80（40×2）");
@@ -229,7 +229,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(47);
+        b.ctx().seed_rng(47);
         cast_round(b, 0);
         CHECK_EQ(static_cast<int>(minstd_draw(47, 1) % 100), 29, "T3 闭式核验 d1=29");
         CHECK_EQ(a640(ctx, 0, 0), 30, "T3 申报 P=30（48/770/1046 的参不串位）");
@@ -252,7 +252,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = kMyMax - 500;   // 预扣 500（让 671 的回血可见，不封顶）
-        sbs_srand(62);
+        b.ctx().seed_rng(62);
         cast_round(b, 0);
         CHECK_EQ(static_cast<int>(minstd_draw(62, 1) % 100), 34, "T4 闭式核验 d1=34");
         CHECK_EQ(a640(ctx, 0, 1), 27, "T4 申报异常码=27（感染；切片 [35,27,2] 零串位）");
@@ -287,7 +287,7 @@ int main() {
                         scenario::make_party(foe({kHuaShi, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, kGrass)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(kSeed);
+        b.ctx().seed_rng(kSeed);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -313,7 +313,7 @@ int main() {
                             scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(75);
+            b.ctx().seed_rng(75);
             cast_round(b, 0);
             CHECK_EQ(static_cast<int>(minstd_draw(75, 1) % 100), 25, "T6a 闭式核验 d1=25");
             CHECK_EQ(a640(ctx, 0, 4), 25, "T6a declared=25（非天敌不翻倍）");
@@ -330,7 +330,7 @@ int main() {
                             scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(32);
+            b.ctx().seed_rng(32);
             cast_round(b, 0);
             CHECK_EQ(static_cast<int>(minstd_draw(32, 1) % 100), 24, "T6b 闭式核验 d1=24");
             CHECK_EQ(a640(ctx, 0, 6), static_cast<int>(ApplyAnomalyResult::SUCCESS),
@@ -349,7 +349,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261108);
+        b.ctx().seed_rng(20261108);
         cast_round(b, 0);   // R0 开窗
         CHECK_EQ(a1339(ctx, 0, 0), 3, "V1 申报回合数=3");
         CHECK_EQ(a1339(ctx, 0, 1), 100, "V1 申报概率=100");
@@ -382,7 +382,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.apply_abnormal_status_for_rounds(1, static_cast<int>(AbnormalStatusId::Paralysis),
                                              5);   // 控制类不扣血（坑 5）
-        sbs_srand(20261109);
+        b.ctx().seed_rng(20261109);
         cast_round(b, 0);
         CHECK_EQ(a1339(ctx, 0, 3), 0, "V2 条件观测=0（对手处于异常）");
         CHECK_EQ(a1339(ctx, 0, 4), 0, "V2 窗未注册（start=0）");
@@ -410,7 +410,7 @@ int main() {
                         scenario::make_party(foe({kWuSheng, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261110);
+        b.ctx().seed_rng(20261110);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0 双开窗
@@ -450,7 +450,7 @@ int main() {
                             scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(99);
+            b.ctx().seed_rng(99);
             cast_round(b, 0);
             attack_round(b, 1);
             CHECK_EQ(static_cast<int>(minstd_draw(99, 3) % 100), 49, "V5a 闭式核验 d3=49");
@@ -469,7 +469,7 @@ int main() {
                             scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(6);
+            b.ctx().seed_rng(6);
             cast_round(b, 0);
             attack_round(b, 1);
             CHECK_EQ(static_cast<int>(minstd_draw(6, 3) % 100), 50, "V5b 闭式核验 d3=50");
@@ -488,7 +488,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261111);
+        b.ctx().seed_rng(20261111);
         cast_round(b, 0);   // R0 开窗（1099/752 对空盘 no-op）
         CHECK_EQ(a1339(ctx, 0, 0), 1, "V6 申报回合数=1");
         CHECK_EQ(a1339(ctx, 0, 1), 100, "V6 申报概率=100");
@@ -514,7 +514,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261112);
+        b.ctx().seed_rng(20261112);
         cast_round(b, 0);   // R0 开窗
         attack_round(b, 2);   // R1 属性技（缩头）→ 门关不 tick
         CHECK_EQ(a1339(ctx, 0, 5), 0, "V7 R1 属性技 tick=0（攻击技门关）");

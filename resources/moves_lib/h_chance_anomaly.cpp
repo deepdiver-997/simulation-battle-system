@@ -14,9 +14,9 @@
 // 实现范式：
 //   - 99 = apply_anomaly_checked 直接申报（概率闸门管道，F9 782 同款调用面）——
 //     "命中时"时点 = SKILL_EFFECT 桶（效果结算期、本就后于命中判定，天然成立）。
-//   - 451 = 种类 roll 本地三选一（sbs_rand()%3：烧伤2/冻伤5/中毒1）+ apply_anomaly_
+//   - 451 = 种类 roll 本地三选一（rng.next()%3：烧伤2/冻伤5/中毒1）+ apply_anomaly_
 //     checked(chance={0}) 申报——概率仍走闸门管道（申报制：未中无副作用，种类
-//     roll 白掷无害）；与 F8 1244 随机区间的本地 sbs_rand() 同风格（数值 roll 本地、
+//     roll 白掷无害）；与 F8 1244 随机区间的本地 rng.next() 同风格（数值 roll 本地、
 //     概率判定归原语）。{1}>1 无实载，按 kinds 循环不重复选种实现（每步独立申报
 //     chance），记档待官方实测翻案点。
 //
@@ -83,7 +83,7 @@ EffectResult effect_451_random_triple_anomaly(BattleContext* ctx, const EffectAr
                                    static_cast<int>(AbnormalStatusId::Poison)};
     std::set<int> picked;
     while (static_cast<int>(picked.size()) < kinds) {
-        picked.insert(pool[sbs_rand() % static_cast<int>(pool.size())]);
+        picked.insert(pool[ctx->rng().next() % static_cast<int>(pool.size())]);
     }
     for (const int anomaly : picked) {
         // 概率判定归申报原语（闸门管道一致）；未中无副作用，种类 roll 白掷无害。

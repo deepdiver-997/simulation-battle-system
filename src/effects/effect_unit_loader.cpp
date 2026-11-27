@@ -82,33 +82,20 @@ void fill_unit_fields(const json& j, EffectUnit& u, const std::vector<int>& skil
         u.condition = static_cast<UnitCondition>(c);
     }
     u.condition_param = resolve_int(j, "condition_param", skill_args, 0);
-    // 分支由 build 递归补链（on_* 指针）。
 }
 
-// 递归统计节点数（含根与各分支子树），供 reserve 保证构建期零 realloc（指针稳定）。
-int count_nodes(const json& j) {
-    int n = 1;
-    for (const char* key : {"on_success", "on_immune", "on_blocked", "on_other"}) {
-        const auto it = j.find(key);
-        if (it != j.end() && it->is_object()) {
-            n += count_nodes(*it);
-        }
-    }
-    return n;
-}
-
-// 递归构建：追加节点到 storage 尾，随后补齐其分支指针指向子节点地址。
+// 递归构建：先追加父节点，再构建分支并记录子节点下标。
 int build(const json& j, const std::vector<int>& skill_args, std::vector<EffectUnit>& storage) {
     const int idx = static_cast<int>(storage.size());
     EffectUnit u;
     fill_unit_fields(j, u, skill_args);
     storage.push_back(u);
 
-    auto link = [&](const char* key, const EffectUnit* EffectUnit::*member) {
+    auto link = [&](const char* key, int EffectUnit::*member) {
         const auto it = j.find(key);
         if (it != j.end() && it->is_object()) {
             const int child = build(*it, skill_args, storage);
-            storage[static_cast<std::size_t>(idx)].*member = &storage[static_cast<std::size_t>(child)];
+            storage[idx].*member = child;
         }
     };
     link("on_success", &EffectUnit::on_success);
@@ -131,7 +118,5 @@ int load_effect_unit_from_json(const std::string& unit_json, const std::vector<i
     if (!j.is_object()) {
         return -1;
     }
-    // 预先保留足够容量 → 构建期间零 realloc → 分支指针稳定。
-    storage.reserve(storage.size() + static_cast<std::size_t>(count_nodes(j)));
     return build(j, skill_args, storage);
 }

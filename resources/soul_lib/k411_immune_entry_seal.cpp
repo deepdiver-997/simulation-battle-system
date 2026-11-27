@@ -271,7 +271,7 @@ EffectResult k1480_arm(BattleContext* ctx, const SoulNodeArgs& a) {
                 return;
             }
             c->plugin_storage[kAudit1480Pct + owner] = immune_pct;   // 审计槽：掷前写
-            if (!roll_percent(immune_pct)) {
+            if (!roll_percent(c->rng(), immune_pct)) {
                 // 未触发：逐笔记账 → 战阶末补偿（majority 逐次，记档②）
                 const int cnt_key = k1480FailCnt + owner;
                 c->plugin_storage[cnt_key] = flag_of(c, cnt_key) + 1;
@@ -497,7 +497,7 @@ EffectResult k1528_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
     set_flag(ctx, k1528LowFlag + owner, low ? 1 : 0);
     set_flag(ctx, k1528HighFlag + owner, high ? 1 : 0);
 
-    if (low && crit_pct > 0 && roll_percent(crit_pct)) {
+    if (low && crit_pct > 0 && roll_percent(ctx->rng(), crit_pct)) {
         ctx->ws.must_crit[owner] = true;   // 必暴（ws 每回合 reset → 当回合有效）
     }
     return EffectResult::kOk;

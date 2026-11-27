@@ -104,7 +104,7 @@ EffectResult effect_446_random_three_up(BattleContext* ctx, const EffectArgs& ar
                      "需要 stat_change 原语");
     int slots[6] = {0, 1, 2, 3, 4, 5};
     for (int i = 0; i < 3; ++i) {
-        const int j = i + (sbs_rand() % (6 - i));
+        const int j = i + (ctx->rng().next() % (6 - i));
         const int tmp = slots[i];
         slots[i] = slots[j];
         slots[j] = tmp;

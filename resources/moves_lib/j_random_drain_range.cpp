@@ -86,7 +86,7 @@ EffectResult effect_1694_random_drain_range(BattleContext* ctx, const EffectArgs
     const int range_lo = boosted ? lo_boost : lo;
     const int range_hi = boosted ? hi_boost : hi;
     const int span = range_hi - range_lo + 1;
-    const int amount = range_lo + (span > 1 ? sbs_rand() % span : 0);
+    const int amount = range_lo + (span > 1 ? ctx->rng().next() % span : 0);
 
     ctx->plugin_storage[k1694AuditBase + owner * 2] = amount;
     ctx->plugin_storage[k1694AuditBase + owner * 2 + 1] = boosted ? 1 : 0;

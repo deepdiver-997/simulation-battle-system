@@ -92,9 +92,11 @@ int main() {
     // T2 99 [50] 暗影波：45 场独立对局统计带（落地 ∈ [12,33]，期望 22.5）
     {
         int hits = 0;
+        SbsRng trial_seeds(20261004);
         for (int i = 0; i < 45; ++i) {
             ScenarioBattle b(make_party(self_pet({kAnYingBo, kPaDa, kPaDa, kPaDa, kPaDa})),
                              make_party(foe_pet()));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -134,9 +136,11 @@ int main() {
     // T4 451 种类均匀性：30 场 chance=100 → 三种各出现 ≥1
     {
         int burn = 0, frost = 0, poison = 0;
+        SbsRng trial_seeds(20261005);
         for (int i = 0; i < 30; ++i) {
             ScenarioBattle b(make_party(self_pet({kShaXing, kPaDa, kPaDa, kPaDa, kPaDa})),
                              make_party(foe_pet()));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -159,9 +163,11 @@ int main() {
     // T5 451 [30,1] 天之环：30 场统计带（落地 ∈ [2,21]，期望 9）
     {
         int hits = 0;
+        SbsRng trial_seeds(20261006);
         for (int i = 0; i < 30; ++i) {
             ScenarioBattle b(make_party(self_pet({kTianZhiHuan, kPaDa, kPaDa, kPaDa, kPaDa})),
                              make_party(foe_pet()));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

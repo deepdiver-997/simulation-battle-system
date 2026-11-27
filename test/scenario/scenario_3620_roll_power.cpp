@@ -48,7 +48,7 @@ ElfPet plain_pet() {
 int probe(int seed) {
     ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     b.start();
     ctx.debug_step_mode = true;
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

@@ -75,6 +75,8 @@ int main() {
             ScenarioBattle b(
                 make_party(self_pet({kHuPi, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                 make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+            // 每局固定不同种子，避免独立局反复采样同一随机序列。
+            b.ctx().seed_rng(1000U + static_cast<unsigned>(g) * 7919U);
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

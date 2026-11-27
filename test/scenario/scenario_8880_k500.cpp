@@ -178,7 +178,6 @@ std::uint64_t next_rng(std::uint64_t state) { return state*16807ULL%2147483647UL
 
 int main() {
     if (!PetFactory::initialize_runtime_data()) return 1;
-    sbs_srand(500);
     // A：五条全链切片，非只测选中的一个效果切片。
     {
         const std::vector<std::pair<int,std::vector<std::pair<int,std::vector<int>>>>> want={
@@ -201,7 +200,7 @@ int main() {
     // B：真实五载体完整链×两侧；纯链80%以seed1第二掷49确保主支成功。
     for (int move:{30192,32405,34014,34282,38370}) for (int side:{0,1}) {
         Fight f(side,true,move);
-        sbs_srand(1);
+        f.ctx().seed_rng(1);
         own(f,side);
         const int code=move==34282?5:(move==38370?24:6);
         CHECK(red(f,side)>300,"B 五载体实扣过门");
@@ -215,13 +214,13 @@ int main() {
         int actual=0;
         {
             Fight f(side,first,kMove,600,{999999,100,6,2,100,8});
-            sbs_srand(71); own(f,side,0,first?-1:1); actual=red(f,side);
+            f.ctx().seed_rng(71); own(f,side,0,first?-1:1); actual=red(f,side);
             CHECK(actual>300,"C 真实采样远离浮动门");
             window(f,side,0,"C 门闭无回退");
         }
         for (int offset:{-1,0,1}) {
             Fight f(side,first,kMove,600,{actual+offset,100,6,2,100,8});
-            sbs_srand(71); own(f,side,0,first?-1:1);
+            f.ctx().seed_rng(71); own(f,side,0,first?-1:1);
             CHECK_EQ(red(f,side),actual,"C 同种子真实红伤不受门影响");
             CHECK_EQ(active(f,1-side,6),offset<0,"C 严格>，等号不开门");
             window(f,side,0,"C 门闭和成功均不回退");
@@ -246,14 +245,14 @@ int main() {
         for (int i=0;i<4;++i) {
             const int chance=chances[i];
             Fight f(0,true,kMove,600,{280,chance,6,2,50,8});
-            sbs_srand(seed); own(f,0);
+            f.ctx().seed_rng(seed); own(f,0);
             const bool hit=chance==100 || (chance>0 && next_rng(next_rng(seed))%100<static_cast<unsigned>(chance));
             CHECK_EQ(active(f,1,6),hit,"E 主支概率真实掷点 "+std::to_string(chance));
             window(f,0,hit?0:2,"E 仅未落地武装");
             CHECK_EQ(events(f,EventType::EVENT_ANOMALY_ATTACH_LOW_CHANCE,0,1,chance),chance<=50?1:0,
                      "E 申报制低概率事件");
             CHECK_EQ(applied(f,1,8),0,"E 施放当回合绝不掷回退");
-            states[i]=sbs_rand_state(); damage[i]=red(f,0);
+            states[i]=f.ctx().rng().state(); damage[i]=red(f,0);
         }
         CHECK_EQ(states[0],states[3],"E 0/100均不耗掷点");
         CHECK_EQ(states[1],states[2],"E 50/80同样恰一掷");
@@ -280,7 +279,7 @@ int main() {
         }
         for (int r=1;r<=rounds+1;++r) {
             clear(f,1-side);
-            sbs_srand(r%2?1:2);
+            f.ctx().seed_rng(r%2?1:2);
             own(f,side,r%2?1:3);
             const bool hit=r<=rounds && r%2==1;
             CHECK_EQ(active(f,1-side,8),hit,"F 每回合重掷且仅在窗内");
@@ -294,7 +293,7 @@ int main() {
     for (int chance:{0,50,80,100}) for (unsigned seed:{1u,2u}) {
         Fight f(0,true,kMove,600,{280,0,6,1,chance,13});
         own(f,0);
-        sbs_srand(seed); own(f,0,1);
+        f.ctx().seed_rng(seed); own(f,0,1);
         const bool hit=chance==100 || (chance>0 && next_rng(next_rng(seed))%100<static_cast<unsigned>(chance));
         CHECK_EQ(active(f,1,13),hit,"G 第二层概率与异常码透传");
         CHECK(!active(f,1,6),"G 第二层不拿主支异常码");

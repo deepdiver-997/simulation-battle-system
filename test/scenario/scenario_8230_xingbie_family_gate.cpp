@@ -110,7 +110,7 @@ ElfPet foe(Gender g = Gender::NONE, int speed = 100) {
 // 我方出载体、对手静默（8200 run_cast 同式；130 rider 差值对照与 898 哨兵靠它）。
 void run_cast(ScenarioBattle& b, int skill_index, int seed, Gender foe_gender) {
     b.ctx().getPet(1).gender = foe_gender;
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, skill_index);
     b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
     b.drive();
@@ -119,7 +119,7 @@ void run_cast(ScenarioBattle& b, int skill_index, int seed, Gender foe_gender) {
 // 双方各出一刀（对手拍打反击；131 免疫挡伤/过期行为断言靠它，7970 round_drive 同式）。
 void round_drive(ScenarioBattle& b, int my_idx, Gender foe_gender) {
     b.ctx().getPet(1).gender = foe_gender;
-    sbs_srand(static_cast<unsigned>(20261108));
+    b.ctx().seed_rng(static_cast<unsigned>(20261108));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, my_idx);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.drive();

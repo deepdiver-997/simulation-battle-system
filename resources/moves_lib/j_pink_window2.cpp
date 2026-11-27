@@ -73,7 +73,7 @@ EffectResult j178_725_tick(BattleContext* c, const EffectArgs& a) {
     if (self < 0 || self > 1) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(c->rng(), chance)) {
         return EffectResult::kOk;
     }
     const int opp = 1 - self;

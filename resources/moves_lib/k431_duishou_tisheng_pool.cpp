@@ -200,7 +200,7 @@ EffectResult effect_184_opp_boost_cond_self_up(BattleContext* ctx, const EffectA
         set_storage_int_local(ctx, key184(owner, 8), 3);
         return EffectResult::kOk;
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         set_storage_int_local(ctx, key184(owner, 5), 0);
         set_storage_int_local(ctx, key184(owner, 8), 2);
         return EffectResult::kOk;

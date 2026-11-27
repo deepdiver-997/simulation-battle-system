@@ -43,7 +43,7 @@
 //     resources/moves_lib/k467_dodge_refund.cpp:138/218：426
 //     round_window.cpp:601"{0}回合内每回合{1}%闪避对手攻击"同文形——当回合立即写
 //     + ROUND_START InRounds 窗 tick 逐回合重写，ws 每回合 memset 后重写）。
-//     掷点 = 引擎命中公式内生（skills.cpp:953 `sbs_rand()%100 >= hit_chance` →
+//     掷点 = 引擎命中公式内生（skills.cpp:953 `ctx->rng().next()%100 >= hit_chance` →
 //     MISS，每刀一抽；hit_chance = accuracy − dodge×100）——插件**不另掷**：
 //     {1}/100 申报进 dodge_rate 即消费（0% → dodge_rate=0 结构性不翻转必不闪避、
 //     100% → hit_chance≤0 必 miss——两档确定性；必中凭证绕过整条链

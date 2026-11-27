@@ -238,7 +238,7 @@ int k446_zero_random_pp_slots(BattleContext* ctx, int target, int want, int acto
     constexpr int kN = 5;   // 技能槽固定 5（elf-pet.h std::array<Skills, 5>）
     int slots[kN] = {0, 1, 2, 3, 4};
     for (int i = kN - 1; i > 0; --i) {
-        std::swap(slots[i], slots[sbs_rand() % (i + 1)]);
+        std::swap(slots[i], slots[ctx->rng().next() % (i + 1)]);
     }
     int zeroed = 0;
     for (int k = 0; k < want && k < kN; ++k) {

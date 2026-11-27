@@ -63,7 +63,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         foe_hits(b);
         CHECK_EQ(b.ctx().ability_levels[0][0], 1, "T3530 315：落地 seed → 攻 +1");
         std::cout << "  [T3530] 受击攻升 通过\n";
@@ -73,7 +73,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         foe_hits(b);
         CHECK_EQ(b.ctx().ability_levels[0][0], 0, "T3531 315：失手 seed → 攻不变");
         std::cout << "  [T3531] 失手对照 通过\n";

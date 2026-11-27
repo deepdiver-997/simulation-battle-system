@@ -74,7 +74,7 @@ EffectResult effect_1734_break_fear_amp(BattleContext* ctx, const EffectArgs& ar
     if (g_core->break_round_effects) {
         g_core->break_round_effects(ctx, target);
     }
-    if (roll_percent(chance) && g_core->apply_anomaly) {
+    if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly) {
         (void)anomaly_landed(g_core->apply_anomaly(ctx, target, status,
                                                    random_anomaly_duration(), owner));
     }

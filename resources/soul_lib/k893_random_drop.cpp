@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K175 攻击后随机降属族 —— effect 893（1 宏 2 行）
 //
 // 行清单（tools/soul_effects_dump.py 893，2026-10-07）：
@@ -78,7 +77,7 @@ EffectResult soulmark_893_arm(BattleContext* ctx, const EffectArgs& args) {
             int guard = 0;
             while (done < drop_count && guard < 100) {
                 ++guard;
-                const int slot = sbs_rand() % 6;
+                const int slot = wctx->rng().next() % 6;
                 if (picked[slot]) {
                     continue;
                 }

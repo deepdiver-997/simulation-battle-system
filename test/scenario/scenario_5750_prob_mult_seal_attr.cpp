@@ -69,8 +69,9 @@ struct Trial {
     int foe_hit_after_r2 = 0;
 };
 
-Trial run_trial() {
+Trial run_trial(unsigned seed) {
     ScenarioBattle b(make_party(mk_owner()), make_party(mk_foe()));
+    b.ctx().seed_rng(seed);
     b.start();
     BattleContext& ctx = b.ctx();
     const int foe_before = ctx.getPet(1).hp;
@@ -101,7 +102,7 @@ int main() {
     int rolled_n = 0, seal_n = 0, bad_behavior = 0;
     long mult_dmg = 0, plain_dmg = 0;
     for (int i = 0; i < N; ++i) {
-        const Trial t = run_trial();
+        const Trial t = run_trial(1 + i * 104729u);
         if (t.rolled) {
             ++rolled_n;
             mult_dmg += t.damage;

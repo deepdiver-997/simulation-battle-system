@@ -53,7 +53,7 @@ EffectResult soulmark_2260_pp_signals(BattleContext* ctx, const EffectArgs& args
 //   · **击败对手才清零**；对手靠魂印在效果秒杀之后回血活下来 → 无 EVENT_DEATH →
 //     进度保持（可一直累积到上限）且随切换保留——犀牛那类可以一直硬吃无相谛。
 //
-// ⚠️ 为什么进度不写进技能对象：早期实现是"把 `parsed_units_[i].condition` 改成 None"，
+// ⚠️ 为什么进度不写进技能对象：早期实现是直接把解析单元的 condition 改成 None，
 //   毛病有二——① 进度被持久写进 `Skills`（core 对象被插件改写，同一批 pet 打第二局会把
 //   进度带过去；历史实测"给 Skills 加成员"还会引出依赖布局的 UB）；② 想重置就得另存一份
 //   原值台账，两份状态必须同步。现在技能对象**只读**，进度就是下面这个整数，重置 = 归零。
@@ -79,7 +79,7 @@ WanxiangState& wanxiang_state(BattleContext* ctx, int owner) {
 // 第五技能里"带条件"的单元数 = 进度上限（无条件的单元本来就不需要取消）。
 int wanxiang_conditional_units(const Skills& skill) {
     int n = 0;
-    for (const EffectUnit& unit : skill.parsed_units_) {
+    for (const EffectUnit& unit : skill.parsed_units()) {
         if (unit.condition != UnitCondition::None) {
             ++n;
         }

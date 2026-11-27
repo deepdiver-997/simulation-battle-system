@@ -158,7 +158,7 @@ EffectResult effect_1526_random_pink_range(BattleContext* ctx, const EffectArgs&
 
     // [lo,hi] 闭区间均匀随机（J223 1694 同构：span<=1 不耗 rand）。
     const int span = hi - lo + 1;
-    const int amount = lo + (span > 1 ? sbs_rand() % span : 0);
+    const int amount = lo + (span > 1 ? ctx->rng().next() % span : 0);
     ctx->plugin_storage[k1526AuditBase + owner] = amount;   // 审计槽：场景精确断言用
     if (g_core && g_core->fixed_damage) {
         (void)g_core->fixed_damage(ctx, target, amount);    // FIXED 粉伤（吃护罩/免粉）

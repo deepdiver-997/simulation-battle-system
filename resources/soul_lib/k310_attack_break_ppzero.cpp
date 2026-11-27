@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K310 攻消回合类+PP归零族 —— effect 830（1 宏 / 1 行）
 //（苏亚希斯 3204 args[1,0]；号段 4660-4669，worktree ../agents/k310，2026-10-21）
 //
@@ -93,7 +92,7 @@ EffectResult k310_830_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             }
             int count = k310_read_count(c, owner);
             while (count-- > 0 && !pp_slots.empty()) {
-                const int pick = sbs_rand() % static_cast<int>(pp_slots.size());
+                const int pick = c->rng().next() % static_cast<int>(pp_slots.size());
                 foe.skills[pp_slots[pick]].pp = 0;   // K239 直改手法
                 pp_slots.erase(pp_slots.begin() + pick);
             }

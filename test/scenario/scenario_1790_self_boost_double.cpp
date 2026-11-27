@@ -82,6 +82,8 @@ int main() {
                 ScenarioBattle b(
                     make_party(self_pet({kHanLai, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                     make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+                // 不同试次显式采用可复现的不同初态。
+                b.ctx().seed_rng(1000U + static_cast<unsigned>(t) * 7919U);
                 b.start();
                 BattleContext& ctx = b.ctx();
                 b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

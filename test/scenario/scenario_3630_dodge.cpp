@@ -64,7 +64,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(/*with_mark=*/true)),
                          make_party(plain_pet()));
         b.start();
-        sbs_srand(12);
+        b.ctx().seed_rng(12);
         foe_hits(b);
         CHECK_EQ(b.ctx().getPet(0).hp, 99999, "T3630 307：miss seed → 我方无伤");
         std::cout << "  [T3630] 闪避miss 通过\n";
@@ -75,7 +75,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(/*with_mark=*/true)),
                          make_party(plain_pet()));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         foe_hits(b);
         CHECK(b.ctx().getPet(0).hp < 99999, "T3631 307：命中 seed → 掉血");
         std::cout << "  [T3631] 命中对照 通过\n";

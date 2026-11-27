@@ -66,7 +66,7 @@ EffectResult effect_552_anomaly_gate_fixed(BattleContext* ctx, const EffectArgs&
     if (!j86_has_any_anomaly(ctx, target)) {
         return EffectResult::kOk;   // 门：对手处于异常状态
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         (void)g_core->fixed_damage(ctx, target, fixed);
     }
     return EffectResult::kOk;

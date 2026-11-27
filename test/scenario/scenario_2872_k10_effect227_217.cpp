@@ -59,7 +59,7 @@ int main() {
         ScenarioBattle b(scenario::make_party(holder_pet_227()),
                          scenario::make_party(attacker_pet()));
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261004);
+        ctx.seed_rng(20261004);
         b.start();
         for (int r = 1; r <= 3; ++r) {
             b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
@@ -76,7 +76,7 @@ int main() {
         ScenarioBattle b(scenario::make_party(holder_pet_217(10)),
                          scenario::make_party(attacker_pet()));
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261004);
+        ctx.seed_rng(20261004);
         b.start();
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);

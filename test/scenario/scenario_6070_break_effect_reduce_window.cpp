@@ -70,7 +70,7 @@ int run_case(bool break_it, int& break_count, int& pct_audit) {
     ScenarioBattle b(make_party(self_pet()), make_party(foe_pet()));
     b.start();
     BattleContext& ctx = b.ctx();
-    sbs_srand(kSeed);
+    b.ctx().seed_rng(kSeed);
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);   // 1886
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
     b.drive();
@@ -95,7 +95,7 @@ int run_case(bool break_it, int& break_count, int& pct_audit) {
     pct_audit = audit_value(ctx, kPctBase + 0);
 
     const int hp_before = ctx.getPet(0).hp;
-    sbs_srand(kSeed);   // R3 攻防双方 rand 序对齐（同种子对拍）
+    b.ctx().seed_rng(kSeed);   // R3 攻防双方 rand 序对齐（同种子对拍）
     b.submit_operation(0, BattleFsm::ActionType::NONE, 0);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);   // 拍打
     b.drive();

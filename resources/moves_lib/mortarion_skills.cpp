@@ -52,7 +52,7 @@ EffectResult effect_531_low_damage_fear(BattleContext* ctx, const EffectArgs& ar
     if (chance > 100) {
         chance = 100;
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, target, static_cast<int>(AbnormalStatusId::Fear),
@@ -161,7 +161,7 @@ EffectResult effect_1809_hood_break_fear(BattleContext* ctx, const EffectArgs& a
             if (c->getPet(self).hood_bank_.quantity_of(1809) > 0) {
                 return;   // 我那笔护罩还在（破的是别的盾/罩）
             }
-            if (!roll_percent(pct)) {
+            if (!roll_percent(c->rng(), pct)) {
                 return;
             }
             g_core->apply_anomaly(c, 1 - self, anomaly, random_anomaly_duration(), self);

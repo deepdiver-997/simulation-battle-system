@@ -66,7 +66,7 @@ int j220_zero_random_pp_slots(BattleContext* ctx, int target, int want, int acto
     int zeroed = 0;
     for (int i = 0; i < n; ++i) {
         // Fisher-Yates 局部洗牌：每次从 [i, size) 抽一个换到 i（656/931 同款）。
-        const int j = i + (sbs_rand() % (static_cast<int>(candidates.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(candidates.size()) - i));
         std::swap(candidates[static_cast<std::size_t>(i)],
                   candidates[static_cast<std::size_t>(j)]);
         const int slot = candidates[static_cast<std::size_t>(i)];
@@ -98,7 +98,7 @@ EffectResult effect_1519_double_branch_pp_zero(BattleContext* ctx, const EffectA
     }
 
     // 分支①：无条件概率门。pct 在位即消费（0 档显式关闸，不回退）。
-    const bool hit1 = roll_percent(pct1);
+    const bool hit1 = roll_percent(ctx->rng(), pct1);
     const int zeroed1 = hit1 ? j220_zero_random_pp_slots(ctx, target, slots1, owner) : 0;
     ctx->plugin_storage[k1519AuditBase + owner * 2] = (hit1 ? 1000 : 0) + zeroed1;
 
@@ -106,7 +106,7 @@ EffectResult effect_1519_double_branch_pp_zero(BattleContext* ctx, const EffectA
     const bool gate = j220_foe_has_drop(ctx, target);
     int audit2 = -1;
     if (gate) {
-        const bool hit2 = roll_percent(pct2);
+        const bool hit2 = roll_percent(ctx->rng(), pct2);
         const int zeroed2 = hit2 ? j220_zero_random_pp_slots(ctx, target, slots2, owner) : 0;
         audit2 = (hit2 ? 1000 : 0) + zeroed2;
     }

@@ -85,8 +85,8 @@ EffectResult monika_legacy_round_start(BattleContext* ctx, const EffectArgs& arg
                         /*anomaly_mask=*/0, /*duration_rounds=*/1, kLegacyImmuneSrcId,
                         /*soul_immunity=*/false, EffectScope::ON_STAGE,
                         /*counts=*/0, /*source_effect_id=*/1287, ImmunityTier::Modern,
-                        [](const BattleContext*, int) {
-                            return (sbs_rand() % 100) < 25;
+                        /*condition=*/nullptr, [](BattleContext* c, int) {
+                            return (c->rng().next() % 100) < 25;
                         });
     // ② 受到的攻击伤害减少 8%（MITIGATE 加算减伤槽；ws 每回合 reset → 此处重写；
     //    混沌魔君索伦森 1011 同款"受到的攻击伤害减少"通道）。

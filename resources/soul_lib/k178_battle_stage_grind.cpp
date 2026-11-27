@@ -113,7 +113,7 @@ EffectResult soulmark_351_arm(BattleContext* ctx, const EffectArgs& args) {
             if (!onstage_has_soul_mark(c, owner, 351)) {
                 return;
             }
-            if (!roll_percent(permille / 10)) {   // 千分比 → 百分比
+            if (!roll_percent(c->rng(), permille / 10)) {   // 千分比 → 百分比
                 return;
             }
             ElfPet& host = c->seerRobot[owner].elfPets[c->on_stage[owner]];

@@ -85,7 +85,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
-        sbs_srand(2124480732);   // 第 3 抽=80（闭式解；第 1/2 抽=双方伤害浮动）
+        ctx.seed_rng(2124480732);   // 第 3 抽=80（闭式解；第 1/2 抽=双方伤害浮动）
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -109,7 +109,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
-        sbs_srand(916808717);   // 第 3 抽=79
+        ctx.seed_rng(916808717);   // 第 3 抽=79
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
@@ -132,17 +132,17 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：武装窗 [0,5)
-        sbs_srand(1531942804);   // hit-only 第 2 抽=0 → 200
+        ctx.seed_rng(1531942804);   // hit-only 第 2 抽=0 → 200
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();   // R1：第一次受击
         CHECK_EQ(aint(ctx, 0, 4), 1, "T3 第一次受击合格=1");
         CHECK_EQ(aint(ctx, 0, 9), 200, "T3 第一次治疗 200");
-        sbs_srand(765971402);   // hit-only 第 2 抽=50 → 300
+        ctx.seed_rng(765971402);   // hit-only 第 2 抽=50 → 300
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();   // R2：第二次受击
@@ -163,20 +163,20 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：武装窗 [0,2)（N=2 切片；636/679 前链对手侧空转）
         CHECK_EQ(aint(ctx, 0, 2, -1), 100, "T4 申报 P=100（第二参切片正确）");
         CHECK_EQ(aint(ctx, 0, 0, -1), 0, "T4 窗起点=0");
         CHECK_EQ(aint(ctx, 0, 1, -1), 2, "T4 窋终点=0+2（N=2 切片正确）");
-        sbs_srand(1531942804);   // hit-only 第 2 抽=0 → 200
+        ctx.seed_rng(1531942804);   // hit-only 第 2 抽=0 → 200
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();   // R1（roundCount=1<2）：窗内末回合受击
         CHECK_EQ(aint(ctx, 0, 4), 1, "T4 末回合（1<2）合格");
         CHECK_EQ(aint(ctx, 0, 9), 200, "T4 末回合治疗 200");
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();   // R2（roundCount=2>=2）：过期

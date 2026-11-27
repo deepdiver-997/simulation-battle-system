@@ -212,7 +212,7 @@ EffectResult effect_158_kill_probe(BattleContext* ctx, const EffectArgs& args) {
     if (ctx->last_damage_actor[foe][foe_slot] != owner) {
         return EffectResult::kOk;   // 非本方击杀
     }
-    if (!roll_percent(percent)) {
+    if (!roll_percent(ctx->rng(), percent)) {
         return EffectResult::kOk;
     }
     if (!g_core || !g_core->stat_change) {

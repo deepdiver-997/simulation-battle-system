@@ -198,7 +198,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(1);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(1);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         // 免异常透明性：对手挂 9 回合全异常免疫——封属授予/拦截照常（封属≠异常通道）
         (void)ctx.grant_immunity(1, ImmunityType::ANOMALY, coverage_all(),
@@ -232,7 +232,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         // R1：首掷 MISS → 当回合减伤 30% 武装；对手拍打落地 → 减伤带
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -282,7 +282,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(storage_int(ctx, k1369Base + 0 * 16 + 0, -1), 0, "T8430.c R1 首掷未中");
@@ -303,7 +303,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(1);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(1);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         const int hp0 = ctx.getPet(0).hp;
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -328,7 +328,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kMingJiao, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(storage_int(ctx, k1196Base + 0 * 16 + 0, -1), 0, "T8430.e R1 首掷未中");
@@ -362,7 +362,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(9);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(9);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(storage_int(ctx, k1196Base + 0 * 16 + 0, -1), 0, "T8430.f R1 首掷未中");
@@ -395,7 +395,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kXiaoTaiYang, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(3);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(storage_int(ctx, k1196Base + 0 * 16 + 0, -1), 1, "T8430.g R1 首掷命中 → 封攻");
@@ -418,7 +418,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kSoulSong, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(storage_int(ctx, k1196Base + 0 * 16 + 1, -1), 1, "T8430.h R1 票武装");
@@ -450,7 +450,7 @@ int main() {
                          make_party(foe_pet(2, "印主1", {kMingFu, kMingJiao, kMingJiao, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(storage_int(ctx, k1196Base + 0 * 16 + 0, -1), 0, "T8430.i R1 side0 掷歪");
@@ -486,7 +486,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kMingJiao, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(storage_int(ctx, k1196Base + 0 * 16 + 1, -1), 1, "T8430.j R1 票武装");

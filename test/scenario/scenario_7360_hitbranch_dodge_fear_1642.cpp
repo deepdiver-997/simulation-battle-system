@@ -107,10 +107,10 @@ int main() {
 
     // ══ T7360 ① 受击 → 自身随机 3 项 +1（本体）════════════════════════════════
     {
-        sbs_srand(7360);
         ScenarioBattle b(make_party(mark_pet({3, 1, 3, 1, 70, 70, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7360);
         const int sum0 = level_sum(b.ctx(), 0);
         foe_hit_round(b);   // 红伤 → 受击分支
         CHECK_EQ(level_sum(b.ctx(), 0) - sum0, 3, "T7360 受击 → 自身随机3项+1（和增量）");
@@ -120,10 +120,10 @@ int main() {
 
     // ══ T7361 ① 无伤 → 对手随机 3 项 -1（本体）════════════════════════════════
     {
-        sbs_srand(7361);
         ScenarioBattle b(make_party(mark_pet({3, 1, 3, 1, 70, 70, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7361);
         const int sum0 = level_sum(b.ctx(), 1);
         idle_round(b);   // 全 NONE → 未受击分支
         CHECK_EQ(level_sum(b.ctx(), 1) - sum0, -3, "T7361 无伤 → 对手随机3项-1");
@@ -133,10 +133,10 @@ int main() {
 
     // ══ T7362 伙伴行：6 = 全能力 ±1 ═══════════════════════════════════════════
     {
-        sbs_srand(7362);
         ScenarioBattle b(make_party(mark_pet({6, 1, 6, 1, 100, 100, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7362);
         const int own0 = level_sum(b.ctx(), 0);
         foe_hit_round(b);
         CHECK_EQ(level_sum(b.ctx(), 0) - own0, 6, "T7362 伙伴行受击 → 全能力+1");
@@ -148,10 +148,10 @@ int main() {
 
     // ══ T7363 ② 提升态 → 闪避窗（70% 白盒；100% 白盒 + 行为必 Miss；解除回落）══
     {
-        sbs_srand(7363);
         ScenarioBattle b(make_party(mark_pet({3, 1, 3, 1, 70, 70, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7363);
         (void)stat_change(&b.ctx(), 0, 0, 1);   // 预置提升态
         park_at_fmr(b);
         CHECK(b.ctx().ws.dodge_rate[0] > 0.69f, "T7363 70% 闪避窗置位");
@@ -164,10 +164,10 @@ int main() {
         std::cout << "  [T7363] 70% 闪避窗白盒 通过\n";
     }
     {
-        sbs_srand(7364);
         ScenarioBattle b(make_party(mark_pet({6, 1, 6, 1, 100, 100, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7364);
         (void)stat_change(&b.ctx(), 0, 0, 1);
         park_at_fmr(b);
         CHECK(b.ctx().ws.dodge_rate[0] > 0.99f, "T7363 100% 闪避窗置位");
@@ -186,7 +186,7 @@ int main() {
                              make_party(foe_pet()));
             b.start();
             (void)stat_change(&b.ctx(), 1, 0, -1);   // 对手降态门
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             own_hit_round(b);
             if (foe_fear(b)) {
                 seed_fear = s;
@@ -197,7 +197,7 @@ int main() {
                          make_party(foe_pet()));
         b.start();
         (void)stat_change(&b.ctx(), 1, 0, -1);
-        sbs_srand(seed_fear);
+        b.ctx().seed_rng(seed_fear);
         own_hit_round(b);
         CHECK(foe_fear(b), "T7364 降态+命中 → 害怕");
         CHECK_EQ(b.ctx().get_abnormal_status_end_round(1, 6) - b.ctx().roundCount, 1,
@@ -206,7 +206,7 @@ int main() {
         ScenarioBattle c(make_party(mark_pet({3, 1, 3, 1, 70, 70, 1})),
                          make_party(foe_pet()));
         c.start();
-        sbs_srand(seed_fear);
+        c.ctx().seed_rng(seed_fear);
         own_hit_round(c);
         CHECK(!foe_fear(c), "T7364 无降态 → 不害怕（门对照）");
         std::cout << "  [T7364] 70% 害怕+降态门 通过 (seed " << seed_fear << ")\n";
@@ -214,10 +214,10 @@ int main() {
 
     // ══ T7365 ③ 害怕 100%（伙伴行）：确定性正反 ═══════════════════════════════
     {
-        sbs_srand(7365);
         ScenarioBattle b(make_party(mark_pet({6, 1, 6, 1, 100, 100, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7365);
         (void)stat_change(&b.ctx(), 1, 2, -1);   // 对手防御-1（降态门）
         own_hit_round(b);
         CHECK(foe_fear(b), "T7365 100% 降态+命中 → 害怕");
@@ -225,7 +225,7 @@ int main() {
         ScenarioBattle c(make_party(mark_pet({6, 1, 6, 1, 100, 100, 1})),
                          make_party(foe_pet()));
         c.start();
-        sbs_srand(7365);
+        c.ctx().seed_rng(7365);
         own_hit_round(c);
         CHECK(!foe_fear(c), "T7365 无降态 → 不害怕");
         std::cout << "  [T7365] 100% 害怕正反 通过\n";
@@ -233,11 +233,11 @@ int main() {
 
     // ══ T7366 boss：tips（boss无效）→ 全节点不注册 ════════════════════════════
     {
-        sbs_srand(7366);
         ScenarioBattle b(make_party(mark_pet({6, 1, 6, 1, 100, 100, 1})),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
+        b.ctx().seed_rng(7366);
         (void)stat_change(&b.ctx(), 0, 0, 1);   // 提升态 → 若注册则必闪
         (void)stat_change(&b.ctx(), 1, 0, -1);  // 降态 → 若注册则必怕
         park_at_fmr(b);

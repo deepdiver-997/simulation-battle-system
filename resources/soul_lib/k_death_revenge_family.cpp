@@ -124,7 +124,7 @@ EffectResult soulmark_304_arm(BattleContext* ctx, const EffectArgs& args) {
             if (self.hp > 0) {
                 return;   // 致死门（1067 同款：hp==0 即门，不挑事件类型）
             }
-            if (!roll_percent(pct)) {
+            if (!roll_percent(wctx->rng(), pct)) {
                 return;
             }
             *used += 1;

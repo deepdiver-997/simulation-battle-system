@@ -1,6 +1,9 @@
 #ifndef EFFECT_UNIT_H
 #define EFFECT_UNIT_H
 
+#include <span>
+#include <vector>
+
 #include <effects/effect.h>
 #include <primitives/battle_primitives.h>
 
@@ -64,24 +67,41 @@ struct EffectUnit {
     UnitCondition condition = UnitCondition::None;
     int condition_param = 0;  // TargetHpBelow 阈值等
 
-    // 分支动作（递归子单元；nullptr=无动作）。chance 未触发/条件不满足走 on_other。
-    const EffectUnit* on_success = nullptr;
-    const EffectUnit* on_immune = nullptr;   // Type B：被免疫 → 补偿
-    const EffectUnit* on_blocked = nullptr;
-    const EffectUnit* on_other = nullptr;    // 其余失败键（含概率未触发）
+    // 分支动作（子单元下标；-1=无动作）。chance 未触发/条件不满足走 on_other。
+    int on_success = -1;
+    int on_immune = -1;   // Type B：被免疫 → 补偿
+    int on_blocked = -1;
+    int on_other = -1;    // 其余失败键（含概率未触发）
+};
+
+class ParsedEffectProgram final {
+public:
+    // 复制装配数据再发布；装配期取得的地址不能修改这份程序。
+    // 分支必须为 -1 或指向程序内的后续节点，否则抛出 std::invalid_argument。
+    explicit ParsedEffectProgram(const std::vector<EffectUnit>& units);
+
+    std::span<const EffectUnit> units() const noexcept { return units_; }
+    const EffectUnit* unit_at(int index) const noexcept {
+        return index >= 0 && static_cast<std::size_t>(index) < units_.size()
+            ? &units_[static_cast<std::size_t>(index)] : nullptr;
+    }
+
+private:
+    const std::vector<EffectUnit> units_;
 };
 
 // 执行器（sim_core 内驻；原语在 sim_core，插件调不到）。
 // 概率 roll → 调原语 → 归一化细码为 BranchKey → 递归执行分支。
-// 返回最终归一化 BranchKey（测试/上层观测用）。
-BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args, const EffectUnit& unit);
+// 返回最终归一化 BranchKey（测试/上层观测用）；根下标无效则返回 Invalid。
+BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args,
+                              const ParsedEffectProgram& program, int root_index);
 
 // **跳过本单元条件**的执行器：条件视为已满足（概率 roll 照常）。
 // 用途 = 单元准入门（`UnitAdmissionFn`）：魂印侧记录了"取消进度"时，注册期就把该单元
 // 换成这个执行器注册，从而**不改技能对象**也能表达"该条已永久无条件"。
 // ⚠️ 只跳过**本单元顶层**的条件；递归进 on_success/on_other 等分支子单元时各自按条件判。
 BranchKey execute_effect_unit_unconditional(BattleContext* ctx, const EffectArgs& args,
-                                            const EffectUnit& unit);
+                                            const ParsedEffectProgram& program, int root_index);
 
 // ── 单元准入门（core 侧存储，插件经 IEffectRegistry::registerUnitAdmission 写入）──
 // core 的注册路径（Skills::register_branch）逐单元询问；任一钩子返回 true → 该单元跳过

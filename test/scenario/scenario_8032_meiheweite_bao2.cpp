@@ -229,15 +229,17 @@ int main() {
         carrier.resistance.setUncontrolSlot(1, 3, 60);     // 异常3 抗性 60%（>50% 段）
         preset_bao(b, 1);
         // ① 带曝：两段 ≤50% 全部扣穿 → 无论种子永不抵抗（确定性断言）。
+        SbsRng low_rng(80325);
         for (int i = 0; i < 50; ++i) {
-            CHECK_EQ(carrier.resistance.isResistantTo(2, meiheweite_bao::kBaoResistLowPenalty),
-                     false, "T8032d 5%全免+10%烧伤抗性被 10 点扣穿 → 永不抵抗");
+            const bool resisted = carrier.resistance.isResistantTo(
+                2, low_rng, meiheweite_bao::kBaoResistLowPenalty);
+            CHECK_EQ(resisted, false, "T8032d 5%全免+10%烧伤抗性被 10 点扣穿 → 永不抵抗");
         }
         // ② 同种子双跑：>50% 段不受惩罚影响（两次消费同一随机序列 → 结果一致）。
-        sbs_srand(80326);
-        const bool no_penalty = carrier.resistance.isResistantTo(3, 0);
-        sbs_srand(80326);
-        const bool with_penalty = carrier.resistance.isResistantTo(3, meiheweite_bao::kBaoResistLowPenalty);
+        SbsRng no_penalty_rng(80326), with_penalty_rng(80326);
+        const bool no_penalty = carrier.resistance.isResistantTo(3, no_penalty_rng);
+        const bool with_penalty = carrier.resistance.isResistantTo(
+            3, with_penalty_rng, meiheweite_bao::kBaoResistLowPenalty);
         CHECK_EQ(no_penalty, with_penalty, "T8032d 60%（>50%）抗性不受惩罚影响");
         // ③ 端到端：带曝载体吃烧伤 → 抗性段已扣穿，永不 RESISTED（无随机项）。
         for (int i = 0; i < 3; ++i) {

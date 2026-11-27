@@ -7,7 +7,7 @@
 //    默认参 [15,4]；逐载体：[15,4]×5、[30,3]×1、[50,2]×1）；
 // ③ 全库先例：直接三件套——
 //    · 概率掷点 roll_percent（common.h:102，100% 短路不耗抽取，「短路径不消耗
-//      sbs_rand()」纪律，heal_drain.cpp:298 同注）；
+//      rng.next()」纪律，heal_drain.cpp:298 同注）；
 //    · 比例回血 heal_max_hp_fraction（common.h:320，max_hp/denom 整除、返回实际量、
 //      吃封回血/恢复修正；1239「恢复自身最大体力的1/{0}」与 43 同式）；
 //    · 死亡封闭由 heal_amount 原语兜底（pet_death_notified no-op，2026-10-01 D2）。
@@ -83,7 +83,7 @@ EffectResult effect_410_prob_heal_fraction(BattleContext* ctx, const EffectArgs&
         set_storage_int_local(ctx, key410(owner, 6), -1);
         set_storage_int_local(ctx, key410(owner, 2), 1);
     } else {
-        const int r = sbs_rand() % 100;
+        const int r = ctx->rng().next() % 100;
         set_storage_int_local(ctx, key410(owner, 6), r);
         pass = r < chance;
         set_storage_int_local(ctx, key410(owner, 2), pass ? 1 : 0);

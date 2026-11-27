@@ -54,6 +54,14 @@ enum class HitInvalidMode : int {
     kFullNull = 1
 };
 
+class ParsedEffectProgram;
+
+// DB effects address a node in an immutable program, not inside a Skills object.
+struct ParsedEffectUnitRef {
+    std::shared_ptr<const ParsedEffectProgram> program;
+    int root_index = -1;
+};
+
 struct EffectArgs {
     std::vector<int> owned_int_args;
     std::vector<int> owned_vec_offsets;
@@ -64,6 +72,7 @@ struct EffectArgs {
     const int* vec_sizes = nullptr;
     int vec_count = 0;
     const void* extra = nullptr;
+    ParsedEffectUnitRef parsed_unit;
 
     EffectArgs() = default;
     explicit EffectArgs(std::vector<int> ints, const void* extra_ = nullptr)
@@ -86,7 +95,8 @@ struct EffectArgs {
         : owned_int_args(other.owned_int_args)
         , owned_vec_offsets(other.owned_vec_offsets)
         , owned_vec_sizes(other.owned_vec_sizes)
-        , extra(other.extra) {
+        , extra(other.extra)
+        , parsed_unit(other.parsed_unit) {
         refresh_views();
     }
 
@@ -94,7 +104,8 @@ struct EffectArgs {
         : owned_int_args(std::move(other.owned_int_args))
         , owned_vec_offsets(std::move(other.owned_vec_offsets))
         , owned_vec_sizes(std::move(other.owned_vec_sizes))
-        , extra(other.extra) {
+        , extra(other.extra)
+        , parsed_unit(std::exchange(other.parsed_unit, {})) {
         refresh_views();
         other.refresh_views();
     }
@@ -107,6 +118,7 @@ struct EffectArgs {
         owned_vec_offsets = other.owned_vec_offsets;
         owned_vec_sizes = other.owned_vec_sizes;
         extra = other.extra;
+        parsed_unit = other.parsed_unit;
         refresh_views();
         return *this;
     }
@@ -119,6 +131,7 @@ struct EffectArgs {
         owned_vec_offsets = std::move(other.owned_vec_offsets);
         owned_vec_sizes = std::move(other.owned_vec_sizes);
         extra = other.extra;
+        parsed_unit = std::exchange(other.parsed_unit, {});
         refresh_views();
         other.refresh_views();
         return *this;
@@ -134,6 +147,7 @@ struct EffectArgs {
 };
 
 class BattleContext;
+class SbsRng;
 class EffectFactory;
 
 using EffectFn = EffectResult (*)(BattleContext*, const EffectArgs&);
@@ -195,6 +209,10 @@ public:
                                  const std::string& source = {}) override;
     void registerSkillEffect(int effect_id, EffectFn effect_fn,
                              const std::string& source = {}) override;
+    void registerAuditedSkillEffect(int effect_id, EffectFn effect_fn,
+                                    const std::string& source = {}) override;
+    // Lookup only: probing a manually built battle must not initialize the registry.
+    static bool is_clone_audited(const Effect& effect);
     void registerSoulMarks(
         const std::vector<std::pair<int, EffectFn>>& soulmarks) override;
     void registerSkillEffects(
@@ -237,6 +255,7 @@ public:
 private:
     EffectFactory();
     ~EffectFactory() = default;
+    static EffectFactory& instance();
 
     // 从动态库加载所有效果
     void loadFromDynamicLibraries(const std::string& lib_dir);
@@ -244,13 +263,16 @@ private:
     // 初始化单例（只执行一次）
     void ensureInitialized(const std::string& lib_dir);
 
-    static bool roll_percent(int percent);
+    static bool roll_percent(int percent, SbsRng& rng);
+    void register_effect(int effect_id, EffectFn fn, const std::string& source,
+                         BattleCallbackCopy copy);
 
     // 缓存映射表：效果ID -> 效果函数 + 来源（撞号仲裁见 utils/registration_arbiter.h：
     // 重复注册按 basename 稳定序仲裁，不再 last-wins——生效者跨平台一致）
     struct EffectFnRegistration {
         EffectFn fn = nullptr;
         std::string source;
+        BattleCallbackCopy copy = BattleCallbackCopy::Unverified;
     };
     std::unordered_map<int, EffectFnRegistration> effect_cache_;
     mutable std::shared_mutex cache_mutex_;

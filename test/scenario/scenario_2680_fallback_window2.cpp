@@ -146,7 +146,7 @@ int main() {
                                        300)));
                 b.start();
                 BattleContext& ctx = b.ctx();
-                sbs_srand(s);
+                ctx.seed_rng(static_cast<unsigned>(s));
                 self_skill(b, 0);
                 both_act(b, 1);
                 if (ctx.getPet(0).hp == 99999) {
@@ -160,7 +160,7 @@ int main() {
                                        300)));
                 b.start();
                 BattleContext& ctx = b.ctx();
-                sbs_srand(s);
+                ctx.seed_rng(static_cast<unsigned>(s));
                 self_skill(b, 0);
                 both_act(b, 1);
                 const int raw = ctx.ws.raw_attack_damage[1];

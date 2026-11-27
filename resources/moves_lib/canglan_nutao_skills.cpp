@@ -283,7 +283,7 @@ EffectResult effect_1751_shield_with_deathrattle(BattleContext* ctx, const Effec
                     return;
                 }
                 g_core->fixed_damage(wctx, 1 - owner, dmg);
-                if (anomaly > 0 && g_core->apply_anomaly && roll_percent(chance)) {
+                if (anomaly > 0 && g_core->apply_anomaly && roll_percent(wctx->rng(), chance)) {
                     g_core->apply_anomaly(wctx, 1 - owner, anomaly, 1, owner);
                 }
             },

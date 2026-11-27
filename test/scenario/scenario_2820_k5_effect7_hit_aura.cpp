@@ -52,7 +52,7 @@ int probe_loss(SoulMark mark, int accuracy, bool must_hit) {
     ScenarioBattle b(scenario::make_party(defender_pet(1, std::move(mark))),
                      scenario::make_party(attacker_pet(accuracy, must_hit)));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     const int hp0 = ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp;
     b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
@@ -74,7 +74,7 @@ int main() {
         ScenarioBattle b(scenario::make_party(defender_pet(1, make_mark(7, {}, 2553))),
                          scenario::make_party(attacker_pet(100, false)));
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261004);
+        ctx.seed_rng(20261004);
         b.start();
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);

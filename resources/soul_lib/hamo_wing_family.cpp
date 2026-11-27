@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 王之哈莫 3022（魂印 effect_icon 715）+ 重生之翼 2987（魂印 effect_icon 866）
 // —— 锚点窗口式魂免族（2026-09-23，调研文档：
 //    docs_local/docs/06-交接/重生之翼与王之哈莫-魂免窗口与下场保留-调研.md）
@@ -337,7 +336,7 @@ EffectResult wing_866_arm(BattleContext* ctx, const EffectArgs& args) {
                         candidates.push_back(slot);
                     }
                     if (!candidates.empty() && g_core && g_core->revive_pet) {
-                        const int slot = candidates[sbs_rand() % candidates.size()];
+                        const int slot = candidates[wctx->rng().next() % candidates.size()];
                         const int hp = hamo_wing_get(host.soulmark_storage,
                                                      kWingReviveHpBaseKey + slot,
                                                      resolve_pet_max_hp(

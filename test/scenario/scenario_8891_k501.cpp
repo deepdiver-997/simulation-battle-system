@@ -212,7 +212,7 @@ int main() {
     // 掷点档差分主锚：审计槽 slot2=100 + 观察器 260 + rewritten + 红伤带。
     {
         Fight f(0, true);
-        sbs_srand(11);
+        f.ctx().seed_rng(11);
         own(f, 0);
         CHECK_EQ(observed_power[0], 260, "B 当前视图×2=260");
         CHECK(observed_rewritten[0], "B rewritten 置位");
@@ -229,16 +229,16 @@ int main() {
         no_resident(f, "B");
         // 掷点零耗锚：终态=种子推进 2 次（初始伤害浮动 + rewritten 重算浮动），
         // 掷点本身 0 消费（100 短路）；0 档单次计算=推进 1 次，同证掷点 0 消费。
-        CHECK_EQ(sbs_rand_state(), next_rng(next_rng(11)), "B 100 档短路零耗掷点");
+        CHECK_EQ(f.ctx().rng().state(), next_rng(next_rng(11)), "B 100 档短路零耗掷点");
         Fight z(0, true, kMove, 300, {0});
-        sbs_srand(11);
+        z.ctx().seed_rng(11);
         own(z, 0);
         CHECK_EQ(observed_power[0], 130, "B0 档不翻倍");
         CHECK(!observed_rewritten[0], "B0 无改写");
         check_band(z, 0, 130, "B0 基线红伤带");
         CHECK_EQ(slot(z.ctx(), 0, 2), 0, "B0 有效概率=0");
         CHECK_EQ(slot(z.ctx(), 0, 3), 0, "B0 掷歪（短路）");
-        CHECK_EQ(sbs_rand_state(), next_rng(11), "B0 0 档短路零耗掷点（单计算）");
+        CHECK_EQ(z.ctx().rng().state(), next_rng(11), "B0 0 档短路零耗掷点（单计算）");
         key_audit(f, "B");
     }
     // C：门闭档（对手有异常 → 概率保持 50 → MINSTD 独立递推预测掷点）。
@@ -246,7 +246,7 @@ int main() {
     for (unsigned seed = 1; seed <= 24; ++seed) {
         Fight f(0, true);
         put_anomaly(f, 1, 1);
-        sbs_srand(seed);
+        f.ctx().seed_rng(seed);
         own(f, 0);
         const bool hit = next_rng(seed) % 100 < 50;  // SKILL_EFFECT 首消费=掷点
         CHECK_EQ(slot(f.ctx(), 0, 1), 1, "C 异常门闭（对手有异常）");
@@ -267,7 +267,7 @@ int main() {
         const int first_power = observed_power[0];
         Fight g(0, true);
         put_anomaly(g, 1, 1);
-        sbs_srand(seed);
+        g.ctx().seed_rng(seed);
         own(g, 0);
         CHECK_EQ(slot(g.ctx(), 0, 3), first_roll, "C 同种子掷点一致 " + std::to_string(seed));
         CHECK_EQ(observed_power[0], first_power, "C 同种子局面一致 " + std::to_string(seed));
@@ -277,28 +277,28 @@ int main() {
     {
         Fight f(0, true, kMove, 300, {100});
         put_anomaly(f, 1, 6);
-        sbs_srand(3);
+        f.ctx().seed_rng(3);
         own(f, 0);
         CHECK_EQ(slot(f.ctx(), 0, 0), 100, "D 行参 100 落账");
         CHECK_EQ(slot(f.ctx(), 0, 1), 1, "D 门闭（有异常）");
         CHECK_EQ(slot(f.ctx(), 0, 2), 100, "D 有效概率=100（不翻倍也必中）");
         CHECK_EQ(slot(f.ctx(), 0, 3), 1, "D 必中");
         CHECK_EQ(observed_power[0], 260, "D 翻倍照常");
-        const auto st = sbs_rand_state();
+        const auto st = f.ctx().rng().state();
         Fight g(0, true, kMove, 300, {200});
-        sbs_srand(3);
+        g.ctx().seed_rng(3);
         own(g, 0);
         CHECK_EQ(slot(g.ctx(), 0, 2), 400, "D 开门有效概率=200×2（≥100 短路）");
         CHECK_EQ(slot(g.ctx(), 0, 3), 1, "D 越档必中");
         CHECK_EQ(observed_power[0], 260, "D 越档照常×2");
-        CHECK_EQ(sbs_rand_state(), st, "D ≥100 短路不耗掷点");
+        CHECK_EQ(g.ctx().rng().state(), st, "D ≥100 短路不耗掷点");
     }
     // E：遮蔽差分（K6 虚拟视图——本体异常被遮蔽 → 门按"视为无异常"翻倍）。
     {
         Fight f(0, true);
         put_anomaly(f, 1, 1);
         core_api().set_anomaly_view_layers(&f.ctx(), 1710, 1, 1);
-        sbs_srand(7);
+        f.ctx().seed_rng(7);
         own(f, 0);
         CHECK_EQ(slot(f.ctx(), 0, 1), 0, "E 遮蔽后门开（虚拟视图判读）");
         CHECK_EQ(slot(f.ctx(), 0, 2), 100, "E 遮蔽后有效概率翻倍");
@@ -307,7 +307,7 @@ int main() {
         core_api().set_anomaly_view_layers(&f.ctx(), 1710, 1, 0);
         Fight g(0, true);
         put_anomaly(g, 1, 1);
-        sbs_srand(7);
+        g.ctx().seed_rng(7);
         own(g, 0);
         CHECK_EQ(slot(g.ctx(), 0, 1), 1, "E 解除遮蔽恢复门闭");
         CHECK_EQ(slot(g.ctx(), 0, 2), 50, "E 恢复不翻倍档");
@@ -316,7 +316,7 @@ int main() {
     for (int code : {1, 14, 28, 43}) {
         Fight f(0, true);
         put_anomaly(f, 1, code);
-        sbs_srand(9);
+        f.ctx().seed_rng(9);
         own(f, 0);
         CHECK_EQ(slot(f.ctx(), 0, 1), 1, "F 任意异常码闭门 " + std::to_string(code));
         CHECK_EQ(slot(f.ctx(), 0, 2), 50, "F 不翻倍档 " + std::to_string(code));
@@ -327,7 +327,7 @@ int main() {
     // 的 SKILL_EFFECT 时点判读先例一致，非实现缺陷。门闭差分由 C/F 腿承担。
     {
         Fight f(0, true, kCarrierChain2);
-        sbs_srand(13);
+        f.ctx().seed_rng(13);
         own(f, 0);
         CHECK_EQ(slot(f.ctx(), 0, 1), 0, "G 首轮门开");
         CHECK_EQ(slot(f.ctx(), 0, 2), 100, "G 首轮翻倍档");
@@ -336,7 +336,7 @@ int main() {
         CHECK(red(f, 0) > 320, "G 红伤过 1106 阈值（附加支激活前提）");
         CHECK_EQ(f.ctx().has_active_abnormal_status(1, 8), true, "G 1106 附加睡眠落地");
         no_resident(f, "G");
-        sbs_srand(13);
+        f.ctx().seed_rng(13);
         own(f, 0);
         // 次轮：受击苏醒（ON_SKILL_HIT 先于 SKILL_EFFECT）→ 门读干净 → 照常翻倍；
         // 伤害后 1106 红伤>320 再次 100% 附加 → 轮末睡眠又在（复合账两断言齐验）。
@@ -348,7 +348,7 @@ int main() {
     // H：纯链物攻载体 36976 + 链载体 35264（1206 粉伤并发，红伤判定不受扰）。
     {
         Fight f(0, true, kCarrierPure2);
-        sbs_srand(17);
+        f.ctx().seed_rng(17);
         own(f, 0);
         CHECK_EQ(observed_power[0], 260, "H 物攻 130×2");
         check_band(f, 0, 260, "H 物攻翻倍带");
@@ -356,7 +356,7 @@ int main() {
     }
     {
         Fight f(0, true, kCarrierChain1);
-        sbs_srand(17);
+        f.ctx().seed_rng(17);
         own(f, 0);
         CHECK_EQ(observed_power[0], 320, "H 链载体 160×2");
         check_band(f, 0, 320, "H 链载体翻倍带");
@@ -400,7 +400,7 @@ int main() {
     // J：镜像（双侧纯链载体各翻各的刀，先/后手两序）。
     for (bool first : {true, false}) {
         Fight f(0, first, kMove, 300, {}, true);
-        sbs_srand(19);
+        f.ctx().seed_rng(19);
         turn(f, 0, 0);
         CHECK_EQ(observed_power[0], 260, "J 侧0 翻倍");
         CHECK_EQ(observed_power[1], 260, "J 侧1 翻倍");
@@ -416,18 +416,18 @@ int main() {
     {
         Fight f(0, true);
         put_anomaly(f, 1, 1);
-        sbs_srand(23);
+        f.ctx().seed_rng(23);
         own(f, 0);
         CHECK_EQ(slot(f.ctx(), 0, 1), 1, "K 首轮门闭");
         swap(f, 1, 1);
         CHECK_EQ(f.ctx().has_active_abnormal_status(1, 1), false, "K 新宠无异常");
-        sbs_srand(23);
+        f.ctx().seed_rng(23);
         own(f, 0);
         CHECK_EQ(slot(f.ctx(), 0, 1), 0, "K 换宠后门开（判读现读）");
         CHECK_EQ(slot(f.ctx(), 0, 2), 100, "K 换宠后翻倍档");
         CHECK_EQ(observed_power[0], 260, "K 新对手照常翻倍");
         swap(f, 0, 1);
-        sbs_srand(23);
+        f.ctx().seed_rng(23);
         own(f, 0, 1);
         CHECK_EQ(slot(f.ctx(), 0, 8), 2, "K 替补（非载体水枪）不进计数");
         CHECK(!observed_rewritten[0], "K 替补无残留改写");

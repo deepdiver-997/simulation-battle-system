@@ -59,7 +59,7 @@ EffectResult k186_1880_round_end(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     const int lost_pct = (max_hp - self.hp) * 100 / max_hp;
-    if (!roll_percent(lost_pct)) {
+    if (!roll_percent(ctx->rng(), lost_pct)) {
         return EffectResult::kOk;
     }
     (void)g_core->apply_anomaly_checked(ctx, ctx->opponent(owner),

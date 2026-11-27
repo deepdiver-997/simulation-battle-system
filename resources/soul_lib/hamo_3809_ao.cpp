@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 龙神哈莫 3809 魂印 —— 敖（effect_icon 1392，2026-09-30；场景回归 scenario_875_hamo_3809_ao）
 //
 // 官方 tips 全文（effect_icon.pet_id=[3809]，args={50,1,25,10,10,150,300,1}）：
@@ -137,7 +136,7 @@ EffectResult ao_suppress_move_right(BattleContext* ctx, const EffectArgs& args) 
         return EffectResult::kOk;
     }
     ensure_ao_wiring(ctx, owner);
-    const int hit = roll_percent(50) ? 1 : 0;
+    const int hit = roll_percent(ctx->rng(), 50) ? 1 : 0;
     ctx->plugin_storage[kSuppressFlagKey + owner] = hit;
     if (hit && foe_view_is_dragon(ctx, owner)) {
         // 先制计算点（MOVE_RIGHT 桶在 memset 之后跑）：-1 修正，不触必先。
@@ -197,7 +196,7 @@ EffectResult ao_phase_end_tick(BattleContext* ctx, const EffectArgs& args) {
     }
     ctx->plugin_storage.erase(armed);
     // "随机附加 150-300 点固定伤害"——fixed_damage 确定值通道（无浮动）。
-    g_core->fixed_damage(ctx, 1 - owner, 150 + sbs_rand() % 151);
+    g_core->fixed_damage(ctx, 1 - owner, 150 + ctx->rng().next() % 151);
     return EffectResult::kOk;
 }
 

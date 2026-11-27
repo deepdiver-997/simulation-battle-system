@@ -370,7 +370,7 @@ int main() {
         CHECK_EQ(power1, power0 + 50, "E2 万相乖离：第五技能威力 +50");
         // 条件**不再被改写**（2026-09-18 单元准入门版）：进度是魂印侧计数器，
         // 技能对象只读——行为验证在场景 010（放行/6次秒杀/击败清零）。
-        CHECK(x.seerRobot[0].elfPets[0].skills[4].parsed_units_[0].condition
+        CHECK(x.seerRobot[0].elfPets[0].skills[4].parsed_units()[0].condition
                   != UnitCondition::None,
               "E2 条件原样保留（技能对象只读；放行由准入门在注册期决定）");
 
@@ -386,7 +386,7 @@ int main() {
         x.event_center_.drain(&x, x.roundCount);
 
         CHECK_EQ(x.seerRobot[0].elfPets[0].skills[4].power, power0, "E3 重置：威力回落（进度清零）");
-        CHECK(x.seerRobot[0].elfPets[0].skills[4].parsed_units_[0].condition
+        CHECK(x.seerRobot[0].elfPets[0].skills[4].parsed_units()[0].condition
                   != UnitCondition::None,
               "E3 条件始终未被改写（重置 = 进度计数归零，不是恢复条件）");
         CHECK(x.is_vanished(1, on1), "E3 被击败者（阵亡）被消逝");

@@ -66,10 +66,15 @@ void EffectFactory::init() {
     // 实际加载在 getInstance() 首次调用时通过 ensureInitialized() 完成
 }
 
+EffectFactory& EffectFactory::instance() {
+    static EffectFactory registry;
+    return registry;
+}
+
 EffectFactory& EffectFactory::getInstance(const std::string& lib_dir) {
-    static EffectFactory instance;
-    instance.ensureInitialized(lib_dir);
-    return instance;
+    auto& registry = instance();
+    registry.ensureInitialized(lib_dir);
+    return registry;
 }
 
 void EffectFactory::ensureInitialized(const std::string& lib_dir) {
@@ -268,31 +273,45 @@ bool EffectFactory::no_confilict(int id1, int id2) {
     return true;
 }
 
-bool EffectFactory::roll_percent(int percent) {
+bool EffectFactory::roll_percent(int percent, SbsRng& rng) {
     if (percent <= 0) return false;
     if (percent >= 100) return true;
-    return (sbs_rand() % 100) < percent;
+    return (rng.next() % 100) < percent;
 }
 
 void EffectFactory::registerEffect(int effectId, EffectFn effect,
                                    const std::string& source) {
-    id_collision::instance().record(id_collision::Category::SkillEffect, effectId,
+    register_effect(effectId, effect, source, BattleCallbackCopy::Unverified);
+}
+
+void EffectFactory::register_effect(int effect_id, EffectFn fn, const std::string& source,
+                                    BattleCallbackCopy copy) {
+    id_collision::instance().record(id_collision::Category::SkillEffect, effect_id,
         source.empty() ? "EffectFactory::registerEffect [manual]" : source);
     std::unique_lock<std::shared_mutex> write_lock(cache_mutex_);
-    auto it = effect_cache_.find(effectId);
+    auto it = effect_cache_.find(effect_id);
+    const EffectFnRegistration entry{fn, source, fn ? copy : BattleCallbackCopy::Unverified};
     if (it == effect_cache_.end()) {
-        effect_cache_.emplace(effectId, EffectFnRegistration{effect, source});
-    } else if (effect == nullptr) {
+        effect_cache_.emplace(effect_id, entry);
+    } else if (fn == nullptr) {
         // fn=nullptr = 显式运行期注销（7921 MissingMoves1470 模式；无条件生效），
         // 注销态条目接受任何非空注册接管——两分支覆盖注销/恢复双向。
-        it->second = EffectFnRegistration{nullptr, {}};
+        it->second = {};
     } else if (it->second.fn == nullptr
                || registration_arbiter::should_replace(it->second.source, source)) {
-        // 撞号仲裁：按 basename 稳定序保留（不再 last-wins——静态初始化序跨平台
-        // 不同，last-wins 曾致 Windows 生效旧实现、Mac/Linux 生效新实现，§9）
-        it->second = EffectFnRegistration{effect, source};
+        // 撞号仲裁：按 basename 稳定序保留现役实现，审计标记和函数一起替换。
+        it->second = entry;
     }
     // 仲裁落败方：已由 id_collision 记账，不覆盖现役实现
+}
+
+bool EffectFactory::is_clone_audited(const Effect& effect) {
+    if (!effect.logic) return false;
+    const auto& registry = instance();
+    std::shared_lock<std::shared_mutex> lock(registry.cache_mutex_);
+    const auto it = registry.effect_cache_.find(effect.id);
+    return it != registry.effect_cache_.end() && it->second.fn == effect.logic &&
+           it->second.copy == BattleCallbackCopy::Audited;
 }
 
 void EffectFactory::registerSoulMark(int soulmark_id, EffectFn effect_fn,
@@ -314,8 +333,12 @@ void EffectFactory::registerSoulMarkProgram(
 
 void EffectFactory::registerSkillEffect(int effect_id, EffectFn effect_fn,
                                     const std::string& source) {
-    // 标准、手动与批量入口统一在 registerEffect 记账，转发只计一次。
-    registerEffect(effect_id, effect_fn, source);
+    register_effect(effect_id, effect_fn, source, BattleCallbackCopy::Unverified);
+}
+
+void EffectFactory::registerAuditedSkillEffect(int effect_id, EffectFn effect_fn,
+                                              const std::string& source) {
+    register_effect(effect_id, effect_fn, source, BattleCallbackCopy::Audited);
 }
 
 void EffectFactory::registerSoulMarks(

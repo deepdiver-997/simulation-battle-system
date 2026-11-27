@@ -97,7 +97,7 @@ EffectResult k242_1414_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     }
     if (self.hp < foe.hp) {
         // 低体：75% 吸取对手 1/db[2] maxHP；未掷中 → 全属性-1
-        if (roll_percent(row.chance)) {
+        if (roll_percent(ctx->rng(), row.chance)) {
             const int drain = resolve_pet_max_hp(foe) / row.drain_denom;
             if (drain > 0) {
                 (void)g_core->deal_pink_damage(ctx, opp, drain,

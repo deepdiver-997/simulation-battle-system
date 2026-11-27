@@ -67,7 +67,7 @@ ScenarioBattle make_battle(const SkillArr& s0 = all_gaosu(), const SkillArr& s1 
     return ScenarioBattle({scenario::make_party(attacker(s0))}, {scenario::make_party(defender(s1))});
 }
 void run_round(ScenarioBattle& b, int s0 = 0, int s1 = 0) {
-    sbs_srand(20260918u);
+    b.ctx().seed_rng(20260918u);
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, s0);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, s1);
     b.drive();

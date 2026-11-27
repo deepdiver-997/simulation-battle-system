@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 神印族（启灵元神 1581：神印 + 神殇/神谕/神照/神启 全条，2026-09-21 补全）
 //
 // （2026-09-17 从 lib_1.cpp 按家族拆分；2026-09-21 对齐官方时点（神印两段式）并
@@ -208,7 +207,7 @@ EffectResult soulmark_1581_round_start(BattleContext* ctx, const EffectArgs& arg
             const int low = 1;
             const int high = alive >= 5 ? 3 : 2;
             const int upper = high < cap ? high : cap;
-            int n = low + sbs_rand() % (upper - low + 1);
+            int n = low + ctx->rng().next() % (upper - low + 1);
             // 候选 = 不在场且存活的槽位，随机不放回取 n 个
             int candidates[6];
             int candidate_count = 0;
@@ -218,7 +217,7 @@ EffectResult soulmark_1581_round_start(BattleContext* ctx, const EffectArgs& arg
                 }
             }
             while (n > 0 && candidate_count > 0) {
-                const int pick = sbs_rand() % candidate_count;
+                const int pick = ctx->rng().next() % candidate_count;
                 const int slot = candidates[pick];
                 pets[slot].is_locked = true;
                 mask |= (1 << slot);

@@ -92,13 +92,14 @@ EffectResult k171_285_grant(BattleContext* ctx, const SoulNodeArgs& a) {
     if (anomaly_pct <= 0 && drop_pct <= 0) {
         return EffectResult::kOk;   // 无参不挂票（K1 纪律：不造 0% 票）
     }
-    // 满体力判定（逐次施加时点现场读——掉血/回血即时反映）
-    auto full_hp = [owner, slot](const BattleContext* c) {
+    // 逐次结算时先查满体力，再用本局 RNG 掷点。
+    auto roll_at_full_hp = [owner, slot](BattleContext* c, int pct) {
         if (!c || c->on_stage[owner] != slot) {
             return false;   // 换下场即失去"在场满体力"前提
         }
         const ElfPet& pet = c->seerRobot[owner].elfPets[slot];
-        return pet.hp > 0 && pet.hp >= pet.numericalBase[NumericalPropertyIndex::HP];
+        return pet.hp > 0 && pet.hp >= pet.numericalBase[NumericalPropertyIndex::HP]
+            && roll_percent(c->rng(), pct);
     };
     if (anomaly_pct > 0) {
         ctx->grant_immunity(owner, ImmunityType::ANOMALY, coverage_all(),
@@ -106,8 +107,8 @@ EffectResult k171_285_grant(BattleContext* ctx, const SoulNodeArgs& a) {
                             /*source_id=*/285100, /*soul_immunity=*/true,
                             EffectScope::ON_STAGE, /*counts=*/0,
                             /*source_effect_id=*/285, ImmunityTier::Modern,
-                            [owner, slot, anomaly_pct, full_hp](const BattleContext* c, int) {
-                                return full_hp(c) && roll_percent(anomaly_pct);
+                            /*condition=*/nullptr, [anomaly_pct, roll_at_full_hp](BattleContext* c, int) {
+                                return roll_at_full_hp(c, anomaly_pct);
                             });
     }
     if (drop_pct > 0) {
@@ -116,8 +117,8 @@ EffectResult k171_285_grant(BattleContext* ctx, const SoulNodeArgs& a) {
                             /*source_id=*/285200, /*soul_immunity=*/true,
                             EffectScope::ON_STAGE, /*counts=*/0,
                             /*source_effect_id=*/285, ImmunityTier::Modern,
-                            [owner, slot, drop_pct, full_hp](const BattleContext* c, int) {
-                                return full_hp(c) && roll_percent(drop_pct);
+                            /*condition=*/nullptr, [drop_pct, roll_at_full_hp](BattleContext* c, int) {
+                                return roll_at_full_hp(c, drop_pct);
                             });
     }
     return EffectResult::kOk;

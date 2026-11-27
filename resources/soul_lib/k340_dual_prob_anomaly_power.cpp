@@ -103,14 +103,14 @@ EffectResult k340_709_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             if (c->getPet(opp).hp <= 0) {
                 return;   // 存活门
             }
-            if (burn_pct > 0 && roll_percent(burn_pct) &&
+            if (burn_pct > 0 && roll_percent(c->rng(), burn_pct) &&
                 is_valid_abnormal_status_id(burn_code)) {
                 (void)g_core->apply_anomaly_checked(c, opp, burn_code,
                                                     random_anomaly_duration(), owner,
                                                     /*chance_pct=*/100,
                                                     ChanceSource::SoulMark);
             }
-            if (para_pct > 0 && roll_percent(para_pct) &&
+            if (para_pct > 0 && roll_percent(c->rng(), para_pct) &&
                 is_valid_abnormal_status_id(para_code)) {
                 (void)g_core->apply_anomaly_checked(c, opp, para_code,
                                                     random_anomaly_duration(), owner,

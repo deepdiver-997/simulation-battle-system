@@ -70,8 +70,9 @@ struct Outcome {
 };
 
 // 单局：铺设 self_hp，施放 159 载体，返回审计 + 害怕位。
-Outcome run_one(int skill0, int self_hp) {
+Outcome run_one(int skill0, int self_hp, unsigned seed = 1) {
     ScenarioBattle b(make_party(mk_self(skill0)), make_party(mk_foe()));
+    b.ctx().seed_rng(seed);
     b.start();
     BattleContext& ctx = b.ctx();
     ctx.getPet(0).hp = self_hp;   // 只压当前体力，最大体力不变
@@ -127,7 +128,7 @@ int main() {
     {
         int landed = 0;
         for (int i = 0; i < kTrials; ++i) {
-            const Outcome o = run_one(kJueDi, 2499);
+            const Outcome o = run_one(kJueDi, 2499, 1 + i * 104729u);
             CHECK_EQ(o.pct, 50, "T5620.d 审计 pct=50");
             if (o.result == static_cast<int>(ApplyAnomalyResult::SUCCESS)) {
                 CHECK(o.fear, "T5620.d 掷中（SUCCESS）→ 对手必有害怕");

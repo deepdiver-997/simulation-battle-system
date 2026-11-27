@@ -246,7 +246,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         RandMirror m;
         m.seed(1);
         BattleContext& ctx = b.ctx();
@@ -281,7 +281,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         BattleContext& ctx = b.ctx();
         set_pp(b, 1, {10, 11, 12, 13, 14});
         const int foe_hp0 = ctx.getPet(1).hp;
@@ -310,7 +310,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -350,7 +350,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         BattleContext& ctx = b.ctx();
         set_pp(b, 1, {10, 1, 0, 7, -1});
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -376,7 +376,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(5);
+        b.ctx().seed_rng(5);
         BattleContext& ctx = b.ctx();
         set_pp(b, 1, {10, 11, 12, 13, 14});
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -399,7 +399,7 @@ int main() {
                          make_party(skill_pet(2, "印主1", {kQiong, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(6);
+        b.ctx().seed_rng(6);
         RandMirror m;
         m.seed(6);
         BattleContext& ctx = b.ctx();
@@ -444,7 +444,7 @@ int main() {
                          make_party(skill_pet(2, "消强手", {kBingLing, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(11);
+        b.ctx().seed_rng(11);
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[0][0] = 1;   // 印主攻击+1（待消除面；本体直写——构造值）
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -495,7 +495,7 @@ int main() {
                          make_party(skill_pet(2, "消强手", {kBingLing, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(12);
+        b.ctx().seed_rng(12);
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[0][0] = 1;
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -516,7 +516,7 @@ int main() {
                          make_party(skill_pet(2, "吸取手", {kGuangZhen, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[0][0] = 1;
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -543,7 +543,7 @@ int main() {
                          make_party(skill_pet(2, "消强手", {kBingLing, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(14);
+        b.ctx().seed_rng(14);
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[0][0] = 1;
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -574,7 +574,7 @@ int main() {
                          make_party(skill_pet(2, "印主", {kLieTu, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 200, kMaxHp)));
         b.start();
-        sbs_srand(15);
+        b.ctx().seed_rng(15);
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[1][0] = 1;
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 1, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -601,7 +601,7 @@ int main() {
                          make_party(skill_pet(2, "印主1", {kLieTu, kBingLing, kPaiDa, kPaiDa, kPaiDa},
                                               100, 200, kMaxHp)));
         b.start();
-        sbs_srand(16);
+        b.ctx().seed_rng(16);
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[0][0] = 1;
         ctx.ability_levels[1][0] = 1;
@@ -634,7 +634,7 @@ int main() {
                          make_party(skill_pet(2, "消强手", {kBingLing, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(17);
+        b.ctx().seed_rng(17);
         BattleContext& ctx = b.ctx();
         int boost_lost_seen = 0;
         ctx.event_center_.register_watcher(

@@ -135,7 +135,8 @@ bool Room::try_start_battle(std::string& err) {
             SeerRobotFactory::create_robot(lineup_.side2, lineup_.medicines[1],
                                            lineup_.equip_item_ids[1]),
         };
-        fresh.reset(new BattleContext(this, robots, lineup_.pvp_battle));
+        fresh.reset(new BattleContext(this, robots, lineup_.pvp_battle,
+                                      static_cast<unsigned int>(match_id_)));
         // boss 挑战对局（2026-09-26 "boss 有效"线）：开关注入 context，
         // 魂印程序注册口按节点 boss_invalid 标签过滤。
         fresh->is_boss_challenge = lineup_.boss_challenge;

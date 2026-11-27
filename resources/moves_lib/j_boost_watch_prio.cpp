@@ -68,7 +68,7 @@ EffectResult j79_474_probe(BattleContext* c, const EffectArgs& a) {
     if (self != first) {
         return EffectResult::kOk;   // "先出手时"
     }
-    if (!roll_percent(chance) || !g_core || !g_core->stat_change) {
+    if (!roll_percent(c->rng(), chance) || !g_core || !g_core->stat_change) {
         return EffectResult::kOk;
     }
     (void)g_core->stat_change(c, self, slot, up);

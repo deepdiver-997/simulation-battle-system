@@ -178,7 +178,7 @@ int main() {
                              make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(20261022);
+            ctx.seed_rng(20261022);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
@@ -191,7 +191,7 @@ int main() {
             b.start();
             BattleContext& ctx = b.ctx();
             REQUIRE(stat_change(&ctx, 1, 4, -2) == StatChangeResult::SUCCESS);   // 对手速-2
-            sbs_srand(20261022);
+            ctx.seed_rng(20261022);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
@@ -219,7 +219,7 @@ int main() {
             ScenarioBattle b(make_party(std::move(me)), make_party(std::move(foe)));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(20261023);
+            ctx.seed_rng(20261023);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
@@ -234,7 +234,7 @@ int main() {
             ScenarioBattle b(make_party(std::move(me)), make_party(std::move(foe)));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(20261023);
+            ctx.seed_rng(20261023);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();

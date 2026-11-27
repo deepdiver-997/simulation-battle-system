@@ -55,8 +55,9 @@ ElfPet mk_foe() {
 }
 
 // 单局：铺设 self_hp，施放 1210，返回审计落地数（0/1）。
-int run_one(int self_hp, int expected_pct) {
+int run_one(int self_hp, int expected_pct, unsigned seed) {
     ScenarioBattle b(make_party(mk_self()), make_party(mk_foe()));
+    b.ctx().seed_rng(seed);
     b.start();
     BattleContext& ctx = b.ctx();
     ctx.getPet(0).hp = self_hp;   // 只压当前体力，最大体力不变
@@ -95,14 +96,14 @@ int main() {
     {
         int landed25 = 0;
         for (int i = 0; i < kTrials; ++i) {
-            landed25 += run_one(/*self_hp=*/kSelfMax, /*expected_pct=*/25);   // 10000 > 5000
+            landed25 += run_one(/*self_hp=*/kSelfMax, /*expected_pct=*/25, 1 + i * 104729u);   // 10000 > 5000
         }
         CHECK(landed25 >= 1 && landed25 <= 14,
               "T5470.a 1210 p=25 24 局落地带 [1,14]，实测 " + std::to_string(landed25));
 
         int landed50 = 0;
         for (int i = 0; i < kTrials; ++i) {
-            landed50 += run_one(/*self_hp=*/4000, /*expected_pct=*/50);       // 4000 < 5000
+            landed50 += run_one(/*self_hp=*/4000, /*expected_pct=*/50, 1 + i * 104729u);       // 4000 < 5000
         }
         CHECK(landed50 >= 4 && landed50 <= 20,
               "T5470.b 1210 p=50 24 局落地带 [4,20]，实测 " + std::to_string(landed50));

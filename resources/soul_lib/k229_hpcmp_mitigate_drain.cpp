@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K229 · 血量对照减伤+随机吸取族 —— effect 1422（1 宏 2 行）
 //                                                            （2026-10-08，夜跑 k-prod-6，worktree ../agents/k229）
 //
@@ -178,7 +177,7 @@ EffectResult soulmark_1422_round_end(BattleContext* ctx, const EffectArgs& args)
         return EffectResult::kOk;   // 阵亡不吸
     }
     const int hp_before = foe.hp;
-    const int roll = lo + static_cast<int>(sbs_rand() % static_cast<unsigned>(hi - lo + 1));
+    const int roll = lo + static_cast<int>(ctx->rng().next() % static_cast<unsigned>(hi - lo + 1));
     if (g_core && g_core->deal_pink_damage) {
         (void)g_core->deal_pink_damage(ctx, opp, roll, DamageKind::PERCENT_VALUE, owner);
     }
@@ -195,7 +194,7 @@ EffectResult soulmark_1422_round_end(BattleContext* ctx, const EffectArgs& args)
     int guard = 0;
     while (done < drop_cnt && guard < 100) {
         ++guard;
-        const int slot = sbs_rand() % 6;
+        const int slot = ctx->rng().next() % 6;
         if (picked[slot]) {
             continue;
         }

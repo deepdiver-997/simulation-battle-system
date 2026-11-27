@@ -19,6 +19,7 @@ void check(bool ok, const std::string& message) {
 }
 
 EffectResult noop(BattleContext*, const EffectArgs&) { return EffectResult::kOk; }
+EffectResult replacement(BattleContext*, const EffectArgs&) { return EffectResult::kSkillInvalid; }
 EffectResult typed_noop(BattleContext*, const SoulNodeArgs&) { return EffectResult::kOk; }
 
 SOUL_MARK_TYPED(9901881, typed_noop)
@@ -75,6 +76,30 @@ void test_skill_entries(EffectFactory& skills) {
     ledger.clear();
     skills.registerSkillEffects({{9901885, &noop}, {9901885, &noop}});
     check(!failure().empty(), "duplicate within one skill batch must fail at audit");
+
+    constexpr int id = 9901884;
+    const Effect original(id, 0, 0, 0, {}, &noop);
+    const Effect different(id, 0, 0, 0, {}, &replacement);
+    check(!skills.is_clone_audited(original), "ordinary registration is unverified");
+    ledger.clear();
+    skills.registerAuditedSkillEffect(id, &noop, "z_audited.cpp");
+    check(ledger.entries().size() == 1, "audited registration is recorded once");
+    check(skills.is_clone_audited(original) && !skills.is_clone_audited(different),
+          "audit belongs to the current id and function pair");
+    skills.registerSkillEffect(id, &replacement, "a_losing.cpp");
+    check(skills.is_clone_audited(original), "losing entry cannot clear the winner's audit");
+    skills.registerSkillEffect(id, &replacement, "zz_winner.cpp");
+    check(skills.getEffect(id).logic == &replacement && !skills.is_clone_audited(original) &&
+              !skills.is_clone_audited(different),
+          "unverified replacement does not inherit the previous audit");
+    skills.registerAuditedSkillEffect(id, &replacement, "a_losing.cpp");
+    check(!skills.is_clone_audited(different), "losing audit cannot certify the winner");
+    skills.registerAuditedSkillEffect(id, &replacement, "zzz_audited.cpp");
+    check(skills.is_clone_audited(different), "new audited winner becomes eligible");
+    skills.registerEffect(id, nullptr);
+    check(!skills.is_clone_audited(different), "unregistering removes eligibility");
+    skills.registerEffect(id, &replacement);
+    check(!skills.is_clone_audited(different), "restoring the same function does not restore audit");
 }
 
 void test_program_and_typed_source(SoulMarkManager& souls) {

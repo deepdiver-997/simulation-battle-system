@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K4 回合能力变化族 —— effect 607/612/622/636/641/642（6 宏落地；390/1224 记档）
 //
 // 行清单与参数布局（tools/soul_effects_dump.py 390 642 1224 607 612 622 636 641，2026-10-01；
@@ -167,7 +166,7 @@ EffectResult soulmark_622_round_start(BattleContext* ctx, const EffectArgs& args
                         /*source_effect_id=*/622);
     if (g_core && g_core->stat_change) {
         for (int i = 0; i < count; ++i) {
-            g_core->stat_change(ctx, owner, sbs_rand() % 6, 1);   // 随机属性 +1（0..5 槽）
+            g_core->stat_change(ctx, owner, ctx->rng().next() % 6, 1);   // 随机属性 +1（0..5 槽）
         }
     }
     return EffectResult::kOk;

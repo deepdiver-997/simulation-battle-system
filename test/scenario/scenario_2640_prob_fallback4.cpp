@@ -54,10 +54,12 @@ int main() {
     {
         constexpr int kTrials = 100;
         int fallback = 0;
+        SbsRng trial_seeds(20261004);
         for (int t = 0; t < kTrials; ++t) {
             ScenarioBattle b(
                 make_party(mk_pet(1, "己方", {kZheHun, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 300, 1)),
                 make_party(mk_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100, 1)));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             const int foe_hp0 = ctx.getPet(1).hp;
@@ -88,12 +90,14 @@ int main() {
         {
             constexpr int kTrials = 100;
             int window = 0;
+            SbsRng trial_seeds(20261005);
             for (int t = 0; t < kTrials; ++t) {
                 ScenarioBattle b(make_party(
                                      mk_pet(1, "己方",
                                             {kChengFeng, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 300, 1)),
                                  make_party(mk_pet(2, "对手",
                                                    {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100, 1)));
+                b.ctx().seed_rng(trial_seeds.next());
                 b.start();
                 BattleContext& ctx = b.ctx();
                 b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

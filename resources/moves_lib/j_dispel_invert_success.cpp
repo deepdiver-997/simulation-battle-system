@@ -54,7 +54,7 @@ void j10_zero_random_pp_slots(BattleContext* ctx, int target, int want, int acto
     std::vector<int> slots{0, 1, 2, 3, 4};
     const int n = std::min(want, static_cast<int>(slots.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(slots.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(slots.size()) - i));
         std::swap(slots[static_cast<std::size_t>(i)], slots[static_cast<std::size_t>(j)]);
         (void)g_core->pp_zero_slot(ctx, target, slots[static_cast<std::size_t>(i)], actor);
     }

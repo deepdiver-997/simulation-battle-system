@@ -95,7 +95,7 @@ int find_dodge_seed(const std::vector<int>& args, int own_hp) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = own_hp;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         if (b.ctx().getPet(0).hp == own_hp) {
             return s;
@@ -110,7 +110,7 @@ int find_hit_through_seed(const std::vector<int>& args, int own_hp) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = own_hp;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         if (b.ctx().getPet(0).hp < own_hp) {
             return s;
@@ -124,7 +124,7 @@ int find_ice_seed(const std::vector<int>& args, int own_hp) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = own_hp;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         if (b.ctx().has_active_abnormal_status(1, kIce)) {
             return s;
@@ -148,7 +148,7 @@ int main() {
         CHECK(s > 0, "T7494a 自校准找到免伤种子");
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK_EQ(b.ctx().getPet(0).hp, kMaxHp, "T7494a 免疫 → hp 不动");
         CHECK_EQ(read_key(b, kDodgePct), 25, "T7494a 高体免伤 pct=25");
@@ -162,7 +162,7 @@ int main() {
         CHECK(s > 0, "T7494b 自校准找到穿透种子");
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         const int hp0 = b.ctx().getPet(0).hp;
         foe_hit_round(b);
         const int taken = hp0 - b.ctx().getPet(0).hp;
@@ -179,7 +179,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 400000;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK_EQ(b.ctx().getPet(0).hp, 400000, "T7494c 低体免伤落地");
         CHECK_EQ(read_key(b, kDodgePct), 50, "T7494c 低体翻倍 pct=50");
@@ -192,7 +192,7 @@ int main() {
         CHECK(s_high > 0, "T7494d 高体冰封自校准");
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s_high);
+        b.ctx().seed_rng(s_high);
         own_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIce), "T7494d 高体冰封落地");
         CHECK_EQ(read_key(b, kIceAudit), 25, "T7494d 高体冰封 pct=25");
@@ -202,7 +202,7 @@ int main() {
         ScenarioBattle b2(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b2.start();
         b2.ctx().getPet(0).hp = 400000;
-        sbs_srand(s_low);
+        b2.ctx().seed_rng(s_low);
         own_hit_round(b2);
         CHECK(b2.ctx().has_active_abnormal_status(1, kIce), "T7494d 低体冰封落地");
         CHECK_EQ(read_key(b2, kIceAudit), 50, "T7494d 低体翻倍 pct=50");
@@ -217,7 +217,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kVar)), make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 400000;
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK_EQ(read_key(b, kDodgePct), 20, "T7494e args 驱动：db0=10 低体=20");
 
@@ -226,7 +226,7 @@ int main() {
         ScenarioBattle b2(make_party(mark_pet(kVar)), make_party(foe_pet()));
         b2.start();
         b2.ctx().getPet(0).hp = 400000;
-        sbs_srand(s2);
+        b2.ctx().seed_rng(s2);
         own_hit_round(b2);
         CHECK_EQ(read_key(b2, kIceAudit), 80, "T7494e args 驱动：db1=40 低体=80");
         std::cout << "  [T7494e] args 变体 通过\n";
@@ -240,7 +240,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
             b.start();
             b.ctx().getPet(0).hp = 400000;
-            sbs_srand(7508);
+            b.ctx().seed_rng(7508);
             for (int r = 0; r < 40; ++r) {
                 b.ctx().getPet(0).hp = 400000;   // 保持低体门（own<foe）
                 foe_hit_round(b);
@@ -253,7 +253,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
             b.start();
             b.ctx().getPet(0).hp = 400000;
-            sbs_srand(7509);
+            b.ctx().seed_rng(7509);
             for (int r = 0; r < 40; ++r) {
                 b.ctx().getPet(1).hp = kMaxHp;   // 冻伤 DOT 防打死
                 own_hit_round(b);
@@ -270,11 +270,11 @@ int main() {
         b.ctx().is_boss_challenge = true;
         b.start();
         const int hp0 = b.ctx().getPet(0).hp;
-        sbs_srand(7509);
+        b.ctx().seed_rng(7509);
         foe_hit_round(b);
         CHECK_EQ(read_key(b, kDodgePct), -1, "T7494g boss：免伤票不武装");
         CHECK(b.ctx().getPet(0).hp < hp0, "T7494g boss：无免伤（受伤）");
-        sbs_srand(7510);
+        b.ctx().seed_rng(7510);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kIceAudit), -1, "T7494g boss：无冰封申报");
         std::cout << "  [T7494g] boss 全门 通过\n";

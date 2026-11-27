@@ -189,7 +189,7 @@ EffectResult effect_1467_random_boost_first_double(BattleContext* ctx, const Eff
         slots.push_back(i);
     }
     for (int k = 0; k < count && !slots.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(slots.size());
+        const int pick = ctx->rng().next() % static_cast<int>(slots.size());
         (void)g_core->stat_change(ctx, owner, slots[static_cast<std::size_t>(pick)], step);
         slots.erase(slots.begin() + pick);
     }

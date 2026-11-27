@@ -129,7 +129,7 @@ bool probe_main_land(const std::vector<int>& args, int seed, bool foe_immune_mai
                                /*duration_rounds=*/0, /*source_id=*/97573);
     }
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_hit_round(b);
     return has_any_of(b.ctx(), 1, {kBurn, kFrostbite, kPoison});
 }
@@ -141,7 +141,7 @@ bool probe_comp_land(const std::vector<int>& args, int seed) {
                            /*anomaly_mask=*/(1 << kBurn) | (1 << kFrostbite) | (1 << kPoison),
                            /*duration_rounds=*/0, /*source_id=*/97573);
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_hit_round(b);   // R0：主支未触发 → 武装窗 [1,2]
     own_hit_round(b);   // R1：窗内补偿掷点
     return has_any_of(b.ctx(), 1, {kFear, kParalysis, kFatigue});
@@ -213,7 +213,7 @@ int main() {
     {
         ScenarioBattle b(make_party(marked_pet(kRowBase)), make_party(foe_pet()));
         b.start();
-        sbs_srand(7574);
+        b.ctx().seed_rng(7574);
         own_hit_round(b);
         CHECK_EQ(count_of(b.ctx(), 1, {kBurn, kFrostbite, kPoison}), 1,
                  "T7573c 对手恰好带上主池三选一");
@@ -236,7 +236,7 @@ int main() {
                          /*attribute=*/true, /*attack=*/false, /*count=*/0,
                          /*duration_rounds=*/2, /*penetrable=*/false);
         CHECK(b.ctx().rule_center_.has_round_type(1), "T7573d 载体票已种");
-        sbs_srand(7575);
+        b.ctx().seed_rng(7575);
         own_hit_round(b);
         CHECK(!has_any_of(b.ctx(), 1, {kBurn, kFrostbite, kPoison}), "T7573d 主支被免疫");
         CHECK(!b.ctx().rule_center_.has_round_type(1), "T7573d 未触发 → 对手回合类被消除");
@@ -257,7 +257,7 @@ int main() {
                                    (1u << kBurn) | (1u << kFrostbite) | (1u << kPoison),
                                    0, 97573);
             b.start();
-            sbs_srand(s_hit);
+            b.ctx().seed_rng(s_hit);
             own_hit_round(b);
             own_hit_round(b);
             CHECK_EQ(count_of(b.ctx(), 1, {kFear, kParalysis, kFatigue}), 1,
@@ -271,7 +271,7 @@ int main() {
                                    (1u << kBurn) | (1u << kFrostbite) | (1u << kPoison),
                                    0, 97573);
             b.start();
-            sbs_srand(s_miss_evo);
+            b.ctx().seed_rng(s_miss_evo);
             own_hit_round(b);
             own_hit_round(b);
             CHECK(!has_any_of(b.ctx(), 1, {kFear, kParalysis, kFatigue}),
@@ -303,7 +303,7 @@ int main() {
         CHECK_EQ(apply_anomaly(&ctx, 0, kBurn, 2, 1, 100), ApplyAnomalyResult::TARGET_IMMUNE,
                  "T7573g boss：①免疫照常");
         CHECK_EQ(stat_drop(&ctx, 0, 0, 1, 1), StatDropResult::IMMUNE, "T7573g boss：②免降照常");
-        sbs_srand(7576);
+        b.ctx().seed_rng(7576);
         own_hit_round(b);
         // ③静默判据 = 审计/断回合账本全空（对手身上的烧伤来自①反弹——①无尾注
         // boss 局照常，见上 apply 断言后的 IMMUNED 事件链）。

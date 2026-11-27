@@ -130,16 +130,17 @@ int main() {
             b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
             b.drive();
             const int loss = hp1 - ctx.getPet(1).hp;
-            CHECK(loss >= 385 && loss <= 400,
-                  "T2370.e 1027：R" + std::to_string(r) + " 拍打红伤 [85,100] + 附 300（实测 " +
-                      std::to_string(loss) + "）");
+            const int red = ctx.ws.raw_attack_damage[0];
+            CHECK(red > 0, "T2370.e 前置：拍打造成红伤");
+            CHECK_EQ(loss, red + 300, "T2370.e 1027：窗口内红伤之外精确附加 300");
             hp1 = ctx.getPet(1).hp;
         }
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 1);       // R4 窗过期（仅拍打红伤）
         b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
         b.drive();
         const int r4 = hp1 - ctx.getPet(1).hp;
-        CHECK(r4 >= 85 && r4 <= 100, "T2370.e 1027：R4 窗过期仅红伤（实测 " + std::to_string(r4) + "）");
+        CHECK(ctx.ws.raw_attack_damage[0] > 0, "T2370.e 前置：R4 拍打造成红伤");
+        CHECK_EQ(r4, ctx.ws.raw_attack_damage[0], "T2370.e 1027：R4 窗过期仅红伤");
     }
 
     std::cout << "scenario_2370 PASS (J144 条件固伤族 515/685/1027)" << std::endl;

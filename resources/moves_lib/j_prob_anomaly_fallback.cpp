@@ -256,7 +256,7 @@ EffectResult effect_1335_chance_or_stat_drain(BattleContext* ctx, const EffectAr
         pool.push_back(i);
     }
     for (int k = 0; k < count && !pool.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(pool.size());
+        const int pick = ctx->rng().next() % static_cast<int>(pool.size());
         const int stat = pool[static_cast<std::size_t>(pick)];
         pool.erase(pool.begin() + pick);
         g_core->stat_drop(ctx, opp, stat, levels, owner);   // ① 对手下降（免弱可挡）

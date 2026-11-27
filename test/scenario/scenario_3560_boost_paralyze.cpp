@@ -67,7 +67,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[0][0] = 1;   // 自身强化
-        sbs_srand(58);
+        b.ctx().seed_rng(58);
         attack_round(b);
         CHECK(ctx.has_active_abnormal_status(1, kParalysis),
               "T3560 316：强化+落地 seed → 对手麻痹");
@@ -80,7 +80,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[0][0] = 1;
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         attack_round(b);
         CHECK(!ctx.has_active_abnormal_status(1, kParalysis),
               "T3561 316：失手 seed → 无麻痹");
@@ -92,7 +92,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         attack_round(b);
         CHECK(!ctx.has_active_abnormal_status(1, kParalysis),
               "T3562 316：无强化 → 门闭不掷");

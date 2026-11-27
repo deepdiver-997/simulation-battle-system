@@ -81,7 +81,7 @@ int main() {
             }
         }
         REQUIRE(seed > 0);
-        sbs_srand(seed);
+        ctx.seed_rng(seed);
         std::cerr << "[R651] seed=" << seed << "\n";
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);   // R1 稻香之息
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);   // 对手留缺口

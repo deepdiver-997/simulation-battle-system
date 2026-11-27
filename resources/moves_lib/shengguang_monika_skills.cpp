@@ -140,7 +140,7 @@ EffectResult effect_2429_pp_zero_cond(BattleContext* ctx, const EffectArgs& args
     }
     int idx[5] = {0, 1, 2, 3, 4};
     for (int i = 4; i > 0; --i) {
-        const int j = sbs_rand() % (i + 1);
+        const int j = ctx->rng().next() % (i + 1);
         std::swap(idx[i], idx[j]);
     }
     for (int i = 0; i < slots_n && i < 5; ++i) {
@@ -430,7 +430,7 @@ EffectResult effect_1385_consume_all_lv_pp_zero(BattleContext* ctx, const Effect
     moni_pub_set(ctx->plugin_storage, kMoniPubNz + owner, 0);
     int idx[5] = {0, 1, 2, 3, 4};
     for (int i = 4; i > 0; --i) {
-        const int j = sbs_rand() % (i + 1);
+        const int j = ctx->rng().next() % (i + 1);
         std::swap(idx[i], idx[j]);
     }
     for (int i = 0; i < nz && i < 5; ++i) {
@@ -462,11 +462,11 @@ EffectResult effect_1485_conditional_anomaly_pair(BattleContext* ctx, const Effe
         }
     }
     if (boosted) {
-        if (pct_a > 0 && (sbs_rand() % 100) < pct_a) {
+        if (pct_a > 0 && (ctx->rng().next() % 100) < pct_a) {
             g_core->apply_anomaly(ctx, target, anomaly_a, 1, owner);
         }
     } else {
-        if (pct_b > 0 && (sbs_rand() % 100) < pct_b) {
+        if (pct_b > 0 && (ctx->rng().next() % 100) < pct_b) {
             g_core->apply_anomaly(ctx, target, anomaly_b, 1, owner);
         }
     }

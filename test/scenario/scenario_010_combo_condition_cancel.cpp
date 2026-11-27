@@ -102,7 +102,7 @@ int main() {
             const Skills& skill = battle.ctx().getPet(0).skills[kFifthSlot];
             CHECK_EQ(skill.power, expected_power[round - 1], "A) 威力每次 +50（累积）");
             for (int i = 0; i < kUnitCount; ++i) {
-                CHECK(skill.parsed_units_[i].condition != UnitCondition::None,
+                CHECK(skill.parsed_units()[i].condition != UnitCondition::None,
                       "A) 六条条件**原样保留**（技能对象只读，进度在魂印侧）");
             }
         }

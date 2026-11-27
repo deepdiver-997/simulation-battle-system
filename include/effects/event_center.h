@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <effects/battle_callback_copy.h>
+
 class BattleContext;
 
 /**
@@ -258,6 +260,8 @@ struct BattleEvent {
     // 非换宠事件为 -1。
     int switch_cause = -1;
     static constexpr int kNoEventState = -999;
+
+    bool operator==(const BattleEvent&) const = default;
 };
 
 /**
@@ -288,6 +292,7 @@ struct EventWatcher {
     int valid_id_ = 0;   // 注册时从 BattleContext::watcher_valid_id[owner] 复制，切换作废用
     int source_effect_id = 0;   // 登记效果 id（效果显示 G4 债务 #8：0 = 未归属/内核机械）
     std::function<void(BattleContext*, const BattleEvent&)> fn;
+    bool clone_copyable = false;
 };
 
 /**
@@ -314,16 +319,18 @@ public:
      * @param register_round  注册时的回合数（由 BattleContext 传入 roundCount）
      * @param duration_rounds 0 = 永久; >0 = 窗口
      * @param once            触发一次后自动移除
+     * @param copy            审计过的回调可随对局复制；跨事件状态应存入 ctx
      * @return watcher_id     用于 remove_watcher 手动注销
      */
     int register_watcher(EventType type, int owner, int register_round, int duration_rounds,
                          bool once, std::function<void(BattleContext*, const BattleEvent&)> fn,
                          WatcherScope scope = WatcherScope::ON_STAGE,
-                         int valid_id = 0, int source_effect_id = 0) {
+                         int valid_id = 0, int source_effect_id = 0,
+                         BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
         const int id = next_id_++;
         watchers_.emplace(id, EventWatcher{type, owner, register_round, duration_rounds,
                                            once, scope, valid_id, source_effect_id,
-                                           std::move(fn)});
+                                           std::move(fn), copy == BattleCallbackCopy::Audited});
         by_type_[type].push_back(id);
         return id;
     }
@@ -459,6 +466,7 @@ public:
     const std::unordered_map<int, EventWatcher>& watchers() const { return watchers_; }
 
 private:
+    friend class BattleClone;
     // 把单个事件投递给其类型的所有 watcher。
     // watcher_valid_id: 监听器版本号数组（切换作废判定）；nullptr = 不检查
     void deliver(BattleContext* ctx, int current_round, const BattleEvent& event,

@@ -1,6 +1,7 @@
 #ifndef DAMAGE_PIPELINE_H
 #define DAMAGE_PIPELINE_H
 
+#include <effects/battle_callback_copy.h>
 #include <cstdint>
 #include <algorithm>
 #include <array>
@@ -91,6 +92,7 @@ struct DamageEffect {
     //    所以两个 epoch 分开：`round_effect_valid_id` 管时点桶，`pipeline_valid_id` 只管切换。
     int valid_id = 0;
     bool team = false;
+    bool clone_copyable = false;
 };
 
 /**
@@ -114,7 +116,8 @@ public:
 
     void register_effect(DamagePhase phase, int owner, DamageEffectCategory category,
                          std::function<void(BattleContext*, int)> fn,
-                         int valid_id = 0, bool team = false) {
+                         int valid_id = 0, bool team = false,
+                         BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
         if (owner < 0 || owner > 1) {
             return;
         }
@@ -125,7 +128,21 @@ public:
                                         return !e.team && e.valid_id != valid_id;
                                     }),
                      bucket.end());
-        bucket.push_back(DamageEffect{category, std::move(fn), valid_id, team});
+        bucket.push_back(DamageEffect{category, std::move(fn), valid_id, team,
+                                      copy == BattleCallbackCopy::Audited});
+    }
+
+    bool clone_into(DamagePipeline& destination) const {
+        for (const auto& phase : buckets_) {
+            for (const auto& side : phase) {
+                for (const auto& effect : side) {
+                    if (!effect.clone_copyable) return false;
+                }
+            }
+        }
+        auto copy = buckets_;
+        destination.buckets_.swap(copy);
+        return true;
     }
 
     /**

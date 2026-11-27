@@ -68,7 +68,7 @@ ElfPet foe_pet() {
 }
 
 int run_attack(ScenarioBattle& b) {
-    sbs_srand(kSeed);   // 固定伤害浮动序列（同种子对拍）
+    b.ctx().seed_rng(kSeed);   // 固定伤害浮动序列（同种子对拍）
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
     b.drive();

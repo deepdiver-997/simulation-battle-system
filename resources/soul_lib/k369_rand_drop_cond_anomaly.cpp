@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K369 对手随机降属+阶段末条件异常族 —— effect 1224（1 宏 / 2 行）
 //（方块公主 3649 row935 + 贝利弗 4619 row1827；号段 7140-7149，
 //  worktree ../agents/k369，2026-10-24）
@@ -154,7 +153,7 @@ EffectResult k369_1224_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
         int guard = 0;
         while (done < drop_count && guard < 100) {
             ++guard;
-            const int slot = sbs_rand() % kStatSlotCount;
+            const int slot = ctx->rng().next() % kStatSlotCount;
             if (picked[slot]) {
                 continue;
             }

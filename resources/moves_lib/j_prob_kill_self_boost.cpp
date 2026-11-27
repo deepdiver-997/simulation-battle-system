@@ -73,7 +73,7 @@ EffectResult j270_1591_kill_probe(BattleContext* ctx, const EffectArgs& args) {
     if (ctx->getPet(opp).hp <= 0) {
         return EffectResult::kOk;   // 已被本次攻击打死：不再补刀
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         ctx->plugin_storage[kAuditBase + self] = 0;
         all_stats_up(ctx, self, delta);   // 未触发兜底：自身六槽 +delta
         return EffectResult::kOk;

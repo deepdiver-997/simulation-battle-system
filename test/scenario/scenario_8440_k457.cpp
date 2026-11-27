@@ -229,7 +229,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kMingJiao, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(13);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(13);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot(ctx, k1459Base, 0, 0), 1, "T8440.a 主支落地（slot0=1）");
@@ -269,7 +269,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kMingJiao, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             400, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1459Base, 0, 0), 0, "T8440.b R1 首掷歪（56≥35，slot0=0）");
@@ -306,7 +306,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             400, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1459Base, 0, 0), -1, "T8440.c 门关：主支槽缺席");
@@ -328,7 +328,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kMingJiao, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         (void)ctx.grant_immunity(1, ImmunityType::ANOMALY, coverage_all(),
                                  /*anomaly_mask=*/0, /*duration_rounds=*/9);
@@ -365,7 +365,7 @@ int main() {
                          make_party(foe_pet(2, "印主1", {kMiLan, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         // side1 R1 出鸣叫（属性技 idx1）——封属票的合法拦截面（载体是攻击技，
         // SEAL_ATTRIBUTE 不拦攻击技——T8440.b 通道差分已锁）。
@@ -402,7 +402,7 @@ int main() {
                          make_party(foe_pet(2, "印主f1", {kMiLan, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             300, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         // R1：双侧都出载体（后手侧门关零执行；36463 链首 1155=自伤20%粉、无消除兄弟）
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -442,7 +442,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             400, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1799Base, 0, 0), 1, "T8440.g 主支落地（slot0=1）");
@@ -473,7 +473,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             400, 200, kMaxHp)));
         b.start();
-        sbs_srand(9);
+        b.ctx().seed_rng(9);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1799Base, 0, 0), 0, "T8440.h R1 首掷歪（94≥50）");
@@ -506,7 +506,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1799Base, 0, 8), -1,
@@ -525,7 +525,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             400, 200, kMaxHp)));
         b.start();
-        sbs_srand(9);
+        b.ctx().seed_rng(9);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1799Base, 0, 1), 1, "T8440.j1 R1 次数票武装");
@@ -546,7 +546,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kMingJiao, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot(ctx, k1459Base, 0, 1), 1, "T8440.j2 R1 回合票武装");
@@ -565,7 +565,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kMingJiao, kMingJiao, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1459Base, 0, 0), 0, "T8440.k R1 首掷歪（91≥70）");
@@ -593,7 +593,7 @@ int main() {
                          make_party(foe_pet(2, "印主l1", {kHuaFu, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             300, 1, kMaxHp)));
         b.start();
-        sbs_srand(9);
+        b.ctx().seed_rng(9);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k1799Base, 1, 0), 0, "T8440.l side1 后手执行：掷歪（75≥50）");

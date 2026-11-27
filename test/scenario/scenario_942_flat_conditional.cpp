@@ -43,7 +43,7 @@ std::vector<int> probe_losses(int rounds, const std::vector<bool>& attacker_move
     ScenarioBattle b(scenario::make_party(defender_pet(1, mark)),
                      scenario::make_party(attacker_pet(2)));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20260916);   // 对照局对齐：每次探针同一 rand 序
+    ctx.seed_rng(20260916);   // 对照局对齐：每次探针同一 rand 序
     b.start();
     std::vector<int> losses;
     const int hp0 = ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp;

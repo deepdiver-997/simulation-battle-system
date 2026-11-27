@@ -244,6 +244,7 @@ int main() {
     {
         int gain = 0;
         int opp_delta = 0;
+        int red = 0;
         {
             ScenarioBattle b(make_party(self_pet({kLiangZhi, kPaDa, kPaDa, kPaDa, kPaDa})),
                              make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
@@ -255,9 +256,11 @@ int main() {
             play_self(b, 0);
             gain = ctx.getPet(0).hp - h0;
             opp_delta = o0 - ctx.getPet(1).hp;
+            red = ctx.ws.raw_attack_damage[0];
         }
         CHECK_EQ(gain, 233, "T7 吸 233 点");
-        CHECK(opp_delta >= 233 && opp_delta <= 235, "T7 对手掉 233（+红伤 1~2）");
+        CHECK(red > 0, "T7 前置：载体造成红伤");
+        CHECK_EQ(opp_delta, red + 233, "T7 对手精确损失红伤加吸取 233");
         std::cout << "  [T7] 1983: 吸=" << gain << "\n";
     }
 

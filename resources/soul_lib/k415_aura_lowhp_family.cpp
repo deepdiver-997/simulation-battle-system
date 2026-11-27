@@ -442,7 +442,7 @@ EffectResult k415_1960_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                 return;   // db[0]=0 行判别：概率支关（row2025，文本互证）
             }
             write_int(c, key_base + k1960PctAudit, pct);   // 掷前落账（K662/F9 782）
-            if (!roll_percent(pct)) {
+            if (!roll_percent(c->rng(), pct)) {
                 write_int(c, key_base + k1960RollAudit, 0);
                 const int delta = live_db_at(db, 1, 1);
                 if (delta > 0) {

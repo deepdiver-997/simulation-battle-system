@@ -522,7 +522,7 @@ EffectResult k395_1258_arm(BattleContext* ctx, const SoulNodeArgs& a) {
                 const bool low = c->getPet(owner).hp < c->getPet(opp).hp;   // M5 现值
                 const int pct = low ? dodge * 2 : dodge;
                 write_int(c, k1258DodgePctBase + owner, pct);
-                const bool landed = roll_percent(pct);
+                const bool landed = roll_percent(c->rng(), pct);
                 write_int(c, k1258DodgeHitBase + owner, landed ? 1 : 0);
                 if (landed) {
                     write_int(c, k1258DodgeStatBase + owner,

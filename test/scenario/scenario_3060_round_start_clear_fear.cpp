@@ -68,7 +68,7 @@ int main() {
                          make_party(plain_pet(skills)));
         b.start();
         b.ctx().ability_levels[1][0] = 2;
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         both_none(b);
         BattleContext& ctx = b.ctx();
         CHECK_EQ(ctx.ability_levels[1][0], 0, "T3060 808：过门即消强（正槽清零）");
@@ -83,7 +83,7 @@ int main() {
                          make_party(plain_pet(skills)));
         b.start();
         b.ctx().ability_levels[1][0] = 2;
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         both_none(b);
         BattleContext& ctx = b.ctx();
         CHECK_EQ(ctx.ability_levels[1][0], 0, "T3061 808：失手分支消强照常");
@@ -98,7 +98,7 @@ int main() {
                          make_party(plain_pet(skills)));
         b.start();
         b.ctx().ability_levels[1][0] = -1;   // 下降不是提升：门闭（顺验消强不碰负槽）
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         both_none(b);
         BattleContext& ctx = b.ctx();
         CHECK_EQ(ctx.ability_levels[1][0], -1, "T3062 808：门闭不清槽（负槽原样）");
@@ -113,7 +113,7 @@ int main() {
                          make_party(plain_pet(skills)));
         b.start();
         b.ctx().ability_levels[1][0] = 2;
-        sbs_srand(9);
+        b.ctx().seed_rng(9);
         both_none(b);
         BattleContext& ctx = b.ctx();
         CHECK_EQ(ctx.ability_levels[1][0], 0, "T3063 808 进化行：消强照常");

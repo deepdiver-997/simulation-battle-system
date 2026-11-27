@@ -176,7 +176,7 @@ void pp_zero_random_slots(BattleContext* ctx, int target, int actor, int count) 
     int guard = 0;
     while (done < count && guard < 100) {
         ++guard;
-        const int slot = sbs_rand() % 5;   // 5 技能槽
+        const int slot = ctx->rng().next() % 5;   // 5 技能槽
         if (g_core->pp_zero_slot(ctx, target, slot, actor) ==
             PpReduceResult::SUCCESS) {
             ++done;
@@ -236,7 +236,7 @@ EffectResult k759_round_start_roll(BattleContext* ctx, const SoulNodeArgs& a) {
         ctx->plugin_storage[kFlag759Base + owner] = 0;
         return EffectResult::kOk;
     }
-    const bool hit = roll_percent(pct);   // 本地掷（K316 394 口径）
+    const bool hit = roll_percent(ctx->rng(), pct);   // 本地掷（K316 394 口径）
     ctx->plugin_storage[kAudit759Base + owner] = hit ? 1 : 0;
     ctx->plugin_storage[kFlag759Base + owner] = hit ? 1 : 0;
     return EffectResult::kOk;
@@ -411,7 +411,7 @@ EffectResult k1430_round_end_heal(BattleContext* ctx, const SoulNodeArgs& a) {
     if (self.hp <= 0) {
         return EffectResult::kOk;
     }
-    const int amount = lo + sbs_rand() % (hi - lo + 1);   // [lo, hi] 闭区间
+    const int amount = lo + ctx->rng().next() % (hi - lo + 1);   // [lo, hi] 闭区间
     ctx->plugin_storage[kAudit1430Base + owner] = amount;   // 审计槽（F9 782）
     (void)g_core->heal_amount(ctx, owner, amount);
     const int opp = 1 - owner;

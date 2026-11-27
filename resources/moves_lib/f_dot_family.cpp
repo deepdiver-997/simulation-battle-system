@@ -124,7 +124,7 @@ EffectResult effect_76_chance_rounds_dot(BattleContext* ctx, const EffectArgs& a
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1 && target >= 0 && target <= 1, 76, args,
                      "owner/target 越界");
     EFFECT_ARG_GUARD(rounds > 0 && per_round > 0, 76, args, "rounds/per_round 非正");
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;   // 概率门未过：不挂窗（76 无异常可申报 → 本地掷骰）
     }
     // "N回合内"窗口（InRounds 家族口径，见文件头）：回合扣减点每回合结算一次。

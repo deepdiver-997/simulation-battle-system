@@ -80,8 +80,9 @@ struct Trial {
     bool is_crit_snapshot = false;
 };
 
-Trial run_trial(int carrier, int anomaly_id, bool boosted) {
+Trial run_trial(int carrier, int anomaly_id, bool boosted, unsigned seed) {
     ScenarioBattle b(make_party(mk_owner(carrier)), make_party(mk_foe()));
+    b.ctx().seed_rng(seed);
     b.start();
     BattleContext& ctx = b.ctx();
     if (boosted) {
@@ -118,7 +119,7 @@ int main() {
         int crit = 0, anomaly = 0, both = 0, neither = 0, mismatch = 0;
         long crit_dmg = 0, plain_dmg = 0;
         for (int i = 0; i < N; ++i) {
-            const Trial t = run_trial(kJingRen, kAnomalySleep, /*boosted=*/false);
+            const Trial t = run_trial(kJingRen, kAnomalySleep, /*boosted=*/false, 1 + i * 104729u);
             crit += t.crit ? 1 : 0;
             anomaly += t.anomaly ? 1 : 0;
             both += (t.crit && t.anomaly) ? 1 : 0;
@@ -160,7 +161,7 @@ int main() {
         constexpr int N = 100;
         int crit = 0, blind = 0, both = 0;
         for (int i = 0; i < N; ++i) {
-            const Trial t = run_trial(kChaDian, kAnomalyBlind, /*boosted=*/false);
+            const Trial t = run_trial(kChaDian, kAnomalyBlind, /*boosted=*/false, 1 + i * 104729u);
             crit += t.crit ? 1 : 0;
             blind += t.anomaly ? 1 : 0;
             both += (t.crit && t.anomaly) ? 1 : 0;
@@ -179,12 +180,12 @@ int main() {
         constexpr int N = 60;
         int crit_boosted = 0, crit_plain = 0, audit_ok = 0;
         for (int i = 0; i < N; ++i) {
-            const Trial t = run_trial(kManTian, 0, /*boosted=*/true);
+            const Trial t = run_trial(kManTian, 0, /*boosted=*/true, 1 + i * 104729u);
             crit_boosted += t.crit ? 1 : 0;
             audit_ok += (t.audit_1420 == (t.crit ? 1 : 0)) ? 1 : 0;
         }
         for (int i = 0; i < N; ++i) {
-            const Trial t = run_trial(kManTian, 0, /*boosted=*/false);
+            const Trial t = run_trial(kManTian, 0, /*boosted=*/false, 1 + i * 104729u);
             crit_plain += t.crit ? 1 : 0;
             audit_ok += (t.audit_1420 == -1) ? 1 : 0;
         }

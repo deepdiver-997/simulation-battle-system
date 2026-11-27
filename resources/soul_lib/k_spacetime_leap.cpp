@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K7 · 时空跃迁/叠层减伤复杂族 —— 1639/1903（时空界神 4050 双宏同模板）+ 1673（迦曼吉 4080）
 //                                                                          （2026-10-04，worktree ../agents/k7）
 //
@@ -247,7 +246,7 @@ EffectResult leap_round_open(BattleContext* ctx, const EffectArgs& args) {
         }
         if (!pp_slots.empty()) {
             foe.skills[static_cast<std::size_t>(
-                pp_slots[sbs_rand() % pp_slots.size()])].pp = 0;
+                pp_slots[ctx->rng().next() % pp_slots.size()])].pp = 0;
         }
         return EffectResult::kOk;
     }

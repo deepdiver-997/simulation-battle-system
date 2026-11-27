@@ -22,9 +22,7 @@
 // skill_args 是该效果的参数列表（record.args，不含 build_effect_args_for_skill 加的
 // [0,1] owner/target 前缀）；模板占位符 {n} → skill_args[n]，解析后烘成字面量（每技能实例化）。
 //
-// 分支指针存活约定：所有单元（根 + 递归分支）追加进调用方提供的 storage，
-// 分支指针指向 storage 内元素。**调用方须保证本次解析期间 storage 不 reallocate**
-// （loadSkills 开头按效果数 reserve 足量），否则 vector 扩容会使指针悬垂。
+// 所有单元先根后子追加到 storage，分支保存 storage 内的下标，不受扩容影响。
 // 返回根单元在 storage 中的下标；失败返回 -1。
 int parse_effect_unit(const std::string& info, const std::vector<int>& skill_args,
                       std::vector<EffectUnit>& storage);

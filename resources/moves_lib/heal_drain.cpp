@@ -96,7 +96,7 @@ EffectResult effect_683_random_fixed(BattleContext* ctx, const EffectArgs& args)
         return EffectResult::kOk;
     }
     if (g_core && g_core->fixed_damage) {
-        const int amt = low + (sbs_rand() % (high - low + 1));  // [low, high] 闭区间
+        const int amt = low + (ctx->rng().next() % (high - low + 1));  // [low, high] 闭区间
         g_core->fixed_damage(ctx, target, amt);
     }
     return EffectResult::kOk;
@@ -295,7 +295,7 @@ EffectResult effect_447_damage_floor(BattleContext* ctx, const EffectArgs& args)
 
 // ── effect 93 —— {0}%概率额外附加{1}点固定伤害（迷之气泡 12325 等）──
 // Args=[owner,target,chance,amount]。SKILL_EFFECT 时点直通（同 29/683 附加固伤先例）；
-// 概率掷点按"短路径不消耗 sbs_rand()"纪律走 roll_percent（100% 短路）。
+// 概率掷点按"短路径不消耗 rng.next()"纪律走 roll_percent（100% 短路）。
 EffectResult effect_93_chance_fixed(BattleContext* ctx, const EffectArgs& args) {
     if (!ctx || !args.int_args || args.int_count < 4) {
         return EffectResult::kOk;
@@ -307,7 +307,7 @@ EffectResult effect_93_chance_fixed(BattleContext* ctx, const EffectArgs& args) 
     if (owner < 0 || owner > 1 || target < 0 || target > 1 || amount <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance) && g_core && g_core->deal_pink_damage) {
+    if (roll_percent(ctx->rng(), chance) && g_core && g_core->deal_pink_damage) {
         g_core->deal_pink_damage(ctx, target, amount, DamageKind::FIXED, owner);
     }
     return EffectResult::kOk;
@@ -382,7 +382,7 @@ EffectResult effect_450_random_heal(BattleContext* ctx, const EffectArgs& args) 
     if (self < 0 || self > 1 || lo <= 0 || hi < lo) {
         return EffectResult::kOk;
     }
-    const int amount = lo + (sbs_rand() % (hi - lo + 1));
+    const int amount = lo + (ctx->rng().next() % (hi - lo + 1));
     g_core->heal_amount(ctx, self, amount);
     return EffectResult::kOk;
 }

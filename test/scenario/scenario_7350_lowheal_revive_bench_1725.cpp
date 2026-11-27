@@ -118,10 +118,10 @@ int main() {
 
     // ══ T7350 ① 低血回血 1/3 + 无伤不触发 ═════════════════════════════════════
     {
-        sbs_srand(7350);
         ScenarioBattle b(make_party(mark_pet({3, 2, 50, 50, 3, 50, 300, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7350);
         b.ctx().getPet(0).hp = 500000;   // R1 ROUND_START 前置 → 快照 500000
         const int hp0 = b.ctx().getPet(0).hp;
         foe_hit_round(b);   // 对手打一下 → ① 回 300000
@@ -137,10 +137,10 @@ int main() {
 
     // ══ T7351 ② 下回合减半窗：armed→mitigated→expired ════════════════════════
     {
-        sbs_srand(7351);
         ScenarioBattle b(make_party(mark_pet({3, 2, 50, 50, 3, 50, 300, 1})),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(7351);
         b.ctx().getPet(0).hp = 100000;   // 回血后 399xxx < 450000 → ② armed
         foe_hit_round(b);
         CHECK_EQ(ledger_next_read(b), 50, "T7351 R1 ②账本 armed");
@@ -172,19 +172,18 @@ int main() {
                              make_party(foe_pet()));
             b.start();
             b.ctx().getPet(0).hp = 50;   // 必被 [87,102] 一刀带走
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             foe_hit_round(b);
             if (b.ctx().getPet(0).hp > 0) {
                 seed_revive = s;
             }
         }
         CHECK(seed_revive > 0, "T7352 重生种子（自校准找到）");
-        sbs_srand(seed_revive);
         ScenarioBattle b(make_party(mark_pet({3, 2, 50, 50, 3, 50, 300, 1})),
                          make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 50;
-        sbs_srand(seed_revive);
+        b.ctx().seed_rng(seed_revive);
         foe_hit_round(b);   // R1：致死 → 重生回满
         CHECK_EQ(b.ctx().getPet(0).hp, kMaxHp, "T7352 重生回满");
         CHECK(b.ctx().plugin_storage[kLedgerReviveUntil + 0].has_value(),
@@ -219,7 +218,7 @@ int main() {
             ScenarioBattle b(own, make_party(foe_pet()));
             b.start();
             b.ctx().getPet(0).hp = 50;
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             foe_hit_round(b);
             if (b.ctx().getPet(0).hp <= 0) {
                 seed_fail = s;
@@ -233,7 +232,7 @@ int main() {
         ScenarioBattle b(own, make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 50;
-        sbs_srand(seed_fail);
+        b.ctx().seed_rng(seed_fail);
         foe_hit_round(b);
         CHECK_EQ(b.ctx().getPet(0).hp, 0, "T7353 印主真死");
         CHECK_EQ(b.ctx().seerRobot[0].elfPets[1].hp, 1300, "T7353 bench1 +300");
@@ -244,10 +243,10 @@ int main() {
     // ══ T7354 伙伴行 row1787：①1/2 + ②前值口径 + ③bench 回满 ═════════════════
     {
         // ① heal 450000（1/2）
-        sbs_srand(7354);
         ScenarioBattle b1(make_party(mark_pet({2, 2, 50, 50, 3, 50, 5000, 1})),
                           make_party(foe_pet()));
         b1.start();
+        b1.ctx().seed_rng(7354);
         b1.ctx().getPet(0).hp = 400000;
         const int hp0 = b1.ctx().getPet(0).hp;
         foe_hit_round(b1);
@@ -280,7 +279,7 @@ int main() {
             ScenarioBattle b(own, make_party(foe_pet()));
             b.start();
             b.ctx().getPet(0).hp = 50;
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             foe_hit_round(b);
             if (b.ctx().getPet(0).hp <= 0) {
                 seed_fail = s;
@@ -294,7 +293,7 @@ int main() {
         ScenarioBattle b(own, make_party(foe_pet()));
         b.start();
         b.ctx().getPet(0).hp = 50;
-        sbs_srand(seed_fail);
+        b.ctx().seed_rng(seed_fail);
         foe_hit_round(b);
         CHECK_EQ(b.ctx().seerRobot[0].elfPets[1].hp, 300000, "T7354 bench 回满（哨兵）");
         std::cout << "  [T7354] 伙伴行 1/2+前值+回满 通过 (seed " << seed_fail << ")\n";
@@ -302,11 +301,11 @@ int main() {
 
     // ══ T7355 boss：tips（boss无效）→ 全节点不注册 ════════════════════════════
     {
-        sbs_srand(7355);
         ScenarioBattle b(make_party(mark_pet({3, 2, 50, 50, 3, 50, 300, 1})),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
+        b.ctx().seed_rng(7355);
         b.ctx().getPet(0).hp = 500000;
         const int hp0 = b.ctx().getPet(0).hp;
         foe_hit_round(b);

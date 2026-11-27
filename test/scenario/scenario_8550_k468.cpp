@@ -328,7 +328,7 @@ int main() {
                                                   {kC1457N3, 1457, 3, 2}}, 300)),
                          make_party(plain_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100)));
         b.start();
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         RandMirror m;
         m.seed(7);
         BattleContext& ctx = b.ctx();
@@ -394,7 +394,7 @@ int main() {
         ScenarioBattle b(make_party(plain_pet(1, "静电方", {kC1457Zero, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 300)),
                          make_party(plain_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100)));
         b.start();
-        sbs_srand(11);
+        b.ctx().seed_rng(11);
         RandMirror m;
         m.seed(11);
         BattleContext& ctx = b.ctx();
@@ -434,7 +434,7 @@ int main() {
         ScenarioBattle b(make_party(plain_pet(1, "机能方", {kC1457N3, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 300)),
                          make_party(plain_pet(2, "免异常对手", {kC1457Zero, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         RandMirror m;
         m.seed(13);
         BattleContext& ctx = b.ctx();
@@ -482,6 +482,8 @@ int main() {
                          make_party(override_pet(2, "镜像后手", kC1457Atk, kMonster38179,
                                                  {{kC1457Atk, 1457, 1, 100}}, 100)));
         b.start();
+        // R1 先手施加失明；seed 2 的第二抽为偶数，后手必中技能不落命中效果失效档。
+        b.ctx().seed_rng(2);
         BattleContext& ctx = b.ctx();
         set_pp(ctx, 0, {10, 11, 12, 13, 14});
         set_pp(ctx, 1, {10, 11, 12, 13, 14});
@@ -492,6 +494,8 @@ int main() {
         CHECK_EQ(slot(ctx, k1457Base, 1, 6, -1), -1,
                  "T8550.f 后手 R1 施放回合零执行（顺延；M-键位杀点面）");
         CHECK_EQ(slot(ctx, k1457Base, 0, 0), 1, "T8550.f 先手掷中落地");
+        CHECK_EQ(slot(ctx, k1457Base, 1, 13, -1), 1,
+                 "T8550.f 前置：后手施放效果未被失明屏蔽且窗口顺延到 R2");
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 1, BattleFsm::ActionType::SELECT_SKILL, 1);
         CHECK_EQ(slot(ctx, k1457Base, 0, 6), 2, "T8550.f R2 先手执行计数=2");
         CHECK_EQ(slot(ctx, k1457Base, 1, 6), 1, "T8550.f R2 后手执行计数=1（分账不串）");

@@ -97,7 +97,7 @@ ElfPet foe_pet(std::array<int, 5> skills, int speed = 100, int atk = 1, int hp =
 
 // 标准局骨架：我方先手出 index 技，对手空转（我方零受击）。
 void run_cast(ScenarioBattle& b, int skill_index, int seed) {
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, skill_index);
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
     b.drive();
@@ -382,7 +382,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         for (int r = 0; r < 3; ++r) {
-            sbs_srand(static_cast<unsigned>(100 + r));
+            b.ctx().seed_rng(static_cast<unsigned>(100 + r));
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();

@@ -174,7 +174,7 @@ int main() {
                              make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(seed_hit);
+            ctx.seed_rng(seed_hit);
             self_skill(b, 0);   // R1 窃笑潜逃（物攻，浮伤耗 d1）
             foe_attacks(b);     // R2 受击掷点 d3 < 70 → 中
             CHECK(ctx.has_active_abnormal_status(1, kCode15),
@@ -186,7 +186,7 @@ int main() {
                              make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(seed_fail);
+            ctx.seed_rng(seed_fail);
             self_skill(b, 0);
             foe_attacks(b);
             CHECK(!ctx.has_active_abnormal_status(1, kCode15),

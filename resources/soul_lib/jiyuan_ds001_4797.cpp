@@ -149,35 +149,35 @@ EffectResult soulmark_4797_round_end_jiyuan(BattleContext* ctx, const EffectArgs
         return EffectResult::kOk;
     }
     const bool turbulence = turbulence_of(*self);
-    const auto may = [turbulence]() {
-        return turbulence || roll_percent(kFiveRollPct);
+    const auto may = [turbulence](SbsRng& rng) {
+        return turbulence || roll_percent(rng, kFiveRollPct);
     };
     const int foe = 1 - owner;
     int fired = 0;
 
     // ① 20% 解除自身所处的异常状态（效果解除路径，不走自然到期/衍化）
-    if (may()) {
+    if (may(ctx->rng())) {
         if (g_core && g_core->dispel_active_anomalies) {
             (void)g_core->dispel_active_anomalies(ctx, owner);
         }
         ++fired;
     }
     // ② 20% 令自身所有技能 PP+1（clamp ≤ maxPP；无限槽不参与）
-    if (may()) {
+    if (may(ctx->rng())) {
         if (g_core && g_core->pp_restore) {
             (void)g_core->pp_restore(ctx, owner, 1, /*only_empty=*/false);
         }
         ++fired;
     }
     // ③ 20% 令对手所有技能 PP-1（走原语：逐槽 emit EVENT_PP_REDUCED）
-    if (may()) {
+    if (may(ctx->rng())) {
         if (g_core && g_core->pp_reduce) {
             (void)g_core->pp_reduce(ctx, foe, 1);
         }
         ++fired;
     }
     // ④ 20% 使自身全属性+1（6 项含命中，2026-09-18 口径；走 stat_change 真原语）
-    if (may()) {
+    if (may(ctx->rng())) {
         if (g_core && g_core->stat_change) {
             for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
                 (void)g_core->stat_change(ctx, owner, i, 1);
@@ -187,7 +187,7 @@ EffectResult soulmark_4797_round_end_jiyuan(BattleContext* ctx, const EffectArgs
     }
     // ⑤ 20% 恢复200点体力并附加等量固定伤害（数据库口径：固定伤害；4399 作百分比，不用）。
     //     "等量"按名义 200 算，不随封回血打折（拍板前保守口径，见开工文档 §三.9）。
-    if (may()) {
+    if (may(ctx->rng())) {
         if (g_core && g_core->heal_amount) {
             (void)g_core->heal_amount(ctx, owner, kHealAmount);
         }

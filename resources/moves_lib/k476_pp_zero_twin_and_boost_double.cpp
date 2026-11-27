@@ -50,7 +50,7 @@
 // ══ 实现口径（套路目录 §零决策树①：同形套路照抄先例）══
 //   · 1618 = K458 1565 同构直系（k458_moves_pp_zero.cpp 结构/注释密度/断言口径
 //     一起抄）：随机选槽 = 656 部分 Fisher-Yates 同构（池 {0..槽位数-1}，每抽
-//     j = i + sbs_rand()%(size-i)、swap 后归零 pool[i]，n 抽互不相重）；归零 =
+//     j = i + rng.next()%(size-i)、swap 后归零 pool[i]，n 抽互不相重）；归零 =
 //     g_core->pp_zero_slot 原语（pp<=0 幂等、无限槽 INVALID_PARAM 不参与、
 //     pp_retain 琼华之庇对对手来源保留并发 blocked 事件、实际归零 emit
 //     EVENT_PP_REDUCED）；窗口 = register_round_effect @ BATTLE_ROUND_END、
@@ -178,7 +178,7 @@ int k476_zero_random_slots(BattleContext* ctx, int target, int want, int actor,
     }
     const int n = std::min(want, static_cast<int>(pool.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(pool.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(pool.size()) - i));
         std::swap(pool[static_cast<std::size_t>(i)], pool[static_cast<std::size_t>(j)]);
         const int slot = pool[static_cast<std::size_t>(i)];
         const int before = ctx->getPet(target).skills[static_cast<std::size_t>(slot)].pp;
@@ -293,7 +293,7 @@ EffectResult effect_512_self_boost_chance_double(BattleContext* ctx, const Effec
     }
     // 40% 掷点（在位即消费：区间内一抽；掷歪=单倍到此为止）。1378 {1}% 行参版
     // 直系同构；命中 → 六槽增量再写一遍（993"强化效果翻倍"同构）。
-    const bool doubled = roll_percent(k476_512_DoubleChance);
+    const bool doubled = roll_percent(ctx->rng(), k476_512_DoubleChance);
     set_storage_int_local(ctx, audit_key_of(k512AuditBase, self, 0), doubled ? 1 : 0);
     if (doubled) {
         set_storage_int_local(ctx, audit_key_of(k512AuditBase, self, 3),

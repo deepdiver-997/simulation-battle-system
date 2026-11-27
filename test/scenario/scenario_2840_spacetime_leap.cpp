@@ -227,15 +227,32 @@ int main() {
         ElfPet fp = make_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                              /*speed=*/100, 1, kMaxHp);
         accuracy_100(fp, false);
-        ScenarioBattle b(make_party(sp), make_party(fp));
-        b.start();
-        BattleContext& ctx = b.ctx();
-        b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);   // R0 自方后手拍打 → 必暴
-        b.submit_operation(1, BattleFsm::ActionType::NONE, -1);          // 对手 NONE：隔离 1057 反弹
-        b.drive();
-        const int red = kMaxHp - ctx.getPet(1).hp;
-        CHECK(red >= 170 && red <= 200,
-              "T2840.e 1057：后手必暴红伤 2×带（实测 " + std::to_string(red) + "）");
+        auto crit_probe = [&](const ElfPet& attacker) {
+            ScenarioBattle b(make_party(attacker), make_party(fp));
+            b.start();
+            BattleContext& ctx = b.ctx();
+            ctx.debug_step_mode = true;
+            b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
+            b.submit_operation(1, BattleFsm::ActionType::NONE, -1); // 隔离反弹
+            ctx.debug_step_mode = false;
+            b.step_until(State::BATTLE_SECOND_ATTACK_DAMAGE);
+            ctx.seed_rng(20261004); // 在伤害公式前对齐两场的浮动
+            b.drive();
+            return std::make_pair(kMaxHp - ctx.getPet(1).hp, ctx.resolvedDamage.isCrit);
+        };
+        ElfPet forced_crit = sp;
+        forced_crit.soulMark = SoulMark{};
+        set_crit_sixteenths(forced_crit, 16);
+        const auto [red, marked_crit] = crit_probe(sp);
+        const auto [red_ctrl, control_crit] = crit_probe(forced_crit);
+        ElfPet noncrit = forced_crit;
+        set_crit_sixteenths(noncrit, 0);
+        const auto [red_plain, plain_crit] = crit_probe(noncrit);
+        CHECK(marked_crit && control_crit && !plain_crit,
+              "T2840.e 后手魂印与必暴对照均暴击，零暴对照不暴击");
+        CHECK(red_plain > 0, "T2840.e 零暴对照造成红伤");
+        CHECK_EQ(red_ctrl, red_plain * 2, "T2840.e 同种子必暴对零暴精确 2 倍");
+        CHECK_EQ(red, red_ctrl, "T2840.e 1057 后手伤害与同种子必暴对照精确一致");
         // 先手闪避：自方 speed 300（先手）→ 自方闪避 +70%；对手命中压到 29（29-70<0 必 miss）
         ElfPet sp2 = make_pet(1, "耶里梅斯", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                               /*speed=*/300, 300, kMaxHp,

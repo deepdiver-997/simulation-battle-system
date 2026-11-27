@@ -96,21 +96,21 @@ ElfPet foe(std::array<int, 5> skills, int speed = 100) {
 
 // R1 骨架：我方出载体，对手无还手。
 void run_cast(ScenarioBattle& b, int skill_index, int seed) {
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, skill_index);
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
     b.drive();
 }
 // 双侧镜像：双方各选 0 号（owner=0/1 两键段隔离直证用）。
 void run_cast_mirror(ScenarioBattle& b, int seed) {
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.drive();
 }
 // 双侧 NONE 推进一回合（窗界腿用）。
 void run_idle_round(ScenarioBattle& b, int seed) {
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::NONE, 0);
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
     b.drive();

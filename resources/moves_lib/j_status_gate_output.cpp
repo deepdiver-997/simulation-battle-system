@@ -47,7 +47,7 @@ EffectResult effect_552_statused_chance_fixed(BattleContext* ctx, const EffectAr
     if (!ctx->has_any_active_abnormal_status(target)) {
         return EffectResult::kOk;   // 门：对手处于异常状态
     }
-    if (roll_percent(chance) && g_core && g_core->deal_pink_damage) {
+    if (roll_percent(ctx->rng(), chance) && g_core && g_core->deal_pink_damage) {
         (void)g_core->deal_pink_damage(ctx, target, amount, DamageKind::FIXED, owner);
     }
     return EffectResult::kOk;

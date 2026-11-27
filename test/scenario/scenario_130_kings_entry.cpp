@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 场景 130 —— 登场节点 early 语义批次（2026-09-26）
 //
 // 锁的是"ENTER_EXIT_STAGE 非 early 节点只在开局执行一次"导致的登场效果丢失：
@@ -103,8 +102,6 @@ int main() {
         std::cerr << "failed to init runtime data" << std::endl;
         return 1;
     }
-    sbs_srand(7);
-
     // ═══ A. 谱尼圣洁：切出免疫作废（不护队友）、切回重授 ══════════════
     {
         std::array<ElfPet, 6> own = {plain_pet(), plain_pet(), plain_pet(),
@@ -201,9 +198,9 @@ int main() {
         std::array<ElfPet, 6> opp = {puni_pet(), plain_pet(), plain_pet(),
                                      plain_pet(), plain_pet(), plain_pet()};
         ScenarioBattle b(own, opp);
-        b.start();
         BattleContext& x = b.ctx();
-        grant_pool_marker(x);
+        grant_pool_marker(x); // 登场前限定异常池，确保观测票覆盖首次部署
+        b.start();
         CHECK(!has_status(x, 1, kCurse) && !has_status(x, 1, kPoison),
               "E1 魔尊部署控 → 圣洁(early,先于桶)挡下");
 
@@ -223,9 +220,9 @@ int main() {
         std::array<ElfPet, 6> opp = {plain_pet(), plain_pet(), plain_pet(),
                                      plain_pet(), plain_pet(), plain_pet()};
         ScenarioBattle b(own, opp);
-        b.start();
         BattleContext& x = b.ctx();
-        grant_pool_marker(x);
+        grant_pool_marker(x); // 控制首次登场的随机异常，而非事后注册
+        b.start();
         CHECK(has_status(x, 1, kCurse),
               "E3 对照：普通宠被同一部署控命中（链路非静默 no-op）");
     }

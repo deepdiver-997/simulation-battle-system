@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K282 回合随机属性+1族 —— effect 645（1 宏 / 1 行）
 //
 // 行清单（tools/soul_effects_dump.py 645，2026-10-21）：
@@ -100,7 +99,7 @@ EffectResult k282_645_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
         bag[i] = i;
     }
     for (int pick = 0; pick < count; ++pick) {
-        const int idx = pick + static_cast<int>(sbs_rand() % (total - pick));
+        const int idx = pick + static_cast<int>(ctx->rng().next() % (total - pick));
         std::swap(bag[pick], bag[idx]);
         (void)g_core->stat_change(ctx, owner, bag[pick], delta);
     }

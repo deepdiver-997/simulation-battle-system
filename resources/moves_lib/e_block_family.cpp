@@ -108,7 +108,7 @@ EffectResult effect_1882_next_pet_block(BattleContext* ctx, const EffectArgs& ar
                 EffectScope::ON_STAGE, /*source_slot=*/-1, /*counts=*/counts,
                 /*source_effect_id=*/1882);
             // ② 出战时 {1}% 令对手 {2}（{2}=32 凝滞；对象=对手，语感口径记档）
-            if (g_core->apply_anomaly && roll_percent(chance)) {
+            if (g_core->apply_anomaly && roll_percent(c->rng(), chance)) {
                 (void)g_core->apply_anomaly(c, 1 - owner, anomaly,
                                             random_anomaly_duration(), owner);
             }

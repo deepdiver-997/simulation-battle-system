@@ -9,7 +9,7 @@
 //   - 1132 = SKILL_EFFECT：任一正槽（count_boost 判据，J51 同款六槽扫）→
 //     rand[{0},{1}]，否则 rand[{2},{3}]（模板语序：默认 {0}-{1}，无提升"变为"
 //     {2}-{3}——载体切片 {2}-{3}>{0}-{1}，无提升补偿向）→ heal_amount（点数口径）。
-//   - 70 = J159 118 直系零参版：skill_power_view = 150 + sbs_rand()%71（常数写死文案，
+//   - 70 = J159 118 直系零参版：skill_power_view = 150 + rng.next()%71（常数写死文案，
 //     "威力域随机"消耗一次 rand，非概率事件）。
 //
 // 载体切片（unity 库 json_each 精确匹配 12+13=25；顺序切分 side_effect.arg_count
@@ -55,7 +55,7 @@ EffectResult effect_1132_rand_heal(BattleContext* ctx, const EffectArgs& args) {
     }
     const int lo = boosted ? lo1 : lo2;
     const int hi = boosted ? hi1 : hi2;
-    const int amount = lo + sbs_rand() % (hi - lo + 1);
+    const int amount = lo + ctx->rng().next() % (hi - lo + 1);
     (void)g_core->heal_amount(ctx, owner, amount);
     return EffectResult::kOk;
 }
@@ -67,7 +67,7 @@ EffectResult effect_70_random_power(BattleContext* ctx, const EffectArgs& args) 
                      "70 布局=[owner,target]（on_selected 绑定）");
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 70, args, "需要 owner ∈ {0,1}");
-    ctx->ws.skill_power_view[owner] = 150 + sbs_rand() % 71;   // 150..220 绝对置
+    ctx->ws.skill_power_view[owner] = 150 + ctx->rng().next() % 71;   // 150..220 绝对置
     return EffectResult::kOk;
 }
 

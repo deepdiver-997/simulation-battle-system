@@ -59,7 +59,7 @@ EffectResult effect_1525_full_hp_chance_amp(BattleContext* ctx, const EffectArgs
         chance = std::min(100, chance_arg * 2);   // "出手时自身为满体力则概率翻倍"
     }
     set_storage_int(ctx, k1525ChanceBase + owner, chance);
-    const bool landed = roll_percent(chance);
+    const bool landed = roll_percent(ctx->rng(), chance);
     set_storage_int(ctx, k1525OutcomeBase + owner, landed ? 1 : 0);
     if (landed) {
         ctx->ws.damage_add_pct[owner] += static_cast<float>(boost);

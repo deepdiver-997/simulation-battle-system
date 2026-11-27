@@ -70,7 +70,7 @@ ElfPet foe_pet(int first_skill, int atk = 1) {
 }
 
 void self_first(ScenarioBattle& b, int seed, BattleFsm::ActionType foe_choice, int foe_slot) {
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.submit_operation(1, foe_choice, foe_slot);
     b.drive();

@@ -145,6 +145,8 @@ int main() {
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
             CHECK_EQ(ctx.ability_levels[1][0], -2, "T2322.a 1675：反转成功 → 对手攻 +2 变号 -2");
+            // 为封疗与解封探针留足缺口，避免满血钳制造成假绿或假红。
+            ctx.getPet(1).hp = 50000;
             const int hp_before = ctx.getPet(1).hp;
             (void)heal_amount(&ctx, 1, 100);
             CHECK_EQ(ctx.getPet(1).hp, hp_before, "T2322.a 1675：HEAL_BLOCK 生效（R1 治疗被钳）");

@@ -121,26 +121,42 @@ int main() {
             CHECK(!ctx.has_active_abnormal_status(0, 1),
                   "T2741.a 631：中毒已解除");
         }
-        // b) 对照：无中毒 → 门关 → R2 拍打回到基线量级（与载体 R1 特伤区分靠技能面）
+        // b) 无中毒：先量同一载体去掉效果后的 R1 基线，再验后续窗口未武装。
         {
+            ElfPet control = mk_pet(1, "己方", {kXuanTian, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 300, 300);
+            CHECK(control.skills[0].rawEffectRecords.size() == 1 &&
+                  control.skills[0].rawEffectRecords[0].effect_id == 631,
+                  "T2741.b 前置：载体只含 effect 631，摘除对照不影响其他效果");
+            CHECK(!control.skills[0].effectBranches.empty(), "T2741.b 前置：载体效果已加载");
+            control.skills[0].effectBranches.clear(); // 保留技能及伤害参数，只摘除效果分支
+            ScenarioBattle baseline(make_party(control),
+                make_party(mk_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100, 1)));
+            baseline.start();
+            baseline.ctx().seed_rng(20261004);
+            baseline.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
+            baseline.submit_operation(1, BattleFsm::ActionType::NONE, 0);
+            baseline.drive();
+            const int l1_base = kFoeHp - baseline.ctx().getPet(1).hp;
+            CHECK(l1_base > 0, "T2741.b 前置：无效果载体造成红伤");
             ScenarioBattle b(
                 make_party(mk_pet(1, "己方", {kXuanTian, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 300, 300)),
                 make_party(mk_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100, 1)));
             b.start();
             BattleContext& ctx = b.ctx();
             int prev = ctx.getPet(1).hp;
-            int l1 = 0, l2 = 0;
-            for (int r = 0; r < 2; ++r) {
+            int l1 = 0, l2 = 0, l3 = 0;
+            for (int r = 0; r < 3; ++r) {
+                ctx.seed_rng(20261004); // R1 对齐无效果载体，R2/R3 对齐拍打
                 b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, r == 0 ? 0 : 1);
                 b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
                 b.drive();
                 const int now = ctx.getPet(1).hp;
-                (r == 0 ? l1 : l2) = prev - now;
+                (r == 0 ? l1 : r == 1 ? l2 : l3) = prev - now;
                 prev = now;
             }
-            CHECK(l2 * 10 > l1 * 3 && l2 * 10 < l1 * 7,
-                  "T2741.b 631 对照：R2 拍打 ≈ 载体物伤量级 0.3~0.7×（" +
-                      std::to_string(l2) + " vs " + std::to_string(l1) + "，无 AMP 翻倍）");
+            CHECK(l1 > 0 && l2 > 0, "T2741.b 前置：载体与拍打均造成伤害");
+            CHECK_EQ(l1, l1_base, "T2741.b 无中毒：R1 载体与同种子无效果对照一致");
+            CHECK_EQ(l2, l3, "T2741.b 631 无中毒：R2 与过期后的同种子 R3 伤害一致");
         }
         std::cout << "  [T2741] 631 消除增伤 通过\n";
     }

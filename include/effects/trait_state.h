@@ -368,13 +368,13 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
 }
 
 // 触发掷点：被取消触发条件（proc_forced）→ 必发；概率 ≥1000‰（=100%）→ 必发**且不消耗
-// sbs_rand()**；否则 sbs_rand()%1000 < 千分点。
-// 引擎既有随机都走 sbs_rand（暴击掷点/连击掷点/伤害浮动），保持同源。
+// 随机数**；否则 rng.next()%1000 < 千分点。
+// 与暴击掷点、连击掷点、伤害浮动共用同一对局随机数流。
 // ⚠️ 100% 档**短路不消耗**是刻意为之，与本仓库既有的"不调用=不消耗"契约一致
 //    （参见 skills.h 连击区间退化 / battleFsm.cpp 无连击模板 / 暴击率 0 短路）——
-//    否则一次"必发"掷点会推动全局随机序列，使无关的伤害浮动/闪避判定整体错位
+//    否则一次"必发"掷点会推动对局随机序列，使无关的伤害浮动/闪避判定整体错位
 //    （2026-09-16 已因此发生过 4 个场景的回归）。
-inline bool trait_proc_roll(const EffectiveTrait& t) {
+inline bool trait_proc_roll(const EffectiveTrait& t, SbsRng& rng) {
     // 虚无**不吃必发**（proc_forced 的首个真实消费者是极渊DS-001"算力乱流：特性概率
     // 提升至100%"）：必修6 ③——虚无本质是命中率修正、不是概率触发，被 proc_forced
     // 推成 100% 闪避是错的。豁免后落到下方按自身概率掷（rand 契约不变）。
@@ -392,9 +392,9 @@ inline bool trait_proc_roll(const EffectiveTrait& t) {
         return false;
     }
     if (permille >= 1000) {
-        return true;   // 100%：不消耗 sbs_rand()
+        return true;   // 100%：不消耗随机数
     }
-    return (sbs_rand() % 1000) < permille;
+    return (rng.next() % 1000) < permille;
 }
 
 // 复制来的特性条目（天女式）。生命周期锚**来源方**（仿 RuleCenter 的 source 锚）：

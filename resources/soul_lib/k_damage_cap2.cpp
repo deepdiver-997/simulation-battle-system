@@ -72,7 +72,6 @@
 //   K275 k275_immune_all_anomaly 644（grant_immunity 全参形）。
 // 场景回归：test/scenario/scenario_7450_damage_cap2.cpp（号段 7450-7459）。
 
-#include <utils/sbs_rand.h>
 
 #include "common.h"
 
@@ -327,7 +326,7 @@ EffectResult soulmark_1191_round_start(BattleContext* ctx, const EffectArgs& arg
     int guard = 0;
     while (done < zero_count && !pp_slots.empty() && guard < 100) {
         ++guard;
-        const int pick = static_cast<int>(sbs_rand() % pp_slots.size());
+        const int pick = static_cast<int>(ctx->rng().next() % pp_slots.size());
         Skills& sk = foe.skills[static_cast<std::size_t>(pp_slots[static_cast<std::size_t>(pick)])];
         if (sk.pp > 0) {
             sk.pp = 0;

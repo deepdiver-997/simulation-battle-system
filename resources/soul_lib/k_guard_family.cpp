@@ -230,7 +230,7 @@ EffectResult soulmark_150_crit_immune(BattleContext* ctx, const EffectArgs& args
             if (!onstage_has_soul_mark(c, bucket_owner, 150)) {
                 return;
             }
-            if (!roll_percent(pct)) {
+            if (!roll_percent(c->rng(), pct)) {
                 return;
             }
             d.base = 0;

@@ -277,10 +277,12 @@ int main() {
     {
         constexpr int kTrials = 24;
         int min_a = 1 << 30, max_a = 0;
+        SbsRng trial_seeds(20261004);
         for (int t = 0; t < kTrials; ++t) {
             ScenarioBattle b(make_party(self_pet({kHuangWu, kZhuangJi, kZhuangJi, kZhuangJi, kZhuangJi},
                                                  /*atk=*/1, /*hp=*/500000)),
                              make_party(foe_pet({kZhuangJi, kZhuangJi, kZhuangJi, kZhuangJi, kZhuangJi})));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             const int hp0 = ctx.getPet(1).hp;
@@ -301,6 +303,7 @@ int main() {
             ScenarioBattle b(make_party(self_pet({kHuangWu, kZhuangJi, kZhuangJi, kZhuangJi, kZhuangJi},
                                                  /*atk=*/1, /*hp=*/500000)),
                              make_party(foe_pet({kZhuangJi, kZhuangJi, kZhuangJi, kZhuangJi, kZhuangJi})));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             // 注入对手攻击 -1（六槽权威态直写，630 grant_foe_boosts 同款）→ 下降档

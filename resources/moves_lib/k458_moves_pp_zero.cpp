@@ -34,7 +34,7 @@
 // ══ 实现口径（套路目录 §零决策树①：同形套路照抄先例）══
 //   · 随机选槽 = 656（resources/moves_lib/j_legacy_dmg_pp.cpp effect_656_
 //     chance_random_pp_zero）部分 Fisher-Yates 同构：池 {0..槽位数-1}，每抽
-//     j = i + sbs_rand()%(size-i)、swap 后归零 pool[i]——n 抽互不相重
+//     j = i + rng.next()%(size-i)、swap 后归零 pool[i]——n 抽互不相重
 //     （去重结构性成立；同 tick 内不重复选槽）。
 //   · 归零 = g_core->pp_zero_slot 原语（include/primitives/battle_primitives.h:770：
 //     pp==-1 无限槽 INVALID_PARAM 不参与不发事件；pp<=0 幂等成功无变化；
@@ -168,7 +168,7 @@ int k458_zero_random_slots(BattleContext* ctx, int target, int want, int actor,
     }
     const int n = std::min(want, static_cast<int>(pool.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(pool.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(pool.size()) - i));
         std::swap(pool[static_cast<std::size_t>(i)], pool[static_cast<std::size_t>(j)]);
         const int slot = pool[static_cast<std::size_t>(i)];
         const int before = ctx->getPet(target).skills[static_cast<std::size_t>(slot)].pp;
@@ -268,7 +268,7 @@ EffectResult effect_1494_full_hp_chance_random_pp_zero(BattleContext* ctx,
     }
     // 掷 {0}%（roll_percent 在位即消费：0% 短路 false、100% 短路 true 零抽、
     // 区间内一抽；掷歪=零抽不选槽）。
-    const bool hit = roll_percent(pct);
+    const bool hit = roll_percent(ctx->rng(), pct);
     set_storage_int_local(ctx, audit_key_of(k1494AuditBase, self, 2), hit ? 1 : 0);
     if (!hit) {
         return EffectResult::kOk;

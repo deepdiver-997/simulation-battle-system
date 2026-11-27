@@ -245,7 +245,7 @@ int main() {
                              scenario::make_party(foe({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(static_cast<unsigned>(kSeedA));
+            b.ctx().seed_rng(static_cast<unsigned>(kSeedA));
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();
@@ -269,7 +269,7 @@ int main() {
                              scenario::make_party(foe({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(static_cast<unsigned>(kSeedB));
+            b.ctx().seed_rng(static_cast<unsigned>(kSeedB));
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();
@@ -291,7 +291,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         int last0 = kMyMax;   // 我方 hp 快照（1 侧打过来的）
         int last1 = kFoeMax;
-        sbs_srand(static_cast<unsigned>(20261107));
+        b.ctx().seed_rng(static_cast<unsigned>(20261107));
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R1：双方各施放（两窗各自注册、各掷各的时长）
@@ -350,7 +350,7 @@ int main() {
                          scenario::make_party(foe({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(static_cast<unsigned>(kSeed));
+        b.ctx().seed_rng(static_cast<unsigned>(kSeed));
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R1：电荷依附（顺序切片：191 耗 [4] → 42 得 [3,5]）
@@ -393,7 +393,7 @@ int main() {
                              scenario::make_party(foe({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(static_cast<unsigned>(kSeed));
+            b.ctx().seed_rng(static_cast<unsigned>(kSeed));
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();
@@ -406,7 +406,7 @@ int main() {
                              scenario::make_party(foe({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(static_cast<unsigned>(kSeed));
+            b.ctx().seed_rng(static_cast<unsigned>(kSeed));
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();

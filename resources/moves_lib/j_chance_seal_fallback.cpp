@@ -54,7 +54,7 @@ bool anomaly_landed(ApplyAnomalyResult r) {
 
 // 1458/1622 共用前段：掷 {1}% → 封属性当回合一回合。
 bool j271_try_seal(BattleContext* ctx, int self, int opp, int chance) {
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return false;
     }
     if (g_core && g_core->seal_skill) {

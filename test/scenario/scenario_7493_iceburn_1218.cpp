@@ -95,7 +95,7 @@ int find_burn_seed(const std::vector<int>& args) {
     for (int s = 1; s < 400; ++s) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         if (b.ctx().has_active_abnormal_status(1, kIncinerate)) {
             return s;
@@ -110,7 +110,7 @@ int find_break_seed(const std::vector<int>& args) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
         plant_seal_on_foe(b.ctx());
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         if (!b.ctx().has_active_abnormal_status(1, kIncinerate)
             && b.ctx().rule_center_.empty()) {
@@ -139,7 +139,7 @@ int main() {
         CHECK(s > 0, "T7493a 自校准找到焚烬种子");
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIncinerate), "T7493a 焚烬落地");
         CHECK_EQ(read_key(b, kAudit), 50, "T7493a 审计=50");
@@ -155,7 +155,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet({})), make_party(foe_pet()));
             b.start();
             plant_seal_on_foe(b.ctx());
-            sbs_srand(7499);
+            b.ctx().seed_rng(7499);
             foe_hit_round(b);
             CHECK(!b.ctx().rule_center_.empty(), "T7493b 对照：无魂印票保留");
         }
@@ -163,7 +163,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         plant_seal_on_foe(b.ctx());
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         foe_hit_round(b);
         CHECK(!b.ctx().has_active_abnormal_status(1, kIncinerate), "T7493b 无焚烬");
         CHECK(b.ctx().rule_center_.empty(), "T7493b 未触发 → 对手回合类被消");
@@ -176,7 +176,7 @@ int main() {
         b.start();
         b.ctx().getPet(0).hp = 400000;   // 压血：RS 时 400000 < 900000
         const int foe0 = b.ctx().getPet(1).hp;
-        sbs_srand(7501);
+        b.ctx().seed_rng(7501);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kMode), 1, "T7493c RS 采样低体门=1");
         const int loss = foe0 - b.ctx().getPet(1).hp;
@@ -190,7 +190,7 @@ int main() {
         b.start();
         b.ctx().getPet(0).hp = 400000;
         const int hp0 = b.ctx().getPet(0).hp;
-        sbs_srand(7502);
+        b.ctx().seed_rng(7502);
         foe_hit_round(b);
         CHECK_EQ(read_key(b, kMode), 1, "T7493d RS 低体门=1");
         const int taken = hp0 - b.ctx().getPet(0).hp;
@@ -203,13 +203,13 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
         const int foe0 = b.ctx().getPet(1).hp;
-        sbs_srand(7503);
+        b.ctx().seed_rng(7503);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kMode), 0, "T7493e RS 高体门=0");
         const int loss = foe0 - b.ctx().getPet(1).hp;
         CHECK(in_band(loss, 87, 102), "T7493e 无增伤（纯红伤带）");
         const int hp0 = b.ctx().getPet(0).hp;
-        sbs_srand(7504);
+        b.ctx().seed_rng(7504);
         foe_hit_round(b);
         const int taken = hp0 - b.ctx().getPet(0).hp;
         CHECK(in_band(taken, 87, 102), "T7493e 无减伤（纯红伤带）");
@@ -223,7 +223,7 @@ int main() {
         b.start();
         b.ctx().getPet(0).hp = 400000;
         const int foe0 = b.ctx().getPet(1).hp;
-        sbs_srand(7501);
+        b.ctx().seed_rng(7501);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), -1, "T7493f 攻击回合无受击申报（audit 未写）");
         CHECK_EQ(read_key(b, kMode), 1, "T7493f 低体门=1");
@@ -236,7 +236,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow)), make_party(foe_pet()));
         b.start();
-        sbs_srand(7505);
+        b.ctx().seed_rng(7505);
         for (int r = 0; r < 40; ++r) {
             b.ctx().getPet(1).hp = kMaxHp;   // 焚烬衍化烧伤 DOT 防打死
             foe_hit_round(b);
@@ -253,13 +253,13 @@ int main() {
         b.start();
         b.ctx().getPet(0).hp = 400000;
         const int foe0 = b.ctx().getPet(1).hp;
-        sbs_srand(7506);
+        b.ctx().seed_rng(7506);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kMode), -1, "T7493h boss：RS 账本未建");
         const int loss = foe0 - b.ctx().getPet(1).hp;
         CHECK(in_band(loss, 87, 102), "T7493h boss：无增伤");
         const int hp0 = b.ctx().getPet(0).hp;
-        sbs_srand(7507);
+        b.ctx().seed_rng(7507);
         foe_hit_round(b);
         CHECK(!b.ctx().has_active_abnormal_status(1, kIncinerate), "T7493h boss：无焚烬");
         const int taken = hp0 - b.ctx().getPet(0).hp;

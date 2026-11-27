@@ -104,6 +104,7 @@ public:
     /**
      * 检查是否抵抗指定异常状态
      * @param anomaly_id 异常状态 ID
+     * @param rng 当前对局的随机数流
      * @param low_pct_penalty 低段抗性惩罚（百分点数）。只作用于 **>0 且 ≤50%** 的抗性段
      *   （全免% 与各抗性槽同规则）：0 < percent ≤ 50 时有效值 = percent - penalty，
      *   扣到 ≤0 即该段不掷（0% = 无抗性）。>50% 的抗性与未配置抗性不受影响。
@@ -116,7 +117,7 @@ public:
      *   2. 该异常属于控制类 → 查控制类抗性槽位
      *   3. 该异常属于非控制类 → 查非控制类抗性槽位
      */
-    bool isResistantTo(int anomaly_id, int low_pct_penalty = 0) const {
+    bool isResistantTo(int anomaly_id, SbsRng& rng, int low_pct_penalty = 0) const {
         if (!is_valid_abnormal_status_id(anomaly_id)) return false;
         const int complete_eff = low_pct_penalty > 0 && complete_immunity > 0
                                      && complete_immunity <= 50
@@ -124,7 +125,7 @@ public:
                                      : complete_immunity;
         // 全异常免疫
         if (complete_eff > 0) {
-            if (sbs_rand() % 100 < complete_eff) {
+            if (rng.next() % 100 < complete_eff) {
                 return true;
             }
         }
@@ -141,7 +142,7 @@ public:
                 if (eff <= 0) {
                     return false;   // 低段被扣到 0：这一段不再构成抗性
                 }
-                return sbs_rand() % 100 < eff;
+                return rng.next() % 100 < eff;
             }
         }
 
@@ -153,10 +154,11 @@ public:
      * @param active_anomaly_ids 当前活跃的异常状态 ID 列表
      * @return 被抵抗的异常 ID 列表
      */
-    std::vector<int> checkResistedAnomalies(const std::vector<int>& active_anomaly_ids) const {
+    std::vector<int> checkResistedAnomalies(const std::vector<int>& active_anomaly_ids,
+                                           SbsRng& rng) const {
         std::vector<int> resisted;
         for (int aid : active_anomaly_ids) {
-            if (isResistantTo(aid)) {
+            if (isResistantTo(aid, rng)) {
                 resisted.push_back(aid);
             }
         }

@@ -113,7 +113,8 @@ int main() {
 
     // ══ T3870.d 后手正例：atk 600 → 附加 300 → 吸取 24999 ══
     {
-        ScenarioBattle b(make_party(mark_pet(100, 600)), make_party(foe_pet(99999)));
+        // 速度必须严格低于对手，不能依赖同速随机先后手。
+        ScenarioBattle b(make_party(mark_pet(100, 600)), make_party(foe_pet(99999, 200)));
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.seerRobot[0].elfPets[0].hp = 66000;   // 预压血量（吸取回复 24999 需余量）

@@ -69,7 +69,7 @@ int main() {
             b.start();
             BattleContext& ctx = b.ctx();
             REQUIRE(stat_change(&ctx, 1, 0, +1) == StatChangeResult::SUCCESS);   // 对手有提升
-            sbs_srand(20261370);
+            ctx.seed_rng(20261370);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
@@ -80,7 +80,7 @@ int main() {
                              make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(20261370);
+            ctx.seed_rng(20261370);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();

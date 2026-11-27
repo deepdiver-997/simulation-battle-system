@@ -54,9 +54,11 @@ int main() {
     // ══ T2570 725 概率窗统计带 ══
     {
         int hits = 0;
+        SbsRng trial_seeds(20261004);
         for (int t = 0; t < 20; ++t) {
             ScenarioBattle b(make_party(self_pet({kHuangWu, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                              make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             const int max_before = ctx.getPet(1).numericalBase[NumericalPropertyIndex::HP];   // HP 槽

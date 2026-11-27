@@ -84,9 +84,9 @@ const TimedBucket& bucket_for(const BattleContext* ctx, EffectContainer containe
 
 } // namespace
 
-BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robots[],
-                             bool pvp_battle)
-    : m_fsm(nullptr)
+BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robots[], SbsRng rng)
+    : rng_(rng)
+    , m_fsm(nullptr)
     , seerRobot{robots[0], robots[1]}
     , roundCount(0)
     , uuid(std::chrono::system_clock::now().time_since_epoch().count())
@@ -106,7 +106,11 @@ BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robot
     , pendingDamage(ws.pendingDamage)
     , resolvedDamage(ws.resolvedDamage)
     , resolvedPink(ws.resolvedPink)
-{
+{}
+
+BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robots[],
+                             bool pvp_battle, std::optional<unsigned int> seed)
+    : BattleContext(control_block, robots, SbsRng(seed ? *seed : static_cast<unsigned int>(sbs_rand_state()))) {
     is_pvp_battle = pvp_battle;
     // 装备/套装静态数据：穿戴清单从机器人原样拷入，激活套装与数值加成在此一次算定
     // （战斗中只读）。空穿戴清单不触 DB（场景测试/旧协议零开销）。
@@ -256,8 +260,7 @@ void BattleContext::install_default_pink_mitigation() {
                 if (r.final < 0) {
                     r.final = 0;
                 }
-            }
-        );
+            }, BattleCallbackCopy::Audited);
         // ② IMMUNE：**免疫粉伤 / 免疫并反弹粉伤** —— 排在抗性**之后**（流程图第二个框）。
         //    ★ **免粉与"挡伤"走同一条路**（用户 2026-09-15 口径）：同一个 RuleCenter 免疫票据
         //      （`ImmunityType::PINK_DAMAGE`）、同一个 `is_immune` / `consume_immune` 消费点，
@@ -308,8 +311,7 @@ void BattleContext::install_default_pink_mitigation() {
                     ctx->event_center_.emit(ev);
                 }
                 r.final = 0;
-            }
-        );
+            }, BattleCallbackCopy::Audited);
         // ③ REDUCE_EXTRA：**百分比免减粉伤**（技能特效 + 魂印特效共用本阶段，乘法连乘）。
         //    排在抗性之后——L463 的乘算链 `×(1−抗性免减)×(1−技能特效免减)×(1−魂印特效免减)`。
         register_default_pink_effect(
@@ -330,8 +332,7 @@ void BattleContext::install_default_pink_mitigation() {
                 if (r.final < 0) {
                     r.final = 0;
                 }
-            }
-        );
+            }, BattleCallbackCopy::Audited);
         // 从这里开始接下来应该是：粉伤提升n% -> 粉转护罩检测点（目前没有这个效果要实现但是最好留着这个阶段） -> 粉转真（未受到粉伤）检测点 -> 消费护罩 -> 粉转真（免疫粉伤）检测点 -> 最终粉伤
         // 然后在抗性过后，后面的区间一直到最终粉伤都是星皇之怒二段无视的区间，也就是只用经过抗性减免就可以直接得到最终粉伤
         // ⑤ PINK_TO_HOOD：**粉转护罩 检测点**（挂在"粉伤提升 n%"之后、护罩之前）。
@@ -379,8 +380,7 @@ void BattleContext::install_default_pink_mitigation() {
                     ctx->event_center_.emit(
                         BattleEvent{EventType::EVENT_SHIELD_BROKEN, actor, r.target});
                 }
-            }
-        );
+            }, BattleCallbackCopy::Audited);
         // ⑨ PINK_TO_TRUE_UNHARMED：**粉转真（未受到粉伤）检测点** —— 挂在**护罩之后**。
         //    ★ 位置不能提前：要判"有没有受到粉伤"，必须等护罩消费完（护罩吃光 → 没落到本体）。
         //    ★ 这是个**给效果挂**的检测点（免粉补偿一族，L338 三类）：
@@ -424,8 +424,7 @@ void BattleContext::install_default_damage_reduction() {
                     return;
                 }
                 ctx->resolvedDamage.final = std::max(0, ctx->resolvedDamage.final - flat_sum);
-            }
-        );
+            }, BattleCallbackCopy::Audited);
         // ② REDUCE_PCT：**百分比减伤**——加算槽求和（钳 100；2026-09-20 口径：叠加超 100% 修正为\n        //    100%——红伤归零，而不是整段减伤失效）
         //    + 乘算槽逐条连乘。实现在 Calculation::applyDamageReduction。
         register_default_damage_effect(
@@ -445,8 +444,7 @@ void BattleContext::install_default_damage_reduction() {
                     ctx->damage_reduce_add[defender],
                     ctx->damage_reduce_mul[defender]
                 );
-            }
-        );
+            }, BattleCallbackCopy::Audited);
     }
 }
 
@@ -480,8 +478,7 @@ void BattleContext::install_default_damage_guard_detect() {
                 const bool red = damage.isRed && damage.final > 0;
                 ctx->ws.guard_detect_damage[defender] = red ? damage.final : 0;
                 ctx->ws.guard_detect_happened[defender] = red;
-            }
-        );
+            }, BattleCallbackCopy::Audited);
     }
 }
 
@@ -518,8 +515,7 @@ void BattleContext::install_default_damage_amp_extra() {
                 if (damage.final < 0) {
                     damage.final = 0;
                 }
-            }
-        );
+            }, BattleCallbackCopy::Audited);
     }
 }
 
@@ -571,7 +567,7 @@ void BattleContext::install_default_abnormal_mods() {
                 }
                 d.addPct += pct;
                 d.final = checked_pct_mul(d.final, pct, "battleContext 异常增伤");
-            });
+            }, BattleCallbackCopy::Audited);
 
         // ② AMP_EXTRA·攻击方：虚弱诅咒（造成的攻击伤害额外降低50%）
         register_default_damage_effect(
@@ -589,7 +585,7 @@ void BattleContext::install_default_abnormal_mods() {
                         static_cast<int>(AbnormalStatusId::WeaknessCurse))) {
                     d.final = d.final * 50 / 100;
                 }
-            });
+            }, BattleCallbackCopy::Audited);
 
         // ③ AMP_EXTRA·承受方：致命诅咒（受到攻击伤害额外 +50%）/ 衰弱（按回合数 +25%~500%）
         register_default_damage_effect(
@@ -619,7 +615,7 @@ void BattleContext::install_default_abnormal_mods() {
                     int idx = remaining < 1 ? 0 : (remaining > 5 ? 4 : remaining - 1);
                     d.final = checked_pct_mul(d.final, kWeaknessPct[idx], "battleContext 虚弱增幅");
                 }
-            });
+            }, BattleCallbackCopy::Audited);
 
         // ④ REDUCE_PCT·承受方：山神守护（"每回合**对手**受到的攻击伤害减少80%"）
         //    ⚠️ 判定方是**对面**：山神守护挂在 A 身上时，减伤落在 B 的受击上。
@@ -639,7 +635,7 @@ void BattleContext::install_default_abnormal_mods() {
                         static_cast<int>(AbnormalStatusId::MountainGuardian))) {
                     d.final = d.final * 20 / 100;   // 减少 80%
                 }
-            });
+            }, BattleCallbackCopy::Audited);
 
         // ⑤ 粉伤 AMP·来源方：星哲（造成的固定伤害、百分比伤害提升30%）
         //    粉伤管线每阶段按 {actor, target} 各走一趟 → 用 resolvedPink.actor 自守。
@@ -659,7 +655,7 @@ void BattleContext::install_default_abnormal_mods() {
                         static_cast<int>(AbnormalStatusId::StarWisdom))) {
                     r.final = r.final * 130 / 100;
                 }
-            });
+            }, BattleCallbackCopy::Audited);
 
         // ⑥ FLOOR·承受方：沸涌 36（官方 effect_des 304「受到的攻击伤害至少为其最大体力的
         //    30%，对手打出致命一击时效果提升至50%」；2026-09-20 烧伤三精灵线入编，燔薪照日
@@ -688,7 +684,7 @@ void BattleContext::install_default_abnormal_mods() {
                 if (d.final < floor_value) {
                     d.final = floor_value;
                 }
-            });
+            }, BattleCallbackCopy::Audited);
     }
 }
 
@@ -720,8 +716,7 @@ void BattleContext::install_default_damage_floor() {
                 if (floor_value > 0 && damage.final < floor_value) {
                     damage.final = floor_value;
                 }
-            }
-        );
+            }, BattleCallbackCopy::Audited);
     }
 }
 
@@ -773,8 +768,7 @@ void BattleContext::install_default_damage_block() {
                 damage.final = 0;
                 damage.addPct = 0;
                 damage.mulCoef = 0.0;
-            }
-        );
+            }, BattleCallbackCopy::Audited);
     }
 }
 
@@ -810,8 +804,7 @@ void BattleContext::install_default_damage_amp() {
                 if (damage.final < 0) {
                     damage.final = 0;
                 }
-            }
-        );
+            }, BattleCallbackCopy::Audited);
     }
 }
 
@@ -1992,7 +1985,7 @@ std::string BattleContext::getFullStateJson() const {
             if (is_immunity_category(t.category)) {
                 oss << ",\"coverage\":" << t.coverage
                     << ",\"anomalyMask\":" << t.anomaly_mask
-                    << ",\"conditional\":" << (t.anomaly_condition ? "true" : "false");
+                    << ",\"conditional\":" << (t.anomaly_condition || t.anomaly_roll ? "true" : "false");
             } else if (t.category == RuleCategory::SEAL) {
                 oss << ",\"penetrable\":" << (t.penetrable ? "true" : "false")
                     << ",\"consumedWhenPierced\":" << (t.consumed_when_pierced ? "true" : "false")

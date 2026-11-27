@@ -102,7 +102,7 @@ struct WindProbe {
 WindProbe wind_probe(const std::vector<int>& args, int seed) {
     ScenarioBattle b(make_party(mark_pet(args)), make_party(plain_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     const int foe0 = b.ctx().getPet(1).hp;
     own_hit_round(b);
     WindProbe r;
@@ -139,7 +139,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(plain_pet()));
         b.ctx().getPet(1).hp = 100;   // 对手压血 → 高体门恒开（双方 idle 无掉血）
         b.start();
-        sbs_srand(7595);
+        b.ctx().seed_rng(7595);
         for (int r = 1; r <= 4; ++r) {
             idle_round(b);
             for (int i = 0; i < 6; ++i) {
@@ -157,7 +157,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(plain_pet()));
         b.start();
-        sbs_srand(7596);
+        b.ctx().seed_rng(7596);
         b.ctx().getPet(0).hp = 100;   // 自身低于对手
         idle_round(b);
         CHECK_EQ(b.ctx().ability_levels[0][0], 0, "T7586b 低体：全属性不动");
@@ -174,7 +174,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(plain_pet()));
         b.ctx().getPet(1).hp = 100;
         b.start();
-        sbs_srand(7597);
+        b.ctx().seed_rng(7597);
         idle_round(b);   // R1：层1
         idle_round(b);   // R2：层2
         CHECK_EQ(read_key(b, kBase + kPlLedger), 2, "T7586c R2 层账=2");
@@ -222,7 +222,7 @@ int main() {
         for (int s = 1; s < 600; ++s) {
             ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(plain_pet()));
             b.start();
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             own_hit_round(b);
             const int a1 = read_key(b, kBase + kWindPct);
             own_hit_round(b);
@@ -237,7 +237,7 @@ int main() {
         for (int s = 1; s < 600; ++s) {
             ScenarioBattle b(make_party(mark_pet(kRowPartner)), make_party(plain_pet()));
             b.start();
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             own_hit_round(b);
             const int a1 = read_key(b, kBase + kWindPct);
             own_hit_round(b);
@@ -258,7 +258,7 @@ int main() {
         b.ctx().is_boss_challenge = true;
         b.ctx().getPet(1).hp = 100;
         b.start();
-        sbs_srand(7598);
+        b.ctx().seed_rng(7598);
         idle_round(b);
         CHECK_EQ(b.ctx().ability_levels[0][0], 0, "T7586f boss：全属性不动");
         CHECK_EQ(b.ctx().ws.preemptive_level[0], 0, "T7586f boss：无先制");

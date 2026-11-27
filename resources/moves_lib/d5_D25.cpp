@@ -106,7 +106,7 @@ EffectResult effect_1756_break_sleep_seal(BattleContext* ctx, const EffectArgs& 
     const bool had_round = ctx->rule_center_.has_round_type(target);
     if (had_round && g_core->break_round_effects) {
         g_core->break_round_effects(ctx, target);
-        if (roll_percent(chance) && g_core->apply_anomaly) {
+        if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly) {
             (void)g_core->apply_anomaly(ctx, target, status,
                                         random_anomaly_duration(), owner);
             return EffectResult::kOk;   // 施加成功（100% 短路必发）
@@ -147,7 +147,7 @@ EffectResult effect_805_clear_then_pp_zero(BattleContext* ctx, const EffectArgs&
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(candidates.size());
+        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
         (void)g_core->pp_zero_slot(ctx, target, candidates[static_cast<std::size_t>(pick)],
                                    /*actor=*/owner);
         candidates.erase(candidates.begin() + pick);

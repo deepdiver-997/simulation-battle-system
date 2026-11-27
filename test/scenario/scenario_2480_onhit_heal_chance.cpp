@@ -100,9 +100,11 @@ int main() {
 
     {   // (c) 50% 回满统计带
         int heals = 0;
+        SbsRng trial_seeds(20261004);
         for (int t = 0; t < 20; ++t) {
             ScenarioBattle b(make_party(self_pet({kSuHui, kPaiDa, kPaiDa, kPaiDa, kPaiDa})),
                              make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

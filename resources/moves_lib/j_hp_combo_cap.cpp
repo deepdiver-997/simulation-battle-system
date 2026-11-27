@@ -48,7 +48,7 @@ EffectResult effect_1593_hp_combo_cap(BattleContext* ctx, const EffectArgs& args
     }
     // 绝境档：上限改为 cap → 有效区间 [lo,cap] 均匀重掷（消耗一次 rand，118 同款）
     const int span = cap - lo + 1;
-    ctx->ws.combo_view[owner] = lo + sbs_rand() % span;   // 写=声明变威力（触发重算）
+    ctx->ws.combo_view[owner] = lo + ctx->rng().next() % span;   // 写=声明变威力（触发重算）
     return EffectResult::kOk;
 }
 

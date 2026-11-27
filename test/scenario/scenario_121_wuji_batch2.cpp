@@ -321,14 +321,15 @@ int main() {
     //========== T8 亮节降零（实际概率为准）==========
     {
         // unit：5% 毒 + 降零 → 恒不触发；再加必发（乱流式）→ 必触发（100% 不受降零）
+        SbsRng rng;
         EffectiveTrait poison;
         poison.kind = TraitKind::ActivePoisonPhysical;
         poison.args[0] = 5;    // 5%
         poison.args[1] = static_cast<int>(AbnormalStatusId::Paralysis);
         poison.proc_zeroed_le50 = true;
-        CHECK(trait_proc_roll(poison) == false, "T8-unit 亮节：5% ≤50% → 降为 0");
+        CHECK(trait_proc_roll(poison, rng) == false, "T8-unit 亮节：5% ≤50% → 降为 0");
         poison.proc_forced = true;
-        CHECK(trait_proc_roll(poison) == true, "T8-unit 必发（乱流式）不受降零——实际概率 100%");
+        CHECK(trait_proc_roll(poison, rng) == true, "T8-unit 必发（乱流式）不受降零——实际概率 100%");
         // 端到端：圣武带战栗 + 亮节 → 攻击不附麻痹；手动置必发（模拟乱流）→ 照附
         ElfPet shengwu = scenario::make_pet(
             0, "无极圣武", {kHit, kHit, kHit, kHit, kHit}, 200, 100, 3000,

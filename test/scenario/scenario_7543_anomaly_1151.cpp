@@ -109,7 +109,7 @@ bool probe_rs_inc(const std::vector<int>& args, int seed) {
     ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
     b.start();
     b.ctx().ability_levels[1][0] = 2;
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     idle_round(b);
     return b.ctx().has_active_abnormal_status(1, kIncinerate);
 }
@@ -118,7 +118,7 @@ bool probe_rs_inc(const std::vector<int>& args, int seed) {
 bool probe_dbl_hit(const std::vector<int>& args, int seed) {
     ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_hit_round(b);
     return read_key(b, kDblOut) > 0;
 }
@@ -150,7 +150,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
             b.start();
             b.ctx().ability_levels[1][0] = 2;
-            sbs_srand(s_hit);
+            b.ctx().seed_rng(s_hit);
             idle_round(b);
             CHECK_EQ(b.ctx().ability_levels[1][0], 0, "T7543a 过门即消强（正槽清零）");
             CHECK(b.ctx().has_active_abnormal_status(1, kIncinerate), "T7543a 落地支焚烬");
@@ -161,7 +161,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
             b.start();
             b.ctx().ability_levels[1][0] = 2;
-            sbs_srand(s_miss);
+            b.ctx().seed_rng(s_miss);
             idle_round(b);
             CHECK_EQ(b.ctx().ability_levels[1][0], 0, "T7543a 未触发支消强照常");
             CHECK(!b.ctx().has_active_abnormal_status(1, kIncinerate), "T7543a 未触发无焚烬");
@@ -174,7 +174,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
         b.start();
-        sbs_srand(7547);
+        b.ctx().seed_rng(7547);
         idle_round(b);   // R1：对手无提升 → mode=2
         CHECK_EQ(read_key(b, kMode), 2, "T7543b RS 采样：非提升置先制支");
         CHECK_EQ(b.ctx().ws.preemptive_level[0], 1, "T7543b R1 FMR preemptive_level+=1");
@@ -188,7 +188,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
         b.start();
         b.ctx().ability_levels[1][0] = -1;   // 下降不是提升（K172 3062 同款）
-        sbs_srand(7548);
+        b.ctx().seed_rng(7548);
         idle_round(b);
         CHECK_EQ(b.ctx().ability_levels[1][0], -1, "T7543c 门闭不清负槽");
         CHECK_EQ(read_key(b, kMode), 2, "T7543c 负槽走先制支");
@@ -205,8 +205,8 @@ int main() {
         int s_hit = -1;
         int s_miss = -1;
         for (int s = 1; s < 500 && (s_hit < 0 || s_miss < 0); ++s) {
-            sbs_srand(s);
-            const int v = sbs_rand() % 100;   // peek 首 draw（战前重播种，不污染对局）
+            SbsRng peek(s);
+            const int v = peek.next() % 100;   // 独立镜像首 draw，不污染对局
             if (v < 40 && s_hit < 0) {
                 s_hit = s;
             }
@@ -218,7 +218,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
             b.start();
-            sbs_srand(s_hit);
+            b.ctx().seed_rng(s_hit);
             const int hp0 = b.ctx().getPet(1).hp;
             own_hit_round(b);
             const int din = read_key(b, kDblIn);
@@ -232,7 +232,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
             b.start();
-            sbs_srand(s_miss);
+            b.ctx().seed_rng(s_miss);
             own_hit_round(b);
             CHECK_EQ(read_key(b, kDblOut), -1, "T7543d 未触发无增幅");
             CHECK_EQ(read_key(b, kDblFlag), -1, "T7543d 未触发不置旗");
@@ -247,7 +247,7 @@ int main() {
         CHECK(s_miss > 0, "T7543e 自校准");
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s_miss);
+        b.ctx().seed_rng(s_miss);
         own_hit_round(b);   // R1：掷歪 → 封属 2 回合
         CHECK_EQ(read_key(b, kDblOut), -1, "T7543e R1 无增幅（走封属支）");
         const int spd_r2 = foe_attr_round(b);   // R2：对手高速移动 → 被封
@@ -266,7 +266,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(kRowPartner)), make_party(foe_pet()));
             b.start();
             b.ctx().ability_levels[1][0] = 2;
-            sbs_srand(7549);
+            b.ctx().seed_rng(7549);
             idle_round(b);
             CHECK_EQ(read_key(b, kAuditInc), 70, "T7543f 伙伴焚烬申报审计=70（档位差位）");
             CHECK_EQ(b.ctx().ability_levels[1][0], 0, "T7543f 伙伴行消强照常");
@@ -274,7 +274,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet(kRowPartner)), make_party(foe_pet()));
             b.start();
-            sbs_srand(s_hit);
+            b.ctx().seed_rng(s_hit);
             own_hit_round(b);
             const int din = read_key(b, kDblIn);
             const int dout = read_key(b, kDblOut);
@@ -308,7 +308,7 @@ int main() {
         b.ctx().is_boss_challenge = true;
         b.start();
         b.ctx().ability_levels[1][0] = 2;
-        sbs_srand(7750);
+        b.ctx().seed_rng(7750);
         idle_round(b);
         CHECK_EQ(b.ctx().ability_levels[1][0], 2, "T7543h boss：提升不被消强");
         CHECK_EQ(read_key(b, kAuditInc), -1, "T7543h boss：无焚烬申报");

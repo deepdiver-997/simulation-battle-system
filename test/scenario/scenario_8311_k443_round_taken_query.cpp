@@ -175,7 +175,8 @@ int main() {
 
     // ══════════ T5 过量击杀腿：钳 0 净掉血 ══════════
     {
-        ScenarioBattle b(scenario::make_party(tank(/*hp=*/30000)),
+        // 给致死伤留足浮动余量，避免前置条件受随机伤害影响。
+        ScenarioBattle b(scenario::make_party(tank(/*hp=*/10000)),
                          scenario::make_party(striker(/*atk=*/100000)));
         b.start();
         BattleContext& ctx = b.ctx();

@@ -432,7 +432,7 @@ EffectResult k2510_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
         if (self.skills[slot].pp < 0) {
             continue;   // 无限 PP 槽不动
         }
-        const int value = lo + static_cast<int>(sbs_rand() % static_cast<unsigned>(hi - lo + 1));
+        const int value = lo + static_cast<int>(ctx->rng().next() % static_cast<unsigned>(hi - lo + 1));
         set_pp_slot(ctx, owner, slot, value);
     }
     const int sum = pp_sum(self);

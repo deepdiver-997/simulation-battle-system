@@ -29,7 +29,7 @@
 //     "{0}回合内每回合{1}%闪避对手攻击"——当回合立即写 + ROUND_START InRounds 窗
 //     tick 逐回合重写，ws 每回合 memset；后手顺延由 round_effect_start_round 折算，
 //     568/1069/1023 同款）。2067 与 426 同文形（差"每回合"二字），闪避子句整支照抄。
-//     掷点 = 引擎命中公式内生（sbs_rand()%100 >= hit_chance → MISS，每刀一抽）——
+//     掷点 = 引擎命中公式内生（ctx->rng().next()%100 >= hit_chance → MISS，每刀一抽）——
 //     插件**不另掷**：{1}/100 申报进 dodge_rate 即消费（"掷点申报制"；0% →
 //     dodge_rate=0 结构性不翻转、必不闪避；100% → hit_chance=100-accuracy ≤0
 //     必 miss——两档确定性，区间档统计带定标）。必中凭证绕过整条命中率链

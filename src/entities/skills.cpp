@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 #include <entities/skills.h>
 #include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
 
@@ -352,29 +351,38 @@ void materialize_attack_credential(BattleContext* ctx, int owner, const Skills& 
     cred.valid = cred.ignore_attack_immunity || cred.ignore_damage_limit || cred.force_execute;
 }
 
-// 通用执行器：运行解析出的条件效果单元（Effect.args.extra 指向单元，见 loadSkills）。
-// 组合语法：未注册函数的效果模板经 parse_effect_unit 解析成单元，由此函数驱动。
+// 通用执行器：从 EffectArgs 持有的不可变程序按根索引运行条件效果单元。
+// 离线 JSON 程序与未注册函数时的文本解析兜底共用此执行器。
 EffectResult effect_run_parsed_unit(BattleContext* ctx, const EffectArgs& args) {
-    const auto* unit = static_cast<const EffectUnit*>(args.extra);
-    if (!ctx || !unit) {
-        return EffectResult::kOk;
+    const auto& parsed = args.parsed_unit;
+    if (ctx && parsed.program && !args.extra) {
+        execute_effect_unit(ctx, args, *parsed.program, parsed.root_index);
     }
-    execute_effect_unit(ctx, args, *unit);
     return EffectResult::kOk;
 }
 
 // 同上，但**跳过本单元的条件**（单元准入门放行时 register_branch 换用本执行器）。
 // 语义 = "该条已永久无条件"；概率 roll 与分支递归照常。
 EffectResult effect_run_parsed_unit_unconditional(BattleContext* ctx, const EffectArgs& args) {
-    const auto* unit = static_cast<const EffectUnit*>(args.extra);
-    if (!ctx || !unit) {
-        return EffectResult::kOk;
+    const auto& parsed = args.parsed_unit;
+    if (ctx && parsed.program && !args.extra) {
+        execute_effect_unit_unconditional(ctx, args, *parsed.program, parsed.root_index);
     }
-    execute_effect_unit_unconditional(ctx, args, *unit);
     return EffectResult::kOk;
 }
 
 } // namespace
+
+bool Skills::is_base_priority_effect(const Effect& effect) noexcept {
+    return effect.logic == &effect_apply_base_priority;
+}
+
+bool Skills::is_parsed_unit_effect(const Effect& effect) noexcept {
+    const auto& parsed = effect.args.parsed_unit;
+    return (effect.logic == &effect_run_parsed_unit ||
+            effect.logic == &effect_run_parsed_unit_unconditional) &&
+           !effect.args.extra && parsed.program && parsed.program->unit_at(parsed.root_index);
+}
 
 // 全局记账出口（供 registry dump 并集；见 include/entities/skills.h 尾注）。
 const std::vector<int>& kernel_penetration_effect_ids() {
@@ -484,7 +492,7 @@ bool Skills::loadSkills() {
     apply_arg_overrides();
     effectBranches.clear();
     selection_effects_.clear();
-    parsed_units_.clear();
+    parsed_program_.reset();
     // 携带类效果装槽（加载期识别）：逐条查携带注册表，命中即装。战斗期扫描只读本槽
     // （init_battle），不再查注册表——见 Skills::carryEffects 注释。必须在
     // rawEffectRecords 定型后执行；本函数失败即 throw，不存在半装槽状态外泄。
@@ -499,8 +507,6 @@ bool Skills::loadSkills() {
             carryEffects.emplace_back(effect_record.effect_id, carry_fn);
         }
     }
-    // 解析器的分支指针指向 parsed_units_ 内元素，reserve 足量防 realloc 悬垂。
-    parsed_units_.reserve(rawEffectRecords.size() * 3 + 4);
     // 连击静态规则数据化（J326，2026-11-05）：全量装载 custom_skill_combo_rules
     // （repository 按连接生命周期缓存）。**fail-closed**——表缺失（旧库未打 j4 迁移）、
     // 未知 schema_version、非法下标都显式报错，绝不静默退单击。
@@ -529,6 +535,15 @@ bool Skills::loadSkills() {
     combo_min = 1;
     combo_max = 1;
 
+    std::vector<EffectUnit> units;
+    const auto add_parsed_node = [this](const official_data::SkillEffectRecord& rec, int root_index) {
+        EffectArgs args(build_effect_args_for_skill(rec).owned_int_args);
+        args.parsed_unit.root_index = root_index;
+        // left_round=0 → 一次性（本回合有效）。解析全部完成后再绑定程序。
+        Effect effect(rec.effect_id, 0, 0, 0, std::move(args), &effect_run_parsed_unit);
+        add_effect_node(default_branch_for_effect(rec.effect_id),
+                        SkillEffectNode(std::move(effect), effect_register_state(rec.effect_id)));
+    };
     for (const auto& effect_record : rawEffectRecords) {
         // 连击（"1回合做 x~y 次攻击"）：查规则行（DB custom_skill_combo_rules，J326
         // 自 combo_arg_indices/combo_fixed_range 数据化迁移）→ 从本效果自己的参数切片
@@ -649,18 +664,9 @@ bool Skills::loadSkills() {
         if (custom_prog) {
             // 离线编码程序：JSON → EffectUnit（skill_args 解析 {"arg":n} 占位）。
             const int unit_idx =
-                load_effect_unit_from_json(custom_prog->unit_json, effect_record.args, parsed_units_);
+                load_effect_unit_from_json(custom_prog->unit_json, effect_record.args, units);
             if (unit_idx >= 0) {
-                // 全参构造（Effect 无默认构造）：left_round=0 → 一次性（本回合有效）。
-                Effect unit_effect(effect_record.effect_id, 0, 0, 0,
-                                   EffectArgs(
-                                       build_effect_args_for_skill(effect_record).owned_int_args,
-                                       &parsed_units_[static_cast<std::size_t>(unit_idx)]),
-                                   &effect_run_parsed_unit);
-                add_effect_node(
-                    default_branch_for_effect(effect_record.effect_id),
-                    SkillEffectNode(std::move(unit_effect), effect_register_state(effect_record.effect_id))
-                );
+                add_parsed_node(effect_record, unit_idx);
             }
             // 程序加载失败(unit_idx<0)：声明在 custom 层却解析失败 → 数据 bug, 跳过并暴露。
             continue;
@@ -695,19 +701,10 @@ bool Skills::loadSkills() {
         Effect effect = clone_effect(effect_record.effect_id, std::move(effect_args));
         if (!effect.logic) {
             // ⚠️废弃通道（2026-11-05 裁决：保留+标注废弃+冻结扩展，禁止扩语法/新增 pattern）——未注册函数：
-            // 尝试解析模板为条件效果单元（组合语法），成功注册通用执行器（args.extra 指向 parsed_units_ 内单元），失败维持跳过。
-            const int unit_idx = parse_effect_unit(effect_record.info, effect_record.args, parsed_units_);
+            // 尝试解析模板为条件效果单元；成功注册通用执行器，失败维持跳过。
+            const int unit_idx = parse_effect_unit(effect_record.info, effect_record.args, units);
             if (unit_idx >= 0) {
-                // 全参构造（Effect 无默认构造）：left_round=0 → 一次性（本回合有效）。
-                Effect unit_effect(effect_record.effect_id, 0, 0, 0,
-                                   EffectArgs(
-                                       build_effect_args_for_skill(effect_record).owned_int_args,
-                                       &parsed_units_[static_cast<std::size_t>(unit_idx)]),
-                                   &effect_run_parsed_unit);
-                add_effect_node(
-                    default_branch_for_effect(effect_record.effect_id),
-                    SkillEffectNode(std::move(unit_effect), effect_register_state(effect_record.effect_id))
-                );
+                add_parsed_node(effect_record, unit_idx);
             }
             continue;
         }
@@ -715,6 +712,18 @@ bool Skills::loadSkills() {
             default_branch_for_effect(effect_record.effect_id),
             SkillEffectNode(std::move(effect), effect_register_state(effect_record.effect_id))
         );
+    }
+
+    if (!units.empty()) {
+        parsed_program_ = std::make_shared<const ParsedEffectProgram>(units);
+        for (auto& [result, nodes] : effectBranches) {
+            for (auto& node : nodes) {
+                auto& parsed = node.effect.args.parsed_unit;
+                if (node.effect.logic == &effect_run_parsed_unit && parsed.root_index >= 0) {
+                    parsed.program = parsed_program_;
+                }
+            }
+        }
     }
 
     // 基值先制也作为一条选择期效果数据放进 selection_effects_：
@@ -732,7 +741,7 @@ bool Skills::loadSkills() {
     return true;
 }
 
-bool Skills::skill_usable(BattleContext* ctx, int owner) {
+bool Skills::skill_usable(const BattleContext* ctx, int owner) const {
     if (is_locked) {
         return false;
     }
@@ -770,7 +779,7 @@ bool Skills::skill_usable(BattleContext* ctx, int owner) {
     return hasIgnorePPEffect && !hasForceRespectPPEffect;
 }
 
-SkillSelectionResult Skills::query_selectable(BattleContext* ctx, int owner) {
+SkillSelectionResult Skills::query_selectable(const BattleContext* ctx, int owner) const {
     if (is_locked) {
         return SkillSelectionResult::LOCKED;
     }
@@ -856,7 +865,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             // 失明：见 abnormal-types.h AbnormalStatusId::Blind。
             if (cred.must_hit) {
                 // 必中技能：50% 正常命中 / 50% 命中效果失效（官方口径，用户 2026-09-13 确认）。
-                blind_hit_invalid = (sbs_rand() % 2) != 0;
+                blind_hit_invalid = (ctx->rng().next() % 2) != 0;
             } else {
                 // 非必中技能：必定 miss。走到这里就是 miss（不再掷命中率）。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -942,10 +951,10 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             if (!is_attribute) {
                 if (const std::optional<EffectiveTrait> v =
                         ctx->effective_common_trait(1 - owner, TraitKind::VoidDodge)) {
-                    void_miss = trait_proc_roll(*v);   // ⚠️ rand 只在带虚无时消耗
+                    void_miss = trait_proc_roll(*v, ctx->rng());   // ⚠️ rand 只在带虚无时消耗
                 }
             }
-            if (attr_must_miss || void_miss || (sbs_rand() % 100) >= hit_chance) {
+            if (attr_must_miss || void_miss || (ctx->rng().next() % 100) >= hit_chance) {
                 // miss 也照常 notify 中心：文档 §2.3「一旦本次技能命中失败（miss 类），
                 // 会消耗所有可响应的次数类效果」——狮盔会被响应并消耗，尽管技能是 miss 的。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -982,12 +991,12 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             if (h->args[0] <= 1) {
                 rate += 6.25f;   // 0 星：加法（1/16）
             } else {
-                crit_second_roll = (sbs_rand() % 10000) < h->args[0] * 10;   // 独立二次
+                crit_second_roll = (ctx->rng().next() % 10000) < h->args[0] * 10;   // 独立二次
             }
         }
         ctx->crit_happened[owner] = ctx->ws.must_crit[owner] || crit_second_roll
             || rate >= 100.0f
-            || (rate > 0.0f && (sbs_rand() % 10000) < static_cast<int>(rate * 100.0f));
+            || (rate > 0.0f && (ctx->rng().next() % 10000) < static_cast<int>(rate * 100.0f));
         // 2380 「自身下{0}次致命一击视为命中并强制执行命中效果」（圣光莫妮卡·繁嚣此寂
         // 29299；技能组 2026-09-25）：暴击落地即消费 1 层计数（plugin_storage 990238000+owner，
         // 技能效果侧武装）→ cred.force_execute——"视为命中"与"强制执行"都由它承载
@@ -1067,7 +1076,7 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
         // 语料 idx=473「失神：50 概率属性无效」。
         if (is_attribute
             && ctx->has_active_abnormal_status(owner, static_cast<int>(AbnormalStatusId::Distraction))
-            && (sbs_rand() % 100) < 50) {
+            && (ctx->rng().next() % 100) < 50) {
             return SkillUsageResult::SEALED;
         }
         // ②.1' **非同系攻击免疫门**（圣光莫妮卡 2492 神谕口径，2026-09-25 待落①落地）：
@@ -1327,14 +1336,13 @@ void Skills::register_branch(BattleContext* ctx, int owner, SkillExecResult resu
         // 单元准入门（注册期）：条件效果单元逐条问一次魂印侧的门。放行 → **本条换成
         // "跳过条件"的执行器**（技能对象只读，"已永久无条件"由魂印侧的进度表达）。
         // 见 plugin_interface.h 的 UnitAdmissionFn（万相乖离的取消进度）。
-        if (effect.logic == &effect_run_parsed_unit && effect.args.extra) {
-            const auto* unit = static_cast<const EffectUnit*>(effect.args.extra);
-            if (unit >= parsed_units_.data() && unit < parsed_units_.data() + parsed_units_.size()) {
-                const int unit_index = static_cast<int>(unit - parsed_units_.data());
-                if (unit_admission_grants(ctx, owner, id, unit_index,
-                                          static_cast<int>(unit->condition))) {
-                    effect.logic = &effect_run_parsed_unit_unconditional;
-                }
+        const auto& parsed = effect.args.parsed_unit;
+        if (effect.logic == &effect_run_parsed_unit && !effect.args.extra &&
+            parsed_program_ && parsed.program == parsed_program_) {
+            const auto* unit = parsed_program_->unit_at(parsed.root_index);
+            if (unit && unit_admission_grants(ctx, owner, id, parsed.root_index,
+                                              static_cast<int>(unit->condition))) {
+                effect.logic = &effect_run_parsed_unit_unconditional;
             }
         }
 

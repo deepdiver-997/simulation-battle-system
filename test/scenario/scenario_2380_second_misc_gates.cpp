@@ -181,7 +181,7 @@ int main() {
                     make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa}, 300, 100)));
                 b.start();
                 BattleContext& ctx = b.ctx();
-                sbs_srand(s);
+                ctx.seed_rng(static_cast<unsigned>(s));
                 both_act(b, 0);
                 if (ctx.getPet(1).hp <= 0) {
                     seed_kill = s;
@@ -193,7 +193,7 @@ int main() {
                     make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
                 b.start();
                 BattleContext& ctx = b.ctx();
-                sbs_srand(s);
+                ctx.seed_rng(static_cast<unsigned>(s));
                 both_act(b, 0);
                 if (ctx.getPet(1).hp > 0 && level_sum(ctx, 1) == -6) {
                     seed_drop = s;

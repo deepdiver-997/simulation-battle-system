@@ -46,7 +46,7 @@ int probe_power_view(int skill_id, bool with_mark) {
     ScenarioBattle b(scenario::make_party(holder_pet(skill_id, with_mark)),
                      scenario::make_party(dummy_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     ctx.debug_step_mode = true;
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

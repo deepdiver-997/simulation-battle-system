@@ -78,6 +78,7 @@ int main() {
         int triggered_trials = 0;
         for (int trial = 0; trial < 20; ++trial) {
             ScenarioBattle b(make_party(mk_owner()), make_party(mk_foe()));
+            b.ctx().seed_rng(1 + trial * 104729u);  // 每局独立且可复现的抽样序列
             b.start();
             BattleContext& ctx = b.ctx();
             const int before = ctx.getPet(1).hp;

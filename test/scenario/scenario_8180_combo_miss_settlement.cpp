@@ -149,7 +149,7 @@ ElfPet plain_target(const char* name, int id,
 
 // 标准局：我方先手出 slot0 技，对手 NONE 空转（零受击）。seed 钉死 → 连击数闭式确定。
 void run_cast(ScenarioBattle& b, int seed) {
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
     b.drive();

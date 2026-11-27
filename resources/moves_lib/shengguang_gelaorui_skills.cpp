@@ -90,8 +90,8 @@ EffectResult effect_1551_self_destruct(BattleContext* ctx, const EffectArgs& arg
         return true;
     };
 
-    const bool self_hit = roll_percent(self_pct);
-    const bool foe_hit = !self_hit && roll_percent(foe_pct);
+    const bool self_hit = roll_percent(ctx->rng(), self_pct);
+    const bool foe_hit = !self_hit && roll_percent(ctx->rng(), foe_pct);
     if (self_hit) {
         consume_all(owner);
         if (g_core->pp_reduce) {
@@ -159,7 +159,7 @@ EffectResult effect_968_chance_anomaly(BattleContext* ctx, const EffectArgs& arg
     const int pct = args.int_args[2];
     const int anomaly = args.int_args[3];
     int chance = ctx->is_second_mover(owner) ? pct : pct * 2;
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         g_core->apply_anomaly(ctx, target, anomaly, 1, owner);
     }
     return EffectResult::kOk;

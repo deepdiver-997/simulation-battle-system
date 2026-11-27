@@ -112,7 +112,7 @@ int main() {
         // b) 后手门负例：慢速自身 → 不武装 → 对手先手那下照打、无反弹
         {
             ScenarioBattle b(make_party(self_pet({kGuangZhi, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100)),
-                             make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+                             make_party(foe_pet({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 200)));
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

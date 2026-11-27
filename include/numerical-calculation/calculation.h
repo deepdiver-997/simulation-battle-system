@@ -30,7 +30,7 @@ inline int checked_pct_mul(int value, int pct_delta, const char* site) {
 
 class Calculation {
     public:
-    static int calculateDamage(int attacker, const BattleWorkspace& ws, const Skills& skill) {
+    static int calculateDamage(int attacker, const BattleWorkspace& ws, const Skills& skill, SbsRng& rng) {
         int defender = 1 - attacker;
         // 技能类别**视图**（ws.skill_type_view，resolve_skill_execution 每次使用物化
         // skill.type）——"转化"类效果（28810 魂·天忤太虚 2210：星赐→物理/星哲→特殊）
@@ -84,7 +84,7 @@ class Calculation {
             restraint = 1.0;
         }
         damage = (0.84 * Attack / Defense * power + 2) * restraint
-                * (217 + sbs_rand() % 39) / 255;
+                * (217 + rng.next() % 39) / 255;
         // 本系加成（×1.5）：判据是**技能真实系别** vs 攻击方精灵系别。
         // ⚠️ "改系别只改克制、不改本系"是刻意的（改的是 `skill_element_view`，本系读 `skill.element`）；
         //    要"获得本系加成"的（effect 2490）走 `ws.force_involve` 这个显式开关，别去动 involve 的入参。

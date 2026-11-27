@@ -99,7 +99,7 @@ void run_cast(ScenarioBattle& b, int skill_index, int seed, Gender foe_gender,
     if (self_debit > 0) {
         b.ctx().getPet(0).hp = kMyMax - self_debit;
     }
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, skill_index);
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
     b.drive();
@@ -111,7 +111,7 @@ void run_mirror(ScenarioBattle& b, int seed, Gender g0, Gender g1) {
     b.ctx().getPet(1).gender = g1;
     b.ctx().getPet(0).hp = kMyMax - 500;
     b.ctx().getPet(1).hp = kFoeMax - 500;
-    sbs_srand(static_cast<unsigned>(seed));
+    b.ctx().seed_rng(static_cast<unsigned>(seed));
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.drive();

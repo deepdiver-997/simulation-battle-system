@@ -52,7 +52,7 @@ EffectResult k305_290_skill_effect(BattleContext* ctx, const SoulNodeArgs& a) {
             pct = db[1];
         }
     }
-    if (!roll_percent(pct)) {
+    if (!roll_percent(ctx->rng(), pct)) {
         return EffectResult::kOk;
     }
     ctx->ws.must_crit[owner] = true;

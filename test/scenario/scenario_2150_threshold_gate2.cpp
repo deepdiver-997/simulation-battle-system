@@ -123,7 +123,7 @@ int main() {
         CHECK_EQ(ctx.ability_levels[0][2], 0,
                  "T2150.d 473：防御槽不动（防/特攻互换方向钉死）");
     }
-    // ══ T2150.e 503 命中侧（14563 [100,200]：红伤 1~2 <100 → 回合末对手-200）══
+    // ══ T2150.e 503 命中侧（14563 [100,200]：红伤 <100 → 回合末对手-200）══
     {
         ScenarioBattle b(make_party(self_pet(kJingTian, 1)), make_party(foe_pet()));
         b.start();
@@ -132,8 +132,9 @@ int main() {
         b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
         b.drive();
         const int foe_loss = kMaxHp - ctx.getPet(1).hp;
-        CHECK(foe_loss >= 201 && foe_loss <= 202,
-              "T2150.e 503：红伤 1~2 + 回合末固定 200（实测 " + std::to_string(foe_loss) + "）");
+        const int red = ctx.ws.raw_attack_damage[0];
+        CHECK(red > 0 && red < 100, "T2150.e 前置：实际红伤小于阈值 100");
+        CHECK_EQ(foe_loss, red + 200, "T2150.e 503：红伤之外精确附加 200");
     }
     // ══ T2150.f 503 门不过（17529 [200,150]：atk=250 → 红伤 [249,294] >200）══
     {

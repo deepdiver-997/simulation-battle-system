@@ -66,7 +66,7 @@ EffectResult j273_1143_window_tick(BattleContext* ctx, const EffectArgs& args) {
     const int n = std::min(std::max(count, 0), 4);
     int mask = 0;
     for (int i = 0; i < n; ++i) {
-        const int j = i + (4 - i > 1 ? sbs_rand() % (4 - i) : 0);
+        const int j = i + (4 - i > 1 ? ctx->rng().next() % (4 - i) : 0);
         std::swap(idx[i], idx[j]);
         const int code = kPool[idx[i]];
         mask |= 1 << idx[i];

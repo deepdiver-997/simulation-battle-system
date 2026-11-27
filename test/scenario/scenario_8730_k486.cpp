@@ -290,7 +290,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot2060(ctx, 0, 3), 3, "T8730.a {0}=3 行参回显");
@@ -325,7 +325,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         run_round(b, BattleFsm::ActionType::NONE, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -347,7 +347,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         set_onstage_hp(b, 0, 40000);   // 只压当前体力，最大体力不变（坑集 #4）
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -379,7 +379,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         const int self_before = onstage_hp(b, 0);
@@ -406,7 +406,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         set_onstage_hp(b, 0, 89999);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -435,7 +435,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             300, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot2060(ctx, 0, 11), 1, "T8730.d 窗起点折算=1（后手 InRounds 顺延）");
@@ -465,7 +465,7 @@ int main() {
                          make_party(slice_pet(2, "印主e1", kYuQi, 4826, 0, {}, {1084},
                                                100, 1, kMaxHp, kDengYan)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL,
                   0);
@@ -498,7 +498,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot2060(ctx, 0, 11), 0, "T8730.f R1 窗武装（起点回显）");
@@ -524,7 +524,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -547,7 +547,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 1, "T8730.h 首层落地（slot0=1）");
@@ -583,7 +583,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 1, "T8730.h2 首层狂信落地（{0}=100 零抽）");
@@ -627,7 +627,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 0, "T8730.i1 首层未落地（{0}=0 关闸档）");
@@ -650,7 +650,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         for (int r = 0; r < 3; ++r) {   // R2-R4 双方无操作
@@ -672,7 +672,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 1, "T8730.i3 首层落地（{0}→100 覆盖档）");
@@ -693,7 +693,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 1, "T8730.i4 首层落地（{0}=100 零抽）");
@@ -717,7 +717,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 8), 1, "T8730.j 窗起点=1");
@@ -754,7 +754,7 @@ int main() {
                                                {{0, 100}, {3, 100}, {1, 16}, {4, 16}},
                                                {191, 1563}, 100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL,
                   0);
@@ -794,7 +794,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 1), 1, "T8730.l R1 窗武装");
@@ -821,7 +821,7 @@ int main() {
                                             {kDengYan, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 1, "T8730.m 1562 首层落地（束缚 {1}=28）");
@@ -853,7 +853,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(1);   // 首层 roll=7<80 落地；二层 roll=49<80 落地
+        b.ctx().seed_rng(1);   // 首层 roll=7<80 落地；二层 roll=49<80 落地
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 1, "T8730.n1 首层 80% 落地（roll=7）");
@@ -873,7 +873,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(2);   // 首层 roll=14<80 落地；二层 roll=98>=80 掷歪
+        b.ctx().seed_rng(2);   // 首层 roll=14<80 落地；二层 roll=98>=80 掷歪
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 1, "T8730.n2 首层落地（roll=14）");
@@ -893,7 +893,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1)));
         b.start();
-        sbs_srand(12);  // 首层 roll=84>=80 掷歪
+        b.ctx().seed_rng(12);  // 首层 roll=84>=80 掷歪
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1562(ctx, 0, 0), 0, "T8730.n3 首层掷歪（roll=84，slot0=0）");

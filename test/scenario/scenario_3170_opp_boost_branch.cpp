@@ -92,7 +92,7 @@ int main() {
                     : plain_me(/*speed=*/300);
                 ScenarioBattle b(make_party(std::move(me)),
                                  make_party(plain_foe(/*speed=*/100)));
-                sbs_srand(7);
+                b.ctx().seed_rng(7);
                 b.start();
                 round_actions(b, /*attack=*/true);
                 const int loss = kMaxHp - b.ctx().getPet(1).hp;
@@ -127,7 +127,7 @@ int main() {
                 : plain_me(/*speed=*/300);
             ScenarioBattle b(make_party(std::move(me)),
                              make_party(plain_foe(/*speed=*/100)));
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             b.start();
             core_api().stat_change(&b.ctx(), /*target=*/1, /*stat=*/0, /*delta=*/2);
             round_actions(b, /*attack=*/true);
@@ -151,7 +151,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet<1148>(EffectArgs(std::vector<int>{100, 1}),
                                                    /*speed=*/300)),
                          make_party(plain_foe(/*speed=*/100)));
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         b.start();
         core_api().stat_change(&b.ctx(), 1, 0, 2);
         round_actions(b, /*attack=*/true);    // R1：有强化 → 消强
@@ -163,7 +163,7 @@ int main() {
         // 基准：单回合无印对照（rand 流不对齐，用 [1.7,2.3]× 手带分离增伤有无）
         ScenarioBattle c(make_party(plain_me(/*speed=*/300)),
                          make_party(plain_foe(/*speed=*/100)));
-        sbs_srand(7);
+        c.ctx().seed_rng(7);
         c.start();
         round_actions(c, /*attack=*/true);
         const int base = kMaxHp - c.ctx().getPet(1).hp;

@@ -49,14 +49,14 @@ inline const CoreApi* g_core = nullptr;
 constexpr const char* kMarkNameEternalTear = "蚀砚之泪";
 constexpr int kEternalTearSealThreshold = 4;
 
-inline bool roll_percent(int percent) {
+inline bool roll_percent(SbsRng& rng, int percent) {
     if (percent <= 0) {
         return false;
     }
     if (percent >= 100) {
         return true;
     }
-    return (sbs_rand() % 100) < percent;
+    return (rng.next() % 100) < percent;
 }
 
 inline int resolve_owner_from_args(BattleContext* ctx, const EffectArgs& args) {

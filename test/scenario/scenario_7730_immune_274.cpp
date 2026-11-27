@@ -7,7 +7,7 @@
 // 断言口径：
 //   - 免疫票 = ANOMALY duration=1 固定句柄（K171 285 同宠直系），门与掷骰在
 //     condition 现场判（apply_anomaly 直施探测，apply 100% 档短路不耗 rand——
-//     condition 掷点 = 战后首个 rand draw，peek 锚定防分支互换盲区，T7543d 纪律）；
+//     condition 掷点 = 停泊期 ctx 播种后的首个 draw，peek 锚定防分支互换盲区，T7543d 纪律）；
 //   - 满体门 = 现场读 hp（掉血即闭门、回血即重开——逐次施加时点判，K171 口径）；
 //   - 审计槽 = 掷前写申报概率（992740000，K400 形）：50 档双支断言 =50、100 档 =100；
 //   - 免疫落地计数（992740010）= EVENT_ANOMALY_IMMUNED watcher（停泊期直调后手动
@@ -87,15 +87,15 @@ bool probe_immune(const std::vector<int>& args, int seed, bool hurt_first = fals
     if (hurt_first) {
         (void)deal_pink_damage(&ctx, 0, 1000, DamageKind::FIXED, /*actor=*/1);
     }
-    sbs_srand(seed);
+    ctx.seed_rng(seed);
     return apply_anomaly(&ctx, 0, kBurn, 2, /*actor=*/1, /*chance_pct=*/100)
         == ApplyAnomalyResult::TARGET_IMMUNE;
 }
 
-// peek：condition 掷点预演（sbs_rand()%100 < 50 ↔ row25 免疫支）。
+// peek：用独立流预演 condition 首掷（draw % 100 < 50 ↔ row25 免疫支）。
 bool peek_under50(int seed) {
-    sbs_srand(seed);
-    return (sbs_rand() % 100) < 50;
+    SbsRng rng(seed);
+    return (rng.next() % 100) < 50;
 }
 
 int find_anchored(const std::vector<int>& args, bool want_immune) {
@@ -153,7 +153,7 @@ int main() {
             b.start();
             auto& ctx = b.ctx();
             (void)deal_pink_damage(&ctx, 0, 1000, DamageKind::FIXED, 1);   // 非满血
-            sbs_srand(s_hit);
+            ctx.seed_rng(s_hit);
             CHECK_EQ(apply_anomaly(&ctx, 0, kBurn, 2, 1, 100),
                      ApplyAnomalyResult::TARGET_IMMUNE, "T7730b 免疫支（<50）");
             ctx.event_center_.drain(&ctx, ctx.roundCount);
@@ -165,7 +165,7 @@ int main() {
             b.start();
             auto& ctx = b.ctx();
             (void)deal_pink_damage(&ctx, 0, 1000, DamageKind::FIXED, 1);
-            sbs_srand(s_miss);
+            ctx.seed_rng(s_miss);
             CHECK_EQ(apply_anomaly(&ctx, 0, kBurn, 2, 1, 100), ApplyAnomalyResult::SUCCESS,
                      "T7730b 落地支（>=50）");
             CHECK(ctx.has_active_abnormal_status(0, kBurn), "T7730b 落地支烧伤在身");
@@ -201,6 +201,20 @@ int main() {
         CHECK_EQ(read_key(b, kImmCnt), 1, "T7730d boss 局免疫计数=1");
         CHECK(!ctx.has_active_abnormal_status(0, kBurn), "T7730d boss 局无烧伤");
         std::cout << "  [T7730d] boss 无尾注照常 通过\n";
+    }
+
+    // ══ T7730e FSM 外直施只消费对局流，非对局流不参与 ═══════════════════════
+    {
+        ScenarioBattle b(make_party(mark_pet(kRow50)), make_party(foe_pet()));
+        b.start();
+        auto& ctx = b.ctx();
+        ctx.seed_rng(1);  // 首掷 16807，07 < 50 → 免疫。
+        sbs_srand(8);     // 首掷 134456，56 >= 50 → 若误用非对局流则不免疫。
+        const auto result = apply_anomaly(&ctx, 0, kBurn, 2, 1, 100);
+        CHECK_EQ(result, ApplyAnomalyResult::TARGET_IMMUNE, "T7730e FSM 外直施使用对局流");
+        CHECK_EQ(ctx.rng().state(), 16807ULL, "T7730e 仅消耗一次对局掷点");
+        const int non_battle_draw = sbs_rand();
+        CHECK_EQ(non_battle_draw, 134456, "T7730e 非对局流仍在首掷");
     }
 
     std::cout << "scenario_7730: all green" << std::endl;

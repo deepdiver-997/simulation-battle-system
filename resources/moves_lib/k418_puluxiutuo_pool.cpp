@@ -176,7 +176,7 @@ int k418_release_anomalies(BattleContext* ctx, int owner, int target, int kinds,
     int chosen[3] = {-1, -1, -1};
     const int n = kinds < 3 ? kinds : 3;
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (3 - i));
+        const int j = i + (ctx->rng().next() % (3 - i));
         const int t = idx[i];
         idx[i] = idx[j];
         idx[j] = t;

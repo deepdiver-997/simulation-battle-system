@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 #include <entities/elf-pet.h>
@@ -11,6 +12,7 @@
 #include <effects/effect.h>
 #include <effects/effect_meta.h>
 #include <effects/effect_unit.h>
+#include <effects/effect_unit_loader.h>
 #include <effects/effect_unit_parser.h>
 #include <fsm/battleContext.h>
 #include <primitives/battle_primitives.h>
@@ -700,19 +702,20 @@ int main() {
         main_unit.param0 = 0;      // AbnormalStatusId::Paralysis
         main_unit.param1 = 2;
         main_unit.chance_arg = -1; // 必定执行
-        main_unit.on_immune = &compensation;
+        main_unit.on_immune = 1;
+        const ParsedEffectProgram program({main_unit, compensation});
 
         const EffectArgs args_empty;  // chance_arg=-1，无需概率参数
 
         // 场景1：目标无免疫 → 麻痹成功，补偿不触发（原语细码首次被消费）
-        const BranchKey key1 = execute_effect_unit(&context, args_empty, main_unit);
+        const BranchKey key1 = execute_effect_unit(&context, args_empty, program, 0);
         assert(key1 == BranchKey::Success);
         assert(context.has_active_abnormal_status(1, 0) == true);  // 目标麻痹
         assert(context.ability_levels[0][0] == 0);                  // 补偿未触发
 
         // 场景2：目标挂 Mark(0) 免疫 → TARGET_IMMUNE → on_immune 补偿触发
         add_mark(target_pet.marks, 0, "异常免疫");
-        const BranchKey key2 = execute_effect_unit(&context, args_empty, main_unit);
+        const BranchKey key2 = execute_effect_unit(&context, args_empty, program, 0);
         assert(key2 == BranchKey::Success);                        // 补偿单元执行成功
         assert(context.ability_levels[0][0] == 2);                  // 自身攻击+2（Type B 补偿）
 
@@ -730,9 +733,7 @@ int main() {
         context.set_abnormal_status_end_round(1, 0, context.roundCount - 1);  // 清残留麻痹
 
         // 1) 解析器结构：916 模板（{0}%使对手{1}，若未触发则恢复自身全部体力）
-        //    注意：root 引用 storage[0]，后续 storage 不能被 clear（分支指针也会失效）。
         std::vector<EffectUnit> storage;
-        storage.reserve(8);
         const int root_idx = parse_effect_unit(
             "命中后{0}%使对手{1}，若未触发则恢复自身全部体力", {100, 0}, storage);
         assert(root_idx == 0);
@@ -741,22 +742,22 @@ int main() {
         assert(root.target == 1);            // 对手
         assert(root.chance_value == 100);
         assert(root.param0 == 0);            // 麻痹（AbnormalStatusId::Paralysis）
-        assert(root.on_other != nullptr);
-        assert(root.on_other->primary_tag == PrimitiveTag::Heal);
-        assert(root.on_other->target == 0);  // 恢复自身
+        assert(root.on_other == 1);
+        assert(storage[root.on_other].primary_tag == PrimitiveTag::Heal);
+        assert(storage[root.on_other].target == 0);  // 恢复自身
 
         // 2) 递归解析：兜底本身又是"令对手{状态}"（真正的递归 if-else）——独立 storage
         std::vector<EffectUnit> storage_rec;
-        storage_rec.reserve(8);
         const int rec_idx = parse_effect_unit("{0}%令对手{1}，未触发则令对手{2}", {50, 0, 1}, storage_rec);
         assert(rec_idx == 0);
-        assert(storage_rec[0].on_other != nullptr);
-        assert(storage_rec[0].on_other->primary_tag == PrimitiveTag::Anomaly);
-        assert(storage_rec[0].on_other->param0 == 1);  // 兜底异常 id
+        assert(storage_rec[0].on_other == 1);
+        assert(storage_rec[1].primary_tag == PrimitiveTag::Anomaly);
+        assert(storage_rec[1].param0 == 1);  // 兜底异常 id
 
         // 3) 执行器：chance=100 → 主效果异常施加（owner 从 args[0] 解析）
         const EffectArgs exec_args(std::vector<int>{0, 1});  // owner=0, target=1
-        const BranchKey key_primary = execute_effect_unit(&context, exec_args, root);
+        const ParsedEffectProgram program(storage);
+        const BranchKey key_primary = execute_effect_unit(&context, exec_args, program, root_idx);
         assert(key_primary == BranchKey::Success);
         assert(context.has_active_abnormal_status(1, 0) == true);  // 目标麻痹
 
@@ -766,17 +767,58 @@ int main() {
         //    为空）。解析器本体的解析/执行能力由本节 1)/2)/3)/5) 直接覆盖。
         Skills s_916(19531);  // 红炎冲击波：side_effect=[916], args=[50,2]
         assert(!s_916.effectBranches.empty());  // 插件注册的 916 已挂进分支
-        assert(s_916.parsed_units_.empty());    // 插件路径：不再产生解析单元
+        assert(s_916.parsed_units().empty());    // 插件路径：不再产生解析单元
 
         // 5) 执行器兜底：chance=0 → 未触发 → on_other（Heal 自身）执行
-        EffectUnit heal_root = root;  // 拷贝根，改概率为 0（兜底确定性触发）
-        heal_root.chance_value = 0;
+        storage[root_idx].chance_value = 0;  // 构建另一份定义，确定触发兜底。
+        const ParsedEffectProgram heal_program(storage);
         ElfPet& self_pet = context.getPet(0);
         const int self_max = self_pet.numericalBase[NumericalPropertyIndex::HP];
         self_pet.hp = self_max / 2;  // 半血
-        const BranchKey key_fallback = execute_effect_unit(&context, exec_args, heal_root);
+        const BranchKey key_fallback = execute_effect_unit(&context, exec_args, heal_program, root_idx);
         assert(key_fallback == BranchKey::Success);
         assert(self_pet.hp > self_max / 2);  // 恢复生效
+
+        // 连续追加 JSON 程序，早先的分支索引跨扩容仍指向原来的子节点。
+        const char* json = R"({"tag":"PowerBoost","param0":7,"condition":"TargetHpBelow",
+            "on_success":{"tag":"PowerBoost","param0":100,"condition":"TargetHpBelow"}})";
+        std::vector<EffectUnit> json_units;
+        const int first = load_effect_unit_from_json(json, {}, json_units);
+        assert(first == 0);
+        const auto initial_capacity = json_units.capacity();
+        for (int root = 2; root < 64; root += 2) {
+            const int appended = load_effect_unit_from_json(json, {}, json_units);
+            assert(appended == root);
+        }
+        assert(json_units.capacity() > initial_capacity);
+        for (int root = 0; root < 64; root += 2) assert(json_units[root].on_success == root + 1);
+        const ParsedEffectProgram json_program(json_units);
+        json_units[1].param0 = 1000;
+        assert(json_program.unit_at(1)->param0 == 100);  // 装配缓冲不是程序的可写别名。
+        assert(json_program.unit_at(-1) == nullptr && json_program.unit_at(64) == nullptr);
+        assert(execute_effect_unit(&context, exec_args, json_program, 64) == BranchKey::Invalid);
+
+        // 准入仅跳根条件，子分支自己的条件仍然生效。
+        const auto saved_view = context.ws.skill_power_view[0];
+        const int saved_target_hp = target_pet.hp;
+        context.ws.skill_power_view[0] = 100;
+        target_pet.hp = 1;
+        const auto rng_before = context.rng().state();
+        assert(execute_effect_unit(&context, exec_args, json_program, 0) == BranchKey::Never);
+        assert(context.ws.skill_power_view[0] == 100);
+        assert(execute_effect_unit_unconditional(&context, exec_args, json_program, 0) == BranchKey::Never);
+        assert(context.ws.skill_power_view[0] == 107 && context.rng().state() == rng_before);
+        context.ws.skill_power_view[0] = saved_view;
+        target_pet.hp = saved_target_hp;
+
+        for (int invalid_edge : {-2, 0, 1}) {
+            EffectUnit malformed;
+            malformed.on_other = invalid_edge;
+            bool rejected = false;
+            try { const ParsedEffectProgram invalid({malformed}); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            assert(rejected);  // 非法负数、自环、越界
+        }
 
         target_pet.marks.clear();
         context.getPet(0).hp = self_max;

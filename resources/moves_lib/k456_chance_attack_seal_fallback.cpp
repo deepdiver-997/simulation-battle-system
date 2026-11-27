@@ -141,7 +141,7 @@ void set_storage_int_local(BattleContext* ctx, int key, int value) {
 bool k456_try_seal_attack(BattleContext* ctx, int self, int opp, int effect_id, int chance) {
     // {1} 在位即消费：0% = 永不掷中（走回退），不翻转默认（K314/K340 纪律；
     // roll_percent 对 <=0 短路 false、>=100 短路 true，区间内才耗 rand）。
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return false;
     }
     if (!g_core || !g_core->seal_skill) {

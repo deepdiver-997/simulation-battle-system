@@ -19,7 +19,7 @@ const char* selection_reason(SkillSelectionResult r) {
 
 }  // namespace
 
-bool player_must_switch_pet(BattleContext& ctx, int player) {
+bool player_must_switch_pet(const BattleContext& ctx, int player) {
     if (player < 0 || player > 1) {
         return false;
     }
@@ -66,7 +66,7 @@ bool has_any_legal_action(const LegalActions& legal) {
     return false;
 }
 
-LegalActions compute_legal_actions(BattleContext& ctx, int player) {
+LegalActions compute_legal_actions(const BattleContext& ctx, int player) {
     LegalActions out;
     if (player < 0 || player > 1) {
         out.reason = "bad_player";
@@ -100,7 +100,7 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
         out.reason = "no_on_stage_pet";
         return out;
     }
-    ElfPet& pet = ctx.seerRobot[player].elfPets[slot];
+    const ElfPet& pet = ctx.seerRobot[player].elfPets[slot];
 
     out.can_act = !prospective;
     out.prospective = prospective;
@@ -124,7 +124,7 @@ LegalActions compute_legal_actions(BattleContext& ctx, int player) {
     //    "Error: must choose pet"。所以这一档把技能/药剂一律标成不可用 ——
     //    否则合法动作集等于在邀请客户端发一个注定被拒的动作。
     for (int i = 0; i < 5; ++i) {
-        Skills& sk = pet.skills[i];
+        const Skills& sk = pet.skills[i];
         LegalSkill s;
         s.index = i;
         s.id = sk.id;

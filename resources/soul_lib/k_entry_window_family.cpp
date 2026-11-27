@@ -439,7 +439,7 @@ EffectResult k888_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                     if (win_from > 0 && win_to >= win_from
                         && c->roundCount >= win_from && c->roundCount <= win_to) {
                         static const int kCompPool[3] = {kFear, kParalysis, kFatigue};
-                        const int anomaly = kCompPool[sbs_rand() % 3];
+                        const int anomaly = kCompPool[c->rng().next() % 3];
                         write_int(c, k888AuditComp + owner, comp_pct);
                         const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
                             c, opp, anomaly, random_anomaly_duration(), owner, comp_pct,
@@ -451,7 +451,7 @@ EffectResult k888_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                     }
                     // 主支：池 {烧伤,冻伤,中毒} 等概率挑一，100% 申报（短路不耗 rand）。
                     static const int kMainPool[3] = {kBurn, kFrostbite, kPoison};
-                    const int anomaly = kMainPool[sbs_rand() % 3];
+                    const int anomaly = kMainPool[c->rng().next() % 3];
                     write_int(c, k888AuditMain + owner, 100);
                     const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
                         c, opp, anomaly, random_anomaly_duration(), owner, /*chance_pct=*/100,

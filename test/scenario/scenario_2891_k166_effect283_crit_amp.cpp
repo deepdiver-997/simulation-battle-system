@@ -45,7 +45,7 @@ int probe_loss(int crit_sixteenths, bool with_mark) {
     ScenarioBattle b(scenario::make_party(holder_pet(crit_sixteenths, with_mark)),
                      scenario::make_party(dummy_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     const int hp0 = ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp;
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

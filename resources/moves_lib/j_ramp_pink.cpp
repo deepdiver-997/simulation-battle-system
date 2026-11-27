@@ -18,7 +18,7 @@
 //     首用施加 {0}%、第二用 {0}+{1}%…与"每次使用增加"序一致。
 //   - 903 = SKILL_EFFECT hp 对比门（我 > 对手在场宠）→ deal_pink(PERCENT_VALUE,
 //     max_hp_of(self)×{0}%)（J7 852 直系零回合版；门不成立不产粉）。
-//   - 1132 = roll band heal：heal_amount(lo + sbs_rand()%(hi-lo+1))；count_boost_kinds==0
+//   - 1132 = roll band heal：heal_amount(lo + rng.next()%(hi-lo+1))；count_boost_kinds==0
 //     （六槽无正槽）→ 第二段 band（J14 850 掷点口径；band 闭区间）。
 //
 // 载体切片（unity 库 json_each + side_effect.arg_count 脚本核算 2026-10-04）：
@@ -133,7 +133,7 @@ EffectResult effect_1132_random_band_heal(BattleContext* ctx, const EffectArgs& 
     }
     const int lo = boosted ? lo1 : lo2;
     const int hi = boosted ? hi1 : hi2;
-    const int amount = lo + sbs_rand() % (hi - lo + 1);
+    const int amount = lo + ctx->rng().next() % (hi - lo + 1);
     (void)g_core->heal_amount(ctx, owner, amount);
     return EffectResult::kOk;
 }

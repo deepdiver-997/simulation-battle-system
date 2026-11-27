@@ -160,9 +160,9 @@ EffectResult effect_1594_onhit_boost_else_drop(BattleContext* ctx, const EffectA
             if (!c || !j9_attacked_by(ev, self, actor)) {
                 return;
             }
-            if (roll_percent(chance)) {
+            if (roll_percent(c->rng(), chance)) {
                 all_stats_up(c, self, up);   // 自身增益走 stat_change 真原语（不吃免弱）
-            } else if (roll_percent(chance2)) {
+            } else if (roll_percent(c->rng(), chance2)) {
                 j9_all_stats_down(c, self, actor, drop);   // 兜底二次掷点 → 对手全属性-{4}
             }
         },

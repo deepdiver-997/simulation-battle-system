@@ -54,7 +54,7 @@ int probe_loss(int anomaly_id) {
     ScenarioBattle b(scenario::make_party(holder_pet()),
                      scenario::make_party(dummy_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     if (anomaly_id >= 0) {
         apply_anomaly(&ctx, /*target=*/1, anomaly_id, /*duration_rounds=*/5, /*actor=*/0);

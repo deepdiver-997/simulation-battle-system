@@ -37,12 +37,11 @@ if(NOT NLOHMANN_INCLUDE_DIR)
     find_path(NLOHMANN_INCLUDE_DIR nlohmann/json.hpp)
 endif()
 
-# ── 引擎自有确定性 RNG（2026-10-25，决策 D13→D15）──────────────────────────
-# 全工程源码级替换 std::rand/srand（sed 机械迁移），编为 SHARED：宿主 exe 与插件 DLL
-# 进程内共享单一状态，对齐 macOS 单一 libc rand 语义。历史两方案退役：#define 强制头
-# 被 libstdc++ <cstdlib> 的 #undef rand 击毙；-Wl,--wrap 是 GNU-ld 专属不满足社区多工具链。
-# Mac 序列与 libc rand 实证全等（10 种子×1000 值），基线零变化。详见 include/utils/sbs_rand.h。
+# ── 引擎自有确定性 RNG ──────────────────────────────────────────────────
+# 宿主与插件链接同一实现；对局各自持有 RNG 状态，旧无参 API 使用独立的线程本地序列。
+# 仍保留 macOS libc rand 的序列（含零种子与撞零行为）。详见 include/utils/sbs_rand.h。
 add_library(sbs_rand SHARED src/utils/sbs_rand.cpp)
+set_target_properties(sbs_rand PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 target_include_directories(sbs_rand PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 set(SIM_CORE_SOURCES
@@ -69,6 +68,8 @@ set(SIM_CORE_SOURCES
     src/entities/suit.cpp
     src/fsm/battleContext.cpp
     src/fsm/battleFsm.cpp
+    src/fsm/battle_clone.cpp
+    src/fsm/local_battle_control.cpp
     src/fsm/battle_mutate.cpp
     src/fsm/state_snapshot.cpp
     src/utils/dynamic_library.cpp
@@ -253,7 +254,7 @@ if(NOT WIN32 AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/fuzz/fuzz_battle.cpp)
     target_include_directories(sim_fuzz_battle PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
-    target_link_libraries(sim_fuzz_battle PRIVATE sim_core sbs_rand)  # 驱动决策流同走 MINSTD（进程内单一状态，D15 契约）
+    target_link_libraries(sim_fuzz_battle PRIVATE sim_core sbs_rand)  # 生成、驱动和对局各用独立的 MINSTD 状态
 endif()
 
 # ── 插件段：源码为**本地维护**（.gitignore 排除，见 docs_local/多agent协作工作流.md），

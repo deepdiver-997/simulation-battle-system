@@ -16,7 +16,7 @@
 //   - ⚠️ 随机威力载体 base power 全为 0（带即威力，DB 实测 6/6 载体 power=0）——
 //     物化的基线视图是 0，**不能**套 J102 的 view.value<=0 守卫（会恒短路）；
 //     无条件直写（miss 时无伤害阶段，写视图无副作用）。
-//   - band 闭区间：[50,150] = 50 + sbs_rand()%101；[150,220] = 150 + sbs_rand()%71。
+//   - band 闭区间：[50,150] = 50 + rng.next()%101；[150,220] = 150 + rng.next()%71。
 //
 // 载体切片（unity 库 json_each + side_effect.arg_count 脚本核算 2026-10-04）：
 //   61  0 参：纯链×11（10484 峰回路转 物、10747 未来射线 特、11158 风暴召唤…）
@@ -40,7 +40,7 @@ EffectResult effect_61_random_power(BattleContext* ctx, const EffectArgs& args) 
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 61, args, "需要 owner ∈ {0,1}");
     auto& view = ctx->ws.skill_power_view[owner];
-    view = 50 + sbs_rand() % 101;   // [50,150] 闭区间（载体 power=0，带即威力）
+    view = 50 + ctx->rng().next() % 101;   // [50,150] 闭区间（载体 power=0，带即威力）
     return EffectResult::kOk;
 }
 
@@ -52,7 +52,7 @@ EffectResult effect_70_random_power(BattleContext* ctx, const EffectArgs& args) 
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 70, args, "需要 owner ∈ {0,1}");
     auto& view = ctx->ws.skill_power_view[owner];
-    view = 150 + sbs_rand() % 71;   // [150,220] 闭区间（载体 power=0，带即威力）
+    view = 150 + ctx->rng().next() % 71;   // [150,220] 闭区间（载体 power=0，带即威力）
     return EffectResult::kOk;
 }
 

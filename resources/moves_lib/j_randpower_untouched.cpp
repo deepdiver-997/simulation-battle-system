@@ -6,7 +6,7 @@
 //   819 [2] 出手时本回合若未受到攻击伤害，则附加自身{0}值{1}%的百分比伤害，并恢复等量体力
 //
 // 实现口径：
-//   - 61 = 118/70 第三胎（J159/J173 同通道）：skill_power_view = 50 + sbs_rand()%101
+//   - 61 = 118/70 第三胎（J159/J173 同通道）：skill_power_view = 50 + rng.next()%101
 //     （50..150 绝对置，常数写死文案）。
 //   - 819 = EVENT_TAKE_DAMAGE watcher（duration=1 本回合，ev.target==self 且
 //     damage_kind==NORMAL——"受到攻击伤害"=红伤，粉/真不算）置旗（roundCount 键）；
@@ -41,7 +41,7 @@ EffectResult effect_61_random_power(BattleContext* ctx, const EffectArgs& args) 
                      "61 布局=[owner,target]（on_selected 绑定）");
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 61, args, "需要 owner ∈ {0,1}");
-    ctx->ws.skill_power_view[owner] = 50 + sbs_rand() % 101;   // 50..150 绝对置
+    ctx->ws.skill_power_view[owner] = 50 + ctx->rng().next() % 101;   // 50..150 绝对置
     return EffectResult::kOk;
 }
 

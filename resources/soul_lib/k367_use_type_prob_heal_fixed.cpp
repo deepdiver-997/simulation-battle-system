@@ -210,7 +210,7 @@ EffectResult k367_1383_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     if (attack_used) {
         const int prob = db_at(row, 1, 50);
         const int amount = db_at(row, 2, 0);
-        if (roll_percent(prob)) {
+        if (roll_percent(ctx->rng(), prob)) {
             if (mirrored_mapping(row)) {
                 // 4945：攻击技 → 附加固伤。
                 if (amount > 0 && g_core && g_core->deal_pink_damage &&
@@ -229,7 +229,7 @@ EffectResult k367_1383_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     } else {
         const int prob = db_at(row, 4, 50);
         const int amount = db_at(row, 5, 0);
-        if (roll_percent(prob)) {
+        if (roll_percent(ctx->rng(), prob)) {
             if (mirrored_mapping(row)) {
                 // 4945：属性技 → 恢复体力。
                 if (amount > 0 && g_core && g_core->heal_amount) {

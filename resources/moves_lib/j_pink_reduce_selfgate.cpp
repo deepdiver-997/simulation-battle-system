@@ -3,8 +3,8 @@
 // 家族语义（effect_info 官方模板 + 载体切片核对）：
 //
 // 1121（args_num=2）"下{0}次受到的固定伤害和百分比伤害减少{1}%"：
-//   - 粉伤管线 REDUCE_EXTRA 百分比免减（1890 直系 J22 同通道：shared_ptr 计次 +
-//     resolvedPink.target==self 判据——只减自身受到的固伤/百分伤，红伤/真伤不归本条）；
+//   - 粉伤管线 REDUCE_EXTRA 百分比免减（与 1890 同通道）：闭包独立持有剩余次数，
+//     resolvedPink.target==self 判据——只减自身受到的固伤/百分伤，红伤/真伤不归本条；
 //   - 与 1890 的差别：模板**无回合窗**（"下{0}次"纯计次）→ 不套 watch_attr_use，
 //     SKILL_EFFECT 一次注册（ON_STAGE epoch：切换失效、跨回合存活，"次"用完自然闲置）；
 //   - 实例：刀剑如梦 25425 [1121,1154,48]|[1,50,3,200,0,5]（属性技载体）。
@@ -28,8 +28,6 @@
 #include "common.h"
 
 #include <abnormal-system/abnormal-types.h>
-
-#include <memory>
 
 namespace {
 
@@ -59,11 +57,10 @@ EffectResult effect_1121_pink_reduce_counts(BattleContext* ctx, const EffectArgs
     EFFECT_ARG_GUARD(self >= 0 && self <= 1, 1121, args, "owner 越界");
     EFFECT_ARG_GUARD(counts > 0 && pct > 0 && pct <= 100, 1121, args,
                      "需要 次数>0 且 0<减伤≤100");
-    auto remaining = std::make_shared<int>(counts);
     ctx->register_pink_damage_effect(
         PinkDamagePhase::REDUCE_EXTRA, self,
-        [self, pct, remaining](BattleContext* cc, int bucket_owner) {
-            if (!cc || bucket_owner != self || *remaining <= 0) {
+        [self, pct, remaining = counts](BattleContext* cc, int bucket_owner) mutable {
+            if (!cc || bucket_owner != self || remaining <= 0) {
                 return;
             }
             PinkDamageResolved& pk = cc->resolvedPink;
@@ -71,8 +68,8 @@ EffectResult effect_1121_pink_reduce_counts(BattleContext* ctx, const EffectArgs
                 return;   // 只减自身受到的固伤/百分伤
             }
             pk.final -= pk.final * pct / 100;
-            --*remaining;
-        });
+            --remaining;
+        }, EffectScope::ON_STAGE, BattleCallbackCopy::Audited);
     return EffectResult::kOk;
 }
 

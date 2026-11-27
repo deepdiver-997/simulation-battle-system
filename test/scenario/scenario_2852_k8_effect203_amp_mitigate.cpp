@@ -45,7 +45,7 @@ int probe_defend_loss(std::vector<int> db_args) {
     ScenarioBattle b(scenario::make_party(holder_pet(std::move(db_args), 10, 1000000)),
                      scenario::make_party(attacker_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     const int hp0 = ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp;
     b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
@@ -59,7 +59,7 @@ int probe_attack_gain(std::vector<int> db_args) {
     ScenarioBattle b(scenario::make_party(holder_pet(std::move(db_args), 5000, 100000)),
                      scenario::make_party(dummy_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     const int hp0 = ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp;
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

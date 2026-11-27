@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 #include <fsm/battleFsm.h>
 #include <fsm/battleContext.h>
 #include <fsm/state_snapshot.h>
@@ -17,11 +16,17 @@
 #include <iterator>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
 
 namespace {
 
-// D16 快照挂点：当前正在跑的 battleContext（run/operation 入口登记，log() 每时点引用）
-BattleContext* g_snapshot_ctx = nullptr;
+// 快照上下文与 RNG 同样按线程及嵌套作用域隔离。
+thread_local BattleContext* g_snapshot_ctx = nullptr;
+struct SnapshotScope {
+    BattleContext* previous;
+    explicit SnapshotScope(BattleContext* ctx) : previous(g_snapshot_ctx) { g_snapshot_ctx = ctx; }
+    ~SnapshotScope() { g_snapshot_ctx = previous; }
+};
 
 std::string ts_now() {
     const auto now = std::chrono::system_clock::now();
@@ -38,7 +43,15 @@ std::string ts_now() {
 }
 
 void log_battle_line(const std::string& level, const std::string& msg) {
-    std::cout << "[" << ts_now() << "] [" << level << "] [battle] " << msg << std::endl;
+    std::ostringstream line;
+    line << "[" << ts_now() << "] [" << level << "] [battle] " << msg << '\n';
+    const std::string text = line.str();
+    // Do not mutate std::cout's formatting state: unrelated code also writes to it.
+    // Serialize complete battle lines, not whole battles, and retain rdbuf redirection.
+    static std::mutex log_mutex;
+    std::lock_guard<std::mutex> lock(log_mutex);
+    std::cout.rdbuf()->sputn(text.data(), static_cast<std::streamsize>(text.size()));
+    std::cout.rdbuf()->pubsync();
 }
 
 int resolve_first_mover_id(const BattleContext* ctx) {
@@ -512,8 +525,8 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
         ctx->ws.skill_power_view[robot_id].materialize(base_power);
     }
     // 连击次数视图层：**每次技能使用掷一次**（"1回合做 x~y 次攻击"的 x~y 是随机区间），
-    // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗 sbs_rand()。
-    ctx->ws.combo_view[robot_id].materialize(skill.roll_combo_count());
+    // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗随机数。
+    ctx->ws.combo_view[robot_id].materialize(skill.roll_combo_count(ctx->rng()));
     // 技能元素视图层：克制计算用的系别打底物化 skill.element，效果可改（"以XX系别算克制"）。
     // ★ 若**选择期**（MOVE_RIGHT）授予了"以指定系别进行伤害结算"（effect 2490），用授予值打底——
     //   否则这一行会把授予的系别冲掉（MOVE_RIGHT 早于 ON_SKILL_HIT）。同 `must_hit_grant` 的教训。
@@ -699,7 +712,7 @@ void apply_forced_expels(BattleContext* ctx) {
         if (candidate_count == 0) {
             continue;   // 守卫：背包中不存在其他存活（未被锁）精灵 → 无法被驱逐
         }
-        const int pick = candidates[sbs_rand() % candidate_count];
+        const int pick = candidates[ctx->rng().next() % candidate_count];
         ctx->rewrite_round_choice(side, static_cast<int>(BattleFsm::ActionType::EXPEL), pick);
         log_battle_line("INFO", "forced expel: side=" + std::to_string(side)
                                     + " victim_slot=" + std::to_string(victim_slot)
@@ -758,7 +771,7 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
         ctx->ws.restraint_view[attacker_id] = cur > prev ? cur : prev;
         optimal_armed = true;
     }
-    snapshot.base = std::max(0, Calculation::calculateDamage(attacker_id, ctx->ws, skill));
+    snapshot.base = std::max(0, Calculation::calculateDamage(attacker_id, ctx->ws, skill, ctx->rng()));
     if (optimal_armed) {
         ctx->ws.restraint_view[attacker_id] = saved_restraint_view;
     }
@@ -885,7 +898,7 @@ void apply_crit_defense_break(BattleContext* ctx, int attacker_id) {
 // 为什么重算安全：`stage_simple_attack_damage` 开头清空两个快照、末尾用局部 snapshot 整体赋值
 //   → 天然"覆盖"而不是"叠加"（不会把减伤/增伤算两遍）。
 // 暴力重掷：暴击**不**重掷（`ctx->crit_happened` 一次技能只掷一次，重算照它再乘一次倍率，
-//   正是官方"第二次重算包含暴击"）；伤害浮动 `sbs_rand()` 重掷（第二次是一次完整结算，用户 2026-09-14 裁定）。
+//   正是官方"第二次重算包含暴击"）；伤害浮动重掷（第二次是一次完整结算，用户 2026-09-14 裁定）。
 //
 // 典型消费场景：
 //   · 无相谛 2260：强制执行打盔把视图置 0 → 技能自己的"威力+170"把它改回来 → 隔着盔打出红伤
@@ -1188,7 +1201,7 @@ void stage_action_start_abnormal_damage(BattleContext* ctx, int robot_id) {
             continue;
         }
         // 概率档（官方 10 混乱只有 5%）：掷点放在 stage 期，快照里只留"这一回合确实要扣的段"。
-        if (profile.chance_pct < 100 && (sbs_rand() % 100) >= profile.chance_pct) {
+        if (profile.chance_pct < 100 && (ctx->rng().next() % 100) >= profile.chance_pct) {
             continue;
         }
         int amount = profile.numerator;
@@ -1335,10 +1348,19 @@ void BattleFsm::addStateAction(State state, HandlerType action) {
     stateHandlerMap[state] = action;
 }
 
+void BattleFsm::bind_context_locked(BattleContext& context) {
+    if (context.m_fsm && context.m_fsm != this) {
+        throw std::logic_error("BattleContext is bound to a different BattleFsm");
+    }
+    context.m_fsm = this;
+}
+
 void BattleFsm::run(BattleContext* battleContext) {
-    g_snapshot_ctx = battleContext;
+    if (!battleContext) throw std::invalid_argument("null BattleContext");
+    SnapshotScope snapshot_scope(battleContext);
     {
         std::lock_guard<std::mutex> guard(battleContext->run_mutex);
+        bind_context_locked(*battleContext);
 
         // 单步模式或命中断点 → 只执行一个状态就返回
         bool single_shot = battleContext->debug_step_mode ||
@@ -1468,7 +1490,11 @@ void BattleFsm::record_tape_sample(BattleContext* ctx, State state) {
 
 void BattleFsm::operation(BattleContext* battleContext, int robotId, ActionType actionType, int index,
                           bool is_forced) {
-    g_snapshot_ctx = battleContext;
+    if (!battleContext) throw std::invalid_argument("null BattleContext");
+    if (robotId < 0 || robotId >= 2) throw std::out_of_range("invalid robot id");
+    // run already holds run_mutex; external callers must serialize themselves.
+    bind_context_locked(*battleContext);
+    SnapshotScope snapshot_scope(battleContext);
 
     int &on_stage = battleContext->on_stage[robotId];
     if (on_stage < 0 || on_stage >= 6) {
@@ -1649,8 +1675,11 @@ void BattleFsm::handle_OperationEnterExitStage(BattleContext* battleContext) {
 }
 
 void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleContext) {
-    if (battleContext->m_buffer.size() <= 3 * sizeof(int)) {
-        // IO层检查：数据太短，直接发错误
+    if (battleContext->m_buffer.size() < 4 * sizeof(int)) {
+        // Consume malformed packets before reporting, so synchronous controls
+        // return to the input wait instead of reprocessing the same bytes forever.
+        battleContext->m_buffer.clear();
+        battleContext->is_empty = true;
         battleContext->control_block_->async_write(
             battleContext->current_player_id_,
             "Error: invalid input length\n",
@@ -1686,6 +1715,10 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
         return;
     }
 
+    const int old_type = battleContext->roundChoice[actor][0];
+    const int old_index = battleContext->roundChoice[actor][1];
+    battleContext->roundChoice[actor][0] = -1;
+    battleContext->roundChoice[actor][1] = -1;
     operation(battleContext, buf[0], static_cast<ActionType>(buf[1]), buf[2]);
 
     const bool accepted =
@@ -1713,6 +1746,8 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
                 selection_target.on_selected(battleContext, actor);
             } else {
                 // 不可选（PP 耗尽/锁定）：拒绝该操作，要求重选
+                battleContext->roundChoice[actor][0] = old_type;
+                battleContext->roundChoice[actor][1] = old_index;
                 battleContext->control_block_->async_write(
                     battleContext->current_player_id_,
                     "Error: skill not selectable, please resubmit\n",
@@ -1774,6 +1809,8 @@ void BattleFsm::handle_OperationChooseSkillMedicament(BattleContext* battleConte
             }
         }
     } else {
+        battleContext->roundChoice[actor][0] = old_type;
+        battleContext->roundChoice[actor][1] = old_index;
         battleContext->control_block_->async_write(
             battleContext->current_player_id_,
             "Error: action rejected, please resubmit\n",
@@ -1930,7 +1967,7 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
         return;
     }
     if (battleContext->roundChoice[0][0] == battleContext->roundChoice[1][0] && battleContext->roundChoice[0][0] == static_cast<int>(ActionType::USE_MEDICINE)) {
-        pr = sbs_rand() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
+        pr = battleContext->rng().next() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
         log("Use medicine tie-break: " + std::string(pr == PreemptiveRight::SEER_ROBOT_1 ? "player0 wins." : "player1 wins."));
         battleContext->generateState();
         return;
@@ -1990,7 +2027,7 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
             // pr = PreemptiveRight::SEER_ROBOT_1;
             // log("Preemptive right determined by default: Host Robot 1 wins.");
             // 现在改为随机决定先手权，增加不确定性
-            pr = sbs_rand() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
+            pr = battleContext->rng().next() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
             log("Preemptive right determined by tie-break: " + std::string(pr == PreemptiveRight::SEER_ROBOT_1 ? "player0 wins." : "player1 wins."));
         }
     }
@@ -2434,10 +2471,12 @@ void BattleFsm::handle_ChooseAfterDeath(BattleContext* battleContext) {
         battleContext->generateState();
         return;
     }
-    if (battleContext->m_buffer.size() <= 3 * sizeof(int)) {
+    if (battleContext->m_buffer.size() < 4 * sizeof(int)) {
+        battleContext->m_buffer.clear();
+        battleContext->is_empty = true;
         battleContext->control_block_->async_write(
             battleContext->current_player_id_,
-            "Error: invalid input\n",
+            "Error: invalid input length\n",
             battleContext, this);
         return;
     }
@@ -2447,7 +2486,14 @@ void BattleFsm::handle_ChooseAfterDeath(BattleContext* battleContext) {
     battleContext->m_buffer.clear();
     battleContext->is_empty = true;
 
+    if (buf[0] < 0 || buf[0] >= 2) {
+        battleContext->control_block_->async_write(
+            battleContext->current_player_id_, "Error: invalid player id\n", battleContext, this);
+        return;
+    }
     if (buf[3] == 1) {
+        battleContext->control_block_->async_write(
+            battleContext->current_player_id_, "Error: invalid death switch input\n", battleContext, this);
         return;
     }
     if (static_cast<ActionType>(buf[1]) != ActionType::CHOOSE_PET) {
@@ -2457,9 +2503,18 @@ void BattleFsm::handle_ChooseAfterDeath(BattleContext* battleContext) {
             battleContext, this);
         return;
     }
-    // is_forced=true：这是**死后补位**，不是主动切换 —— 限制类异常（凝滞/瘫痪）拦不住它，
-    // 否则宠物阵亡后无法补位会导致对局卡死。其余校验（hp>0 / is_locked / 槽位范围）照走。
-    operation(battleContext, buf[0], static_cast<ActionType>(buf[1]), buf[2], /*is_forced=*/true);
+    const int actor = buf[0];
+    const int target = buf[2];
+    const int current = battleContext->on_stage[actor];
+    if (current < 0 || current >= 6 || target < 0 || target >= 6 || target == current ||
+        battleContext->seerRobot[actor].elfPets[current].hp > 0 ||
+        battleContext->seerRobot[actor].elfPets[target].hp <= 0) {
+        battleContext->control_block_->async_write(
+            actor, "Error: invalid death replacement\n", battleContext, this);
+        return;
+    }
+    // Forced replacement bypasses voluntary switch locks, but never slot/HP validation.
+    operation(battleContext, actor, ActionType::CHOOSE_PET, target, /*is_forced=*/true);
     // 死亡换宠：死宠离场 → 实际执行换宠（清死宠公共状态 → 新宠登场激活）。成因 = 死亡档
     perform_switch(battleContext, buf[0], buf[2], SwitchCause::DEATH);
     // ★ 双方同回合倒下（2026-10-01 D4 配套）：先倒的一方补位后，另一方在场宠仍倒着

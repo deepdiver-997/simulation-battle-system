@@ -322,7 +322,7 @@ EffectResult effect_1277_shenyu_dizuiqu(BattleContext* ctx, const EffectArgs& ar
         // 体力大于对手：消耗至残留 1 点 HP（不是死亡，不走漏斗），造成 350~550 点伤害。
         self.hp = 1;
         if (g_core->fixed_damage) {
-            g_core->fixed_damage(ctx, target, 350 + sbs_rand() % 201);
+            g_core->fixed_damage(ctx, target, 350 + ctx->rng().next() % 201);
         }
         return EffectResult::kOk;
     }

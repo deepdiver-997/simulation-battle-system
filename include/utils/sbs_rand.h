@@ -10,16 +10,24 @@
 // 审计命令（应仅命中 sbs_rand / sbs_srand 自身与本文档注释）：
 //   grep -rnE '(^|[^_a-zA-Z0-9:])(std::)?(s?rand)\b' src include resources test/scenario examples
 //
-// 实现在 src/utils/sbs_rand.cpp（SHARED 库：宿主 exe 与插件 DLL 进程内共享单一状态，
-// 对齐 macOS 单一 libc rand 状态语义）。算法 2026-10-25 于 macOS libc 实证拟合：
-// 10 种子 × 1000 值全等（含 srand(0)=123459876 重置与撞 0 边角）。
+// 对局按值持有 SbsRng；内核与插件显式使用当前对局的实例。
+// 算法保持 macOS libc 序列（包括零种子和撞零）。
+#include <cstdint>
+
+class SbsRng {
+public:
+    explicit SbsRng(unsigned int seed = 1) noexcept;
+    void seed(unsigned int seed) noexcept;
+    int next() noexcept;
+    std::uint64_t state() const noexcept { return state_; }
+private:
+    std::uint64_t state_ = 1;
+};
+
+// 非对局兼容序列（旧场景预播种及纯探针）。每线程独立，永不绑定对局。
+// 省略 seed 的 BattleContext 仅在构造时复制此状态；已有对局不受这些函数影响。
 int sbs_rand(void);
 void sbs_srand(unsigned int seed);
-
-// 快照/诊断用：当前内部状态（不消耗序列）。M1.5 golden 快照以此为首要漂移探测器——
-// 跨平台任一处 rand 消费次数漂移，下一个时点的 state 立即不同。
-// ⚠️ 用 uint64_t：Windows 的 unsigned long 是 32 位（位宽敏感算术一律 uint64_t，见坑 14）。
-#include <cstdint>
 std::uint64_t sbs_rand_state(void);
 
 #endif // SBS_RAND_H

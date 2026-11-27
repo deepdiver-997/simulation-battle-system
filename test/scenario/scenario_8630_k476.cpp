@@ -271,7 +271,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主", kWanMei, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         RandMirror m;
         m.seed(1);
         BattleContext& ctx = b.ctx();
@@ -323,7 +323,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "后手", kEMoXin, 100, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 300, 1, kMaxHp)));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         RandMirror m;
         m.seed(2);
         BattleContext& ctx = b.ctx();
@@ -369,7 +369,7 @@ int main() {
                                                  /*arg_index=*/0, /*value=*/2, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -402,7 +402,7 @@ int main() {
                                                  /*arg_index=*/1, /*value=*/5, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 1, {10, 1, 0, 7, -1});
         ctx.pp_retain_pet[1][0] = true;   // 琼华之庇保留旗（pp_zero_slot 对手来源保留分支）
@@ -462,7 +462,7 @@ int main() {
                                                  /*arg_index=*/1, /*value=*/2, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(11);
+        b.ctx().seed_rng(11);
         RandMirror m;
         m.seed(11);
         BattleContext& ctx = b.ctx();
@@ -504,7 +504,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主0", kWanMei, 300, 1, kMaxHp)),
                          make_party(carrier_pet(2, "印主1", kWanMei, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -546,7 +546,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主", kWanMei, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -575,7 +575,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主", kWanMei, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -614,7 +614,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "歪腿", kNiuQu, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         RandMirror m;
         m.seed(13);
         BattleContext& ctx = b.ctx();
@@ -647,7 +647,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "中腿", kNiuQu, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         RandMirror m;
         m.seed(2);
         BattleContext& ctx = b.ctx();
@@ -677,7 +677,7 @@ int main() {
         ScenarioBattle b1(make_party(carrier_pet(1, "速命", kGuangMang, 300, 1, kMaxHp)),
                           make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b1.start();
-        sbs_srand(13);
+        b1.ctx().seed_rng(13);
         BattleContext& c1 = b1.ctx();
         run_round(b1, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(c1, k512Base + 0 * 16 + 0, -1), 0, "T8630.k1 掷歪（91≥40）");
@@ -696,7 +696,7 @@ int main() {
         ScenarioBattle b2(make_party(carrier_pet(1, "攻2档", kQiYuan, 300, 1, kMaxHp)),
                           make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b2.start();
-        sbs_srand(2);
+        b2.ctx().seed_rng(2);
         BattleContext& c2 = b2.ctx();
         run_round(b2, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(c2, k512Base + 0 * 16 + 0, -1), 1, "T8630.k2 掷中（14<40）");
@@ -716,7 +716,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "封锁", kNiuQu, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         ctx.grant_immunity(0, ImmunityType::STAT_BOOST, coverage_all(), /*anomaly_mask=*/0,
                            /*duration_rounds=*/9, /*source_id=*/9996,
@@ -742,7 +742,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "先手0", kNiuQu, 300, 1, kMaxHp)),
                          make_party(carrier_pet(2, "后手1", kNiuQu, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -770,7 +770,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "1618侧", kWanMei, 300, 1, kMaxHp)),
                          make_party(carrier_pet(2, "512侧", kNiuQu, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         RandMirror m;
         m.seed(1);
         BattleContext& ctx = b.ctx();

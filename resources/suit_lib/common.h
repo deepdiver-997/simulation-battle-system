@@ -39,14 +39,14 @@ inline int any_int_or(const std::any& a, int fallback = 0) {
 // core 在插件初始化时传入的原语函数指针（依赖倒置：走真原语、不链接 core 符号）。
 inline const CoreApi* g_core = nullptr;
 
-inline bool roll_percent(int percent) {
+inline bool roll_percent(SbsRng& rng, int percent) {
     if (percent <= 0) {
         return false;
     }
     if (percent >= 100) {
         return true;
     }
-    return (sbs_rand() % 100) < percent;
+    return (rng.next() % 100) < percent;
 }
 
 inline int resolve_owner_from_args(BattleContext* ctx, const EffectArgs& args) {

@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 /**
  * battle_primitives.cpp — 原语实现
  *
@@ -235,7 +234,7 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     //      官方口径「**以实际概率为准**」（战栗被提升到 100% 就不受影响）→ 判的是本次
     //      实际值；且必须**在掷骰之前**，这正是闸门做成查询式、事件中心承载不了的原因。
     //   ② 再按改写后的值掷一次：0 = 必定不触发（不消耗 rand）、>=100 = 必定触发
-    //      （同样不消耗 rand，与 roll_percent / trait_proc_roll 的契约一致）、其余 sbs_rand()%100。
+    //      （同样不消耗 rand，与 roll_percent / trait_proc_roll 的契约一致）、其余掷一次百分比。
     // ⚠️ 位置：排在 ATTACH_BAN 与砥砺置位**之后**——"被禁令挡在门外"不算执行过（既有口径），
     //    而"概率没掷中"算执行过（动作已经做了，与免疫/抗性同类；官方"不要求真落地"）。
     // ⚠️ 通道无关：三个通道（Modern/Ancient/Raw）都过这一步。亮节原文点名覆盖"主动毒、
@@ -259,7 +258,7 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
         if (final_pct <= 0) {
             return ApplyAnomalyResult::ROLL_FAILED;
         }
-        if (final_pct < 100 && static_cast<int>(sbs_rand() % 100) >= final_pct) {
+        if (final_pct < 100 && static_cast<int>(ctx->rng().next() % 100) >= final_pct) {
             return ApplyAnomalyResult::ROLL_FAILED;
         }
     }
@@ -320,8 +319,8 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
                 tier_filter, ctx, attach_pierced, can_reflect);
         } else if (!attach_pierced) {
             // 回程可被免疫，但不扣次数（idx=375），也不再反弹。
-            protection.blocked = ctx->is_immune_effect(
-                target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id, tier_filter);
+            protection.blocked = ctx->resolve_immunity(
+                target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id, /*soul_filter=*/0, tier_filter);
         }
         if (protection.blocked) emit_immuned();
         reflect_to_actor(protection.reflections);
@@ -341,7 +340,7 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     // 维护（挂曝/消逝时刷新），kernel 不认识任何具体印记。
     if (channel == AnomalyChannel::Modern && reflect_depth == 0
         && pet.resistance.isResistantTo(
-               anomaly_id,
+               anomaly_id, ctx->rng(),
                ctx->on_stage[target] >= 0 && ctx->on_stage[target] < 6
                    ? ctx->anomaly_resist_low_penalty[target][ctx->on_stage[target]]
                    : 0)) {
@@ -359,8 +358,8 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     // [5] 魂免最后查：命中时点和异常范围只挡下，不触发前段的扣次或弹控。
     // Mark 0 是古代层魂免兜底，古早施加可被它挡；附加穿透和 [3] 一样跳过本段。
     if (check_defense && !attach_pierced
-        && (ctx->is_immune_soul(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
-                                tier_filter)
+        && (ctx->resolve_immunity(target, ImmunityType::ANOMALY, ctx->currentState, anomaly_id,
+                                  /*soul_filter=*/1, tier_filter)
             || has_mark(pet.marks, 0))) {
         emit_immuned();
         return ApplyAnomalyResult::TARGET_IMMUNE;
@@ -505,7 +504,7 @@ RandomAnomalyResult attach_random_anomalies(BattleContext* ctx,
         return out;
     }
     out.requested = std::min(count, static_cast<int>(pool.size()));
-    // ② 概率门：整个子句一次（同插件侧 roll_percent 语义：<100 时 sbs_rand()%100 判定）。
+    // ② 概率门：整个子句一次（同插件侧 roll_percent 语义：<100 时消耗一次百分比掷点）。
     // ⚠️ 掷骰**之前**先过闸门（亮节族）——与三个施加原语的 chance_pct 是同一道门。
     //    这是"整子句一次"的那次判定，故闸门在这里问；③ 里的逐只 apply_anomaly 传 -1
     //    （已判定过，不能再掷一次，否则一次子句会被掷 N 次）。
@@ -521,14 +520,14 @@ RandomAnomalyResult attach_random_anomalies(BattleContext* ctx,
         ctx->event_center_.emit(low);
     }
     if (gated_pct < 100
-        && (gated_pct <= 0 || static_cast<int>(sbs_rand() % 100) >= gated_pct)) {
+        && (gated_pct <= 0 || static_cast<int>(ctx->rng().next() % 100) >= gated_pct)) {
         return out;
     }
     out.rolled = 1;
-    // ③ 不重复挑选（部分 Fisher-Yates：rand 序随引擎全局 sbs_rand，测试可 srand 固定）。
+    // ③ 不重复挑选（部分 Fisher-Yates：使用当前对局的随机数流）。
     std::vector<int> bag = pool;
     for (int pick = 0; pick < out.requested; ++pick) {
-        const int idx = pick + static_cast<int>(sbs_rand() % static_cast<unsigned>(bag.size() - pick));
+        const int idx = pick + static_cast<int>(ctx->rng().next() % static_cast<unsigned>(bag.size() - pick));
         std::swap(bag[pick], bag[idx]);
         const ApplyAnomalyResult r = apply_anomaly(ctx, target, bag[pick],
                                                    /*duration_rounds=*/-1, actor);
@@ -616,7 +615,7 @@ void derive_anomaly(BattleContext* ctx, int target, const ElfPet& /*pet*/,
             static_cast<int>(AbnormalStatusId::DeathCurse),
             static_cast<int>(AbnormalStatusId::WeaknessCurse),
         };
-        derived_id = kCurseRoll[sbs_rand() % 3];
+        derived_id = kCurseRoll[ctx->rng().next() % 3];
     }
     if (!is_valid_abnormal_status_id(derived_id)) {
         return;
@@ -625,7 +624,7 @@ void derive_anomaly(BattleContext* ctx, int target, const ElfPet& /*pet*/,
     int rounds = random_anomaly_duration();
     if (d.derived_rounds_min > 0) {
         const int hi = std::max(d.derived_rounds_min, d.derived_rounds_max);
-        rounds = d.derived_rounds_min + (sbs_rand() % (hi - d.derived_rounds_min + 1));
+        rounds = d.derived_rounds_min + (ctx->rng().next() % (hi - d.derived_rounds_min + 1));
     }
     // ⚠️ **+1 是必须的**：衍化发生在**回合扣减点**，而该回合的行动阶段（ACTION_START 等）
     //    早已跑完 —— 转出异常的"第一个生效回合"是**下一回合**。而 `has_active` 是
@@ -680,7 +679,7 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         if (p.timing != AbnormalDamageTiming::RoundReduction) {
             continue;
         }
-        if (p.chance_pct < 100 && (sbs_rand() % 100) >= p.chance_pct) {
+        if (p.chance_pct < 100 && (ctx->rng().next() % 100) >= p.chance_pct) {
             continue;
         }
         if (pet.hp <= 0) {
@@ -726,7 +725,7 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         if (p.timing != AbnormalDamageTiming::OnExpire || pet.hp <= 0) {
             continue;
         }
-        if (p.chance_pct < 100 && (sbs_rand() % 100) >= p.chance_pct) {
+        if (p.chance_pct < 100 && (ctx->rng().next() % 100) >= p.chance_pct) {
             continue;
         }
         deal_anomaly_damage(ctx, target, pet, p, /*actor=*/1 - target);
@@ -1373,11 +1372,11 @@ int seal_skill(BattleContext* ctx, int source, int target, int effect_id, bool a
     std::function<bool(BattleContext*, int, int, bool)> condition = nullptr;
     if (chance_pct < 100) {
         const int chance = chance_pct <= 0 ? 0 : chance_pct;
-        condition = [chance](BattleContext*, int, int, bool) {
+        condition = [chance](BattleContext* c, int, int, bool) {
             if (chance <= 0) {
                 return false;
             }
-            return (sbs_rand() % 100) < chance;
+            return (c->rng().next() % 100) < chance;
         };
     }
     // 回合型 / 次数型**二选一**（文档 §5.1）：有 duration 走回合型（remaining_counts 不设，
@@ -1773,7 +1772,7 @@ StatDropResult stat_drop(BattleContext* ctx, int target, int stat, int amount, i
     // ⚠️ ATTACH_PIERCE（2026-11-22 SP④）：施加方持免弱位凭证 → 免弱票查询跳过
     //    （语料 post497：队友附加弱化无视对手免弱）。弱化无通道/无反弹 → 无其他分支。
     if (!ctx->rule_center_.has_attach_pierce(ctx, actor, kPierceStatDrop, ctx->roundCount)
-        && ctx->is_immune(target, ImmunityType::STAT_DROP, ctx->currentState)) {
+        && ctx->resolve_immunity(target, ImmunityType::STAT_DROP, ctx->currentState)) {
         return StatDropResult::IMMUNE;
     }
     // ⚠️ 此处**不查** STAT_CLEAR（免消除强化）：那个护的是"已有的提升被消除/吸取"，
@@ -1820,7 +1819,7 @@ StatReversalResult stat_boost_reversal(BattleContext* ctx, int target) {
         return StatReversalResult::NOTHING;
     }
     // ① 免弱：**最先查、无条件**（与 stat_drop 同一条规则）——目标有免弱则整次失败。
-    if (ctx->is_immune(target, ImmunityType::STAT_DROP, ctx->currentState)) {
+    if (ctx->resolve_immunity(target, ImmunityType::STAT_DROP, ctx->currentState)) {
         return StatReversalResult::BLOCKED;
     }
     // ⚠️ 不查 STAT_CLEAR（免消除强化）：反转是"把提升压成下降"，与弱化同理可穿强化保护。

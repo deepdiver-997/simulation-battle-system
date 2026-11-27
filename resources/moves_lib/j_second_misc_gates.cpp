@@ -174,7 +174,7 @@ EffectResult j145_1318_flush(BattleContext* ctx, const EffectArgs& args) {
     if (ctx->seerRobot[opp].elfPets[ctx->on_stage[opp]].hp <= 0) {
         return EffectResult::kOk;   // 已被本次攻击打死：无需再判（2295 存活门）
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         (void)g_core->force_hp_to_zero(ctx, opp, owner);
         return EffectResult::kOk;
     }

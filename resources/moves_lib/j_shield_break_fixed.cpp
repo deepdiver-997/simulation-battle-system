@@ -12,7 +12,7 @@
 //     首破 → fixed_damage(opp,{1}) → 清旗。watcher 永久窗（duration 0），
 //     旗清后静默（再获盾/再破不再触发——模板"护盾消失时"单次语义，1753 同口径）。
 //   - 1659 = SKILL_EFFECT 直通：amount = rand 区间 [{0},{1}]（含端点，
-//     sbs_rand()%(hi-lo+1)+lo）；暴击分叉读 crit_happened[自身]（query_usage ①.5
+//     rng.next()%(hi-lo+1)+lo）；暴击分叉读 crit_happened[自身]（query_usage ①.5
 //     掷定、SKILL_EFFECT 时点已可读——J18/J55 同旗）：
 //     未暴 → fixed_damage(amount)（吃护盾的红伤系固伤）；
 //     暴 → 吸取（canglan drain 形：fixed_damage 落点 + 按实际扣血 heal_amount 回），
@@ -93,12 +93,12 @@ EffectResult effect_1659_rand_fixed_or_drain(BattleContext* ctx, const EffectArg
         return EffectResult::kOk;
     }
     const int amount =
-        fix_lo + (fix_hi > fix_lo ? sbs_rand() % (fix_hi - fix_lo + 1) : 0);
+        fix_lo + (fix_hi > fix_lo ? ctx->rng().next() % (fix_hi - fix_lo + 1) : 0);
     if (ctx->crit_happened[owner]) {
         // "转变为吸取"：同法落点 + 按实际扣血回（沧岚 581 drain 形）。
         // 点数：吸低-吸高再掷一段（模板独立区间）。
         const int drain =
-            drain_lo + (drain_hi > drain_lo ? sbs_rand() % (drain_hi - drain_lo + 1) : 0);
+            drain_lo + (drain_hi > drain_lo ? ctx->rng().next() % (drain_hi - drain_lo + 1) : 0);
         const int before = ctx->getPet(opp).hp;
         (void)g_core->fixed_damage(ctx, opp, drain);
         const int dealt = before - ctx->getPet(opp).hp;

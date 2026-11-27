@@ -201,7 +201,6 @@ void swap(Fight& f,int side,int slot) {
 
 int main() {
     REQUIRE(PetFactory::initialize_runtime_data());
-    sbs_srand(504);
     // A 五真实载体全链及参数切片。friend_side_effect为空；38658为隐藏可学链。
     {
         const std::vector<std::pair<int,std::vector<std::pair<int,std::vector<int>>>>> want={
@@ -220,7 +219,7 @@ int main() {
             }
             for (int side:{0,1}) for (bool first:{true,false}) {
                 Fight f(side,first,move);
-                sbs_srand(23);
+                f.ctx().seed_rng(23);
                 const int r=f.ctx().roundCount;
                 own(f,side,0,1);  // 对手真实普通攻击，覆盖先/后手而非只比较速度字段。
                 const int count=move==29125?3:2;
@@ -245,7 +244,7 @@ int main() {
     // B 不改池、不借概率运气：24独立种子、MINSTD精确预测挑选顺序与最终RNG。
     for (unsigned seed=1;seed<=24;++seed) {
         Fight f;
-        sbs_srand(seed);
+        f.ctx().seed_rng(seed);
         own(f,0);
         const auto expected=picks(kPool,2,seed);
         CHECK(applied(f,1,0)==expected,"B 不缩池时的精确不重复选码序列");
@@ -256,7 +255,7 @@ int main() {
         // 不把自然结算的额外耗随机数误算成2061重复挑选。
         // 〔源: src/fsm/battleFsm.cpp:1185-1193〕
         if (contains(expected,10)) expected_rng=next(expected_rng);
-        CHECK_EQ(sbs_rand_state(),expected_rng,"B 恰两次挑选+可分离的混乱自然结算，无额外概率/时长掷点");
+        CHECK_EQ(f.ctx().rng().state(),expected_rng,"B 恰两次挑选+可分离的混乱自然结算，无额外概率/时长掷点");
         CHECK_EQ(f.observed_pools.size(),1,"B 单子句一次池解析");
     }
     // C 全合法码逐项边界：16池中均可落，控制/附属/寄生对手等池外均不混入。
@@ -268,7 +267,7 @@ int main() {
                 CHECK(base==kPool,"C 实际基础池精确16码");
                 return contains(base,id)?std::vector<int>{id}:std::vector<int>{};
             });
-        sbs_srand(61);
+        f.ctx().seed_rng(61);
         own(f,0);
         CHECK_EQ(f.observed_pools.size(),1,"C 单成员交集前确实走过生产池");
         CHECK_EQ(active(f,1).size(),contains(kPool,id)?1:0,"C 池中/池外成员 "+std::to_string(id));
@@ -281,7 +280,7 @@ int main() {
     // D 参数边界、超池数钳制、池改写去重、不重抽、不把0当默认2。
     for (int count:{0,1,2,3,16,17,std::numeric_limits<int>::max()}) {
         Fight f(0,true,kAttr,count);
-        sbs_srand(37);
+        f.ctx().seed_rng(37);
         own(f,0);
         const int n=std::min(count,16);
         CHECK_EQ(active(f,1).size(),n,"D 请求数按池大小钳制");
@@ -304,34 +303,34 @@ int main() {
         Fight f;
         f.pool(true,{1,44});
         for (int id:{1,44}) REQUIRE(apply_anomaly_raw(&f.ctx(),1,id,rounds,0)==ApplyAnomalyResult::SUCCESS);
-        sbs_srand(7);
+        f.ctx().seed_rng(7);
         own(f,0);
         CHECK(active(f,1)==std::vector<int>({1,44}),"E 只有已有两种，不另补新种");
         CHECK_EQ(applied(f,1,0).size(),rounds==1?2:0,"E 仅延长才发落地事件，已有长异常不伪发");
         for (int id:{1,44})
             CHECK_EQ(f.ctx().get_abnormal_status_end_round(1,id),std::max(rounds,2),"E 同种只延长不缩短");
-        CHECK_EQ(sbs_rand_state(),next(next(7)),"E 已有异常仍恰尝试2次、不补抽");
+        CHECK_EQ(f.ctx().rng().state(),next(next(7)),"E 已有异常仍恰尝试2次、不补抽");
     }
     // F 整体免疫和一张次数免疫：尝试数锁在请求数，不是落地数，不因失败补抽。
     {
         Fight f(0,true,kAttr,3);
         guard(f,1);
-        sbs_srand(13);
+        f.ctx().seed_rng(13);
         own(f,0);
         CHECK(active(f,1).empty(),"F Modern整免挡所有异常");
         CHECK_EQ(events(f,EventType::EVENT_ANOMALY_IMMUNED,1,0),3,"F 只有三次免疫事件、不补抽");
-        CHECK_EQ(sbs_rand_state(),next(next(next(13))),"F 免疫失败仅消耗三次挑选");
+        CHECK_EQ(f.ctx().rng().state(),next(next(next(13))),"F 免疫失败仅消耗三次挑选");
         CHECK_EQ(f.observed_pools.size(),1,"F 失败不重新解析池/重试");
     }
     {
         Fight f;
         guard(f,1,1);
-        sbs_srand(13);
+        f.ctx().seed_rng(13);
         own(f,0);
         CHECK_EQ(events(f,EventType::EVENT_ANOMALY_IMMUNED,1,0),1,"F 次免只挡一只");
         CHECK_EQ(applied(f,1,0).size(),1,"F 第二只照常落地，不补齐到2落地");
         CHECK_EQ(active(f,1).size(),1,"F 实际只有1种");
-        CHECK_EQ(sbs_rand_state(),next(next(13)),"F 次免不改变挑选次数");
+        CHECK_EQ(f.ctx().rng().state(),next(next(13)),"F 次免不改变挑选次数");
     }
     {
         Fight f;
@@ -339,33 +338,33 @@ int main() {
         guard(f,1,0,1ULL<<1);
         unsigned seed=1;
         while (!contains(picks({1,2,44},2,seed),1)) ++seed;
-        sbs_srand(seed);
+        f.ctx().seed_rng(seed);
         own(f,0);
         CHECK_EQ(events(f,EventType::EVENT_ANOMALY_IMMUNED,1,0),1,"F 指定中毒免疫只挡对应码");
         CHECK_EQ(active(f,1).size(),1,"F 部分失败不补抽池中第三种");
-        CHECK_EQ(sbs_rand_state(),next(next(seed)),"F 部分失败仍2次挑选");
+        CHECK_EQ(f.ctx().rng().state(),next(next(seed)),"F 部分失败仍2次挑选");
     }
     {
         Fight f;
         f.pool(true,{44});
         REQUIRE(f.b->pet(1).resistance.setUncontrolSlot(0,44,100));
-        sbs_srand(31);
+        f.ctx().seed_rng(31);
         own(f,0);
         CHECK(active(f,1)==std::vector<int>({21}),"F 抗性抵抗44仅产生抗性标记21，不落原码");
         CHECK_EQ(events(f,EventType::EVENT_ANOMALY_RESISTED,1,0),1,"F 唯一成员仅尝试一次，不因抗性补抽");
-        CHECK_EQ(sbs_rand_state(),next(next(31)),"F 一次挑选+一次抗性判定，无额外尝试");
+        CHECK_EQ(f.ctx().rng().state(),next(next(31)),"F 一次挑选+一次抗性判定，无额外尝试");
     }
     // G 概率闸门针对100%申报且来源Skill，关闭整句时不挑选、不扣次免。
     {
         Fight f;
         guard(f,1,1);
         const int gate_handle=gate(f,1,0);
-        sbs_srand(19);
+        f.ctx().seed_rng(19);
         own(f,0);
         CHECK(active(f,1).empty(),"G 100%经闸门改写为0，无落地");
         CHECK_EQ(events(f,EventType::EVENT_ANOMALY_ATTACH_LOW_CHANCE,1,0),1,"G 整子句只申报一次Skill概率");
         CHECK_EQ(events(f,EventType::EVENT_ANOMALY_IMMUNED,1,0),0,"G 未挑选所以不触免疫");
-        CHECK_EQ(sbs_rand_state(),19,"G 0%短路零随机数");
+        CHECK_EQ(f.ctx().rng().state(),19,"G 0%短路零随机数");
         f.ctx().rule_center_.revoke(gate_handle);
         own(f,0);
         CHECK_EQ(events(f,EventType::EVENT_ANOMALY_IMMUNED,1,0),1,"G 原次数免疫仍在，下一次才消耗");
@@ -375,10 +374,10 @@ int main() {
     {
         Fight f;
         f.pool(true,{});
-        sbs_srand(29);
+        f.ctx().seed_rng(29);
         own(f,0);
         CHECK(active(f,1).empty(),"H 空有效池不落地");
-        CHECK_EQ(sbs_rand_state(),29,"H 空池不挑选不耗随机数");
+        CHECK_EQ(f.ctx().rng().state(),29,"H 空池不挑选不耗随机数");
         CHECK_EQ(f.observed_pools.size(),1,"H 空池确实由正式池改写通道产生");
     }
     {

@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 天启帝君 3550（effect_icon 1128，2018 年费）—— 登场场下调剂 + 老魂免 + 阵亡数族
 //
 // 官方 tips 全文（effect_icon.pet_id=[3550]；图鉴 816252 同文）：
@@ -184,7 +183,7 @@ EffectResult soulmark_1128_arm(BattleContext* ctx, const EffectArgs& args) {
                     return;
                 }
                 // 殒：帝君自己被击败 → 30% 随机带走对手一只不在场存活精灵
-                if (ev.target == owner && ev.slot == host_slot && roll_percent(30)) {
+                if (ev.target == owner && ev.slot == host_slot && roll_percent(wctx->rng(), 30)) {
                     const int opp = 1 - owner;
                     std::vector<int> candidates;
                     for (int slot = 0; slot < 6; ++slot) {
@@ -201,7 +200,7 @@ EffectResult soulmark_1128_arm(BattleContext* ctx, const EffectArgs& args) {
                         candidates.push_back(slot);
                     }
                     if (!candidates.empty()) {
-                        const int slot = candidates[sbs_rand() % candidates.size()];
+                        const int slot = candidates[wctx->rng().next() % candidates.size()];
                         wctx->seerRobot[opp].elfPets[slot].hp = 0;
                         // 走死亡漏斗：场下真2命复活（圣光灵神族）照常响应
                         g_core->defeat_pet(wctx, opp, slot, owner, DefeatCause::EFFECT);

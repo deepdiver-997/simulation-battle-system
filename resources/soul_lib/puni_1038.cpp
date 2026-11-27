@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 七刻印族（圣灵谱尼 1038：轮回 + 虚无/元素/能量/生命/永恒/圣洁）
 //
 // （2026-09-17 从 lib_1.cpp 按家族拆分；代码零改动，行为由全量场景回归守护。）
@@ -325,7 +324,7 @@ EffectResult soulmark_1038_life(BattleContext* ctx, const EffectArgs& args) {
         }
     }
     for (int picked = 0; picked < 2 && n > 0; ++picked) {
-        const int pick = sbs_rand() % n;
+        const int pick = ctx->rng().next() % n;
         Skills& sk = self.skills[candidates[pick]];
         ++sk.pp;
         if (sk.pp > sk.maxPP) {

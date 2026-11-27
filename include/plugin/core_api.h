@@ -29,7 +29,11 @@
 //   registerMarkType 两虚槽（STATE_DISPLAY/STATE_MARK_TYPE flush 通道），DisplayRegistry
 //   登记表落 sim_core。旧 dylib 对 v3 内核：verify_plugin_abi 当场 abort（响亮报警）。
 //   v4：免疫句柄别名与次数反弹票；BattleContext 的官方异常槽由 44 扩到 45。
-constexpr uint32_t kPluginAbiVersion = 4;
+//   v5：RuleTicket 拆分只读条件和显式对局 RNG 的概率判定。
+//   v6：EventWatcher 增加克隆准入标记。
+//   v7：DB 效果参数持有不可变程序，技能与效果单元布局随之调整。
+//   v8：IEffectRegistry 新增原生技能克隆审计登记入口。
+constexpr uint32_t kPluginAbiVersion = 8;
 
 // Core 原语函数指针集合。由 sim_core 填充（见 src/effects/core_api.cpp 的 core_api()）。
 struct CoreApi {

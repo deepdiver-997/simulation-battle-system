@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 #include <effects/common_trait_effects.h>
 
 #include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
@@ -72,8 +71,7 @@ void install_hardness(BattleContext* ctx, int owner) {
                 return;
             }
             damage.final = checked_pct_mul(damage.final, -pct, "common_trait 坚硬");   // 乘法（非通用减伤区）
-        }
-    );
+        }, BattleCallbackCopy::Audited);
 }
 
 //---- 精神：特殊攻击伤害 +n%（AMP_EXTRA 阶段，非通用增伤·乘法）----
@@ -111,8 +109,7 @@ void install_spirit(BattleContext* ctx, int owner) {
                 return;
             }
             damage.final = checked_pct_mul(damage.final, trait->args[1], "common_trait 精神/强袭");
-        }
-    );
+        }, BattleCallbackCopy::Audited);
 }
 
 //---- 单属性增伤 15 个（叶绿/流水/…/威严）：AMP_EXTRA 阶段 · 非通用增伤·乘法 ----
@@ -146,8 +143,7 @@ void install_single_element_amp(BattleContext* ctx, int owner) {
                 return;   // 双属性技能无效（必修6）
             }
             damage.final = checked_pct_mul(damage.final, trait->args[1], "common_trait 单属性增伤");   // 乘法（非通用增伤）
-        }
-    );
+        }, BattleCallbackCopy::Audited);
 }
 
 //---- 免爆（Eid 64/150）：BLOCK 阶段 · **对暴击的挡伤** ----
@@ -172,12 +168,11 @@ void install_crit_immunity(BattleContext* ctx, int owner) {
             if (!trait) {
                 return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
             }
-            if (!trait_proc_roll(*trait)) {
+            if (!trait_proc_roll(*trait, c->rng())) {
                 return;
             }
             damage.final = 0;   // 挡下本次暴击伤害
-        }
-    );
+        }, BattleCallbackCopy::Audited);
 }
 
 //---- 吸收（Eid 60）：REDUCE_FLAT 阶段 · 点数减伤 ----
@@ -201,12 +196,11 @@ void install_absorb(BattleContext* ctx, int owner) {
             if (!trait || trait->args[1] <= 0) {
                 return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
             }
-            if (!trait_proc_roll(*trait)) {
+            if (!trait_proc_roll(*trait, c->rng())) {
                 return;
             }
             damage.final = std::max(0, damage.final - trait->args[1]);
-        }
-    );
+        }, BattleCallbackCopy::Audited);
 }
 
 }  // namespace
@@ -234,7 +228,7 @@ void trait_passive_stat_drop_hook(BattleContext* ctx, int attacker_id) {
         return;
     }
     const int stat = trait_stat_index_from_code(def_own.args[0]);
-    if (stat < 0 || !trait_proc_roll(def_own)) {
+    if (stat < 0 || !trait_proc_roll(def_own, ctx->rng())) {
         return;   // ⚠️ rand 只在特性确在时消耗
     }
     (void)stat_drop(ctx, attacker_id, stat, 1, defender_id);   // 使**对方**降 1 级（施加方=特性持有方）
@@ -258,7 +252,7 @@ void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id) {
         return;
     }
     const int stat = trait_stat_index_from_code(def_own.args[0]);
-    if (stat < 0 || !trait_proc_roll(def_own)) {
+    if (stat < 0 || !trait_proc_roll(def_own, ctx->rng())) {
         return;   // ⚠️ rand 只在特性确在时消耗
     }
     (void)stat_change(ctx, defender_id, stat, 1);   // 使**自身**升 1 级
@@ -289,7 +283,7 @@ void trait_survive_lethal_hook(BattleContext* ctx, int defender_id) {
     }
     if (own.kind == TraitKind::Tenacious) {
         // "受到**致死**攻击时"：本次伤害后体力已 ≤0 才判定
-        if (defender.hp > 0 || !trait_proc_roll(own)) {
+        if (defender.hp > 0 || !trait_proc_roll(own, ctx->rng())) {
             return;   // ⚠️ rand 只在致死时消耗
         }
         defender.hp = own.args[1] > 0 ? own.args[1] : 1;   // 余下 m 点（1/1/1/1/2/2）
@@ -301,7 +295,7 @@ void trait_survive_lethal_hook(BattleContext* ctx, int defender_id) {
     if (max_hp <= 0 || defender.hp > max_hp / denom) {
         return;
     }
-    if (!trait_proc_roll(own)) {
+    if (!trait_proc_roll(own, ctx->rng())) {
         return;
     }
     defender.hp = max_hp;
@@ -369,7 +363,7 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
         if (permille <= 0) {
             return;
         }
-        if (permille < 1000 && (sbs_rand() % 1000) >= permille) {
+        if (permille < 1000 && (ctx->rng().next() % 1000) >= permille) {
             return;
         }
     }
@@ -416,7 +410,7 @@ void trait_extra_damage_hook(BattleContext* ctx, int attacker_id) {
     if (!trait || trait->args[1] <= 0) {
         return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
     }
-    if (!trait_proc_roll(*trait)) {
+    if (!trait_proc_roll(*trait, ctx->rng())) {
         return;
     }
     const int defender_id = 1 - attacker_id;
@@ -491,18 +485,18 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
                                                           ChanceSource::Trait);
         if (gated_pct <= 0
-            || (gated_pct < 100 && static_cast<int>(sbs_rand() % 100) >= gated_pct)) {
+            || (gated_pct < 100 && static_cast<int>(ctx->rng().next() % 100) >= gated_pct)) {
             continue;
         }
         if (ctx->getPet(defender_id).hp <= 0) {
             continue;
         }
-        const int duration = 2 + sbs_rand() % 2;
+        const int duration = 2 + ctx->rng().next() % 2;
         (void)apply_anomaly(ctx, defender_id, t.args[1], duration, attacker_id);   // **现代**通道
     }
 
     // ── 主动毒：攻方本体槽，物/特类别匹配后令**守方**中招（主动毒通道）──
-    // ⚠️ `sbs_rand()` 只在**确实要施加**时才消耗（duration 的计算放在分支内）——
+    // ⚠️ 回合数掷点只在**确实要施加**时才消耗（duration 的计算放在分支内）——
     //    本仓库的伤害/命中断言依赖既有 rand 序列（场景 013/031/053/054 都因此抓过），
     //    无条件掷点会给所有场景移位。
     const EffectiveTrait& atk_own = ctx->trait_state_[attacker_id].own;
@@ -515,10 +509,10 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
                                                           ChanceSource::Trait);
         if (gated_pct > 0
-            && (gated_pct >= 100 || static_cast<int>(sbs_rand() % 100) < gated_pct)) {
+            && (gated_pct >= 100 || static_cast<int>(ctx->rng().next() % 100) < gated_pct)) {
             const ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
             if (defender.hp > 0) {
-                const int duration = 2 + sbs_rand() % 2;   // 必修6：赋予回合随机 2~3
+                const int duration = 2 + ctx->rng().next() % 2;   // 必修6：赋予回合随机 2~3
                 (void)apply_anomaly_ancient(ctx, defender_id, atk_own.args[1], duration,
                                             attacker_id);
             }
@@ -540,10 +534,10 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
             const int gated_pct = ctx->rewrite_anomaly_chance(attacker_id, defender_id,
                                                               declared_pct, ChanceSource::Trait);
             if (gated_pct > 0
-                && (gated_pct >= 100 || static_cast<int>(sbs_rand() % 100) < gated_pct)) {
+                && (gated_pct >= 100 || static_cast<int>(ctx->rng().next() % 100) < gated_pct)) {
                 const ElfPet& attacker = ctx->seerRobot[attacker_id].elfPets[ctx->on_stage[attacker_id]];
                 if (attacker.hp > 0) {
-                    const int duration = 2 + sbs_rand() % 2;   // 必修6：赋予回合随机 2~3
+                    const int duration = 2 + ctx->rng().next() % 2;   // 必修6：赋予回合随机 2~3
                     (void)apply_anomaly_raw(ctx, attacker_id, def_own.args[1], duration,
                                             defender_id);
                 }

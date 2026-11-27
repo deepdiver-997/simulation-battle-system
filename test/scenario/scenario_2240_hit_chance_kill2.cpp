@@ -51,9 +51,10 @@ ElfPet mk_foe(std::array<int, 5> skills) {
 }
 
 // 跑 1 回合己方用 idx 技，返回对手是否死亡。
-bool run_kill_trial(std::array<int, 5> skills, int accuracy, bool must_hit = true) {
+bool run_kill_trial(std::array<int, 5> skills, int accuracy, unsigned int seed, bool must_hit = true) {
     ScenarioBattle b(make_party(mk_self(skills, accuracy, must_hit)),
                      make_party(mk_foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
+    b.ctx().seed_rng(seed);
     b.start();
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
@@ -105,8 +106,9 @@ int main() {
     {
         constexpr int kTrials = 100;
         int deaths = 0;
+        SbsRng trial_seeds(20261004);
         for (int t = 0; t < kTrials; ++t) {
-            if (run_kill_trial({kDiLing, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100)) {
+            if (run_kill_trial({kDiLing, kPaiDa, kPaiDa, kPaiDa, kPaiDa}, 100, trial_seeds.next())) {
                 ++deaths;
             }
         }

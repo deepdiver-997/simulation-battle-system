@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 通用特性复制族（妙时天女 4872：百天浮世络 + 复制对方通用特性）
 //
 // （2026-09-17 从 lib_1.cpp 按家族拆分；代码零改动，行为由全量场景回归守护。）
@@ -268,7 +267,7 @@ EffectResult soulmark_4872_after_action_miaoshi(BattleContext* ctx, const Effect
         static_cast<int>(AbnormalStatusId::Distraction), // 失神
         static_cast<int>(AbnormalStatusId::Silence),     // 沉默
     };
-    const int pick = kDebuffs[sbs_rand() % (sizeof(kDebuffs) / sizeof(kDebuffs[0]))];
+    const int pick = kDebuffs[ctx->rng().next() % (sizeof(kDebuffs) / sizeof(kDebuffs[0]))];
     ApplyAnomalyResult r = ApplyAnomalyResult::INVALID_PARAM;
     if (g_core && g_core->apply_anomaly) {
         r = g_core->apply_anomaly(ctx, target, pick, /*duration=*/2, owner);

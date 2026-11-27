@@ -50,6 +50,8 @@ struct StateSample {
 
     // 本时点内 drain 投递过的事件（含级联波次）。语义事件流，用于让前端知道"为什么变了"。
     std::vector<BattleEvent> events;
+
+    bool operator==(const StateSample&) const = default;
 };
 
 // 采样录制器。挂在 BattleContext 上，由 FSM 在每个时点调用。
@@ -73,6 +75,7 @@ public:
 
     // EventCenter 的事件抄送目标（只在本时点录制期间非空）。
     std::vector<BattleEvent>* event_sink() { return enabled_ ? &current_events_ : nullptr; }
+    const std::vector<BattleEvent>* event_sink() const { return enabled_ ? &current_events_ : nullptr; }
 
     // FSM 在"某个时点执行完 + 事件已 drain"之后调用。
     // 调用方保证 current_events_ 里是本时点投递的全部事件。

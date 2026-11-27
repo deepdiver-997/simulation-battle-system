@@ -178,7 +178,7 @@ EffectResult k384_1725_arm(BattleContext* ctx, const SoulNodeArgs& a) {
                 return;   // 重生一次
             }
             rt.used = 1;
-            if (roll_percent(roll_pct)) {
+            if (roll_percent(wctx->rng(), roll_pct)) {
                 // 中 → 回满重生（"重生=满状态"通例，304 记档）+ 减半窗
                 g_core->revive_pet(wctx, owner, wctx->on_stage[owner],
                                    resolve_pet_max_hp(self));

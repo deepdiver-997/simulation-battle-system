@@ -108,7 +108,7 @@ EffectResult effect_163_attr_random_anomaly(BattleContext* ctx, const EffectArgs
     watch_attr_use(ctx, self, rounds, {}, [](BattleContext* c, const EffectArgs& a) {
         const int self2 = a.int_args[0];
         const int user = a.int_args[1];
-        const int pick = kPool6[sbs_rand() % 6];
+        const int pick = kPool6[c->rng().next() % 6];
         (void)g_core->apply_anomaly_checked(c, user, pick, random_anomaly_duration(), self2,
                                             100, ChanceSource::Skill);
     });
@@ -138,7 +138,7 @@ EffectResult effect_1100_attr_random_or_amp(BattleContext* ctx, const EffectArgs
         const int user = a.int_args[1];
         const int br = a.int_args[2];
         const int p = a.int_args[3];
-        const int pick = kPool6[sbs_rand() % 6];
+        const int pick = kPool6[c->rng().next() % 6];
         const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
             c, user, pick, random_anomaly_duration(), self2, 100, ChanceSource::Skill);
         if (anomaly_landed_shared(r)) {

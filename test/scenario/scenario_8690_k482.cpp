@@ -277,7 +277,7 @@ int main() {
                                                 {48, 47, 648}, 300, 1, kMaxHp)),
                          make_party(attacker_pet(2, "对手", 100, 1)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(onstage_hp(b, 1), kMaxHp, "T8690.a R1 对手攻击被闪避（零落血）");
@@ -320,7 +320,7 @@ int main() {
                                                 300, 1, kMaxHp)),
                          make_party(attacker_pet(2, "对手", 100, 1)));
         b.start();
-        sbs_srand(2);   // d0%100=14 < 30（hit_chance=100-70）→ 攻击命中 = 闪避掷歪
+        b.ctx().seed_rng(2);   // d0%100=14 < 30（hit_chance=100-70）→ 攻击命中 = 闪避掷歪
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK(onstage_hp(b, 0) < kMaxHp, "T8690.b R1 对手攻击命中（印主掉血——闪避掷歪）");
@@ -341,7 +341,7 @@ int main() {
                                                 300, 1, kMaxHp)),
                          make_party(attacker_pet(2, "对手", 100, 1)));
         b.start();
-        sbs_srand(107);
+        b.ctx().seed_rng(107);
         BattleContext& ctx = b.ctx();
         set_pp(b, 1, {99, 99, 99, 99, 99});   // 60 试攻击 PP 直设（拍打 maxPP=35 不够）
         CHECK_EQ(s1442(ctx, 0, 0), -1, "T8690.c 施放前行参缺席");
@@ -373,7 +373,7 @@ int main() {
                                                 300, 1, kMaxHp)),
                          make_party(carrier_pet(2, "对手", 0, 0, {}, {}, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(12);
+        b.ctx().seed_rng(12);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(s1442(ctx, 0, 2), 50, "T8690.d {2}=50 行参回显（唯一 50% 回退载体）");
@@ -396,7 +396,7 @@ int main() {
                                                 300, 1, kMaxHp)),
                          make_party(carrier_pet(2, "对手", 0, 0, {}, {}, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(21);
+        b.ctx().seed_rng(21);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(s1442(ctx, 0, 2), 70, "T8690.e {2}=70 行参回显");
@@ -417,7 +417,7 @@ int main() {
                          make_party(carrier_pet(2, "印主f1", kBaiJu, kMBaiJu, {}, {191, 843},
                                                 200, 1, kMaxHp)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(s1442(ctx, 0, 4), 0, "T8690.f side0 先手窗起点=0（回合 0 基）");
@@ -445,7 +445,7 @@ int main() {
                                                 {48, 47, 648}, 300, 1, kMaxHp)),
                          make_party(attacker_pet(2, "对手", 100, 1)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(s1442(ctx, 0, 12), 1, "T8690.g R1 回退落地（对手未出手）");
@@ -474,7 +474,7 @@ int main() {
                                                 kMaxHp)),
                          make_party(carrier_pet(2, "对手", 0, 0, {}, {}, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(41);  // d0（R1 对手攻击 variance）/ d1%39=36（R2 variance）/
+        b.ctx().seed_rng(41);  // d0（R1 对手攻击 variance）/ d1%39=36（R2 variance）/
                         // d2%100=83（R2 掷歪）/ d3（R3 variance）/ d4%100=43<50（R3 掷中）/
                         // d5（R6 variance）
         BattleContext& ctx = b.ctx();
@@ -518,7 +518,7 @@ int main() {
                                                 kMaxHp)),
                          make_party(carrier_pet(2, "对手", 0, 0, {}, {}, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(s109(ctx, 0, 0), 2, "T8690.h2 {0}=2 行参回显（唯一短窗载体）");
@@ -542,7 +542,7 @@ int main() {
                          make_party(carrier_pet(2, "印主h3b", kJiHan, kMJiHan, {}, {4},
                                                 200, 100, kMaxHp)));
         b.start();
-        sbs_srand(91);  // d0%39=13（side0 variance）/ d1%100=42<50（side0 掷中）/
+        b.ctx().seed_rng(91);  // d0%39=13（side0 variance）/ d1%100=42<50（side0 掷中）/
                         // d2%39=9（side1 variance）；side1 100% 零抽
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -567,7 +567,7 @@ int main() {
                                                 kMaxHp)),
                          make_party(carrier_pet(2, "对手", 0, 0, {}, {}, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(s109(ctx, 0, 4), 0, "T8690.h4 R1 武装零触发（对手 NONE）");
@@ -607,7 +607,7 @@ int main() {
         ScenarioBattle b(make_party(dual_i),
                          make_party(carrier_pet(2, "对手", 0, 0, {}, {}, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(51);
+        b.ctx().seed_rng(51);
         BattleContext& ctx = b.ctx();
         // R1：1442 载体（slot0）→ 回退 {2}=100 失明。
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);

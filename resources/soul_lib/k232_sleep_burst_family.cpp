@@ -117,7 +117,7 @@ EffectResult k232_834_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             // 未触发 → 自身特攻+1、速度+1（槽序：1=特攻、4=速）。
             (void)g_core->stat_change(wctx, owner, 1, 1);
             (void)g_core->stat_change(wctx, owner, 4, 1);
-            if (roll_percent(row.break_pct)) {
+            if (roll_percent(wctx->rng(), row.break_pct)) {
                 (void)g_core->break_round_effects(wctx, wctx->opponent(owner));
             }
         },

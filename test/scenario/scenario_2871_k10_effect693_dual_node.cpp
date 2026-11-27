@@ -42,7 +42,7 @@ Probe probe_use_skill(std::vector<int> db_args, int monster_id, int skill_id, in
         scenario::make_party(scenario::make_pet(2, "木桩", {10005, 10005, 10005, 10005, 10005},
                                                 50, 10, 1000000)));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp = holder_hp;
     const int dummy_hp0 = ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp;

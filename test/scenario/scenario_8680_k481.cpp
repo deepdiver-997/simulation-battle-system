@@ -187,7 +187,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(11);
+        b.ctx().seed_rng(11);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(ctx, k2035Base + 0 * 16 + 0, -1), 1, "T8680.a {0} 回显=1");
@@ -222,7 +222,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(12);
+        b.ctx().seed_rng(12);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(ctx, k2035Base + 0 * 16 + 1, -1), 3, "T8680.b {1} 回显=3（真实载体 29349）");
@@ -245,7 +245,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(ctx, k2035Base + 0 * 16 + 3, -1), 2, "T8680.c R1 剩余票=2（{0}=2）");
@@ -281,7 +281,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(14);
+        b.ctx().seed_rng(14);
         BattleContext& ctx = b.ctx();
         set_pp(b, 0, {2, 9, 9, 9, 9});
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -330,7 +330,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(14);
+        b.ctx().seed_rng(14);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(ctx, k2035Base + 0 * 16 + 2, -1), 2, "T8680.d2 {2} 回显=2（override 生效）");
@@ -351,7 +351,7 @@ int main() {
                          make_party(skill_pet(2, "印主1", {kZhiLi, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(15);
+        b.ctx().seed_rng(15);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(audit_int(ctx, k2035Base + 0 * 16 + 3, -1), 1, "T8680.e side0 票=1");
@@ -377,7 +377,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(16);
+        b.ctx().seed_rng(16);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(ctx, k2035Base + 0 * 16 + 3, -1), 1, "T8680.f 票=1");
@@ -406,7 +406,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(17);
+        b.ctx().seed_rng(17);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         set_pp(b, 0, {9, 4, 9, 9, 9});
@@ -434,7 +434,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(21);
+        b.ctx().seed_rng(21);
         if (rep == 0) {
             set_boost(b, 0, 5, 1);   // 命中槽提升：门开、伤害面零扰动
         }
@@ -471,7 +471,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(22);
+        b.ctx().seed_rng(22);
         if (rep == 1) {
             set_boost(b, 0, 0, -2);   // 纯负等级：不是提升态
         }
@@ -499,7 +499,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(23);
+        b.ctx().seed_rng(23);
         BattleContext& ctx = b.ctx();
         const int hp0 = ctx.getPet(1).hp;
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -519,7 +519,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(24);
+        b.ctx().seed_rng(24);
         set_boost(b, 0, 5, 1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -533,7 +533,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(25);
+        b.ctx().seed_rng(25);
         set_boost(b, 0, 5, 1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -550,7 +550,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(26);
+        b.ctx().seed_rng(26);
         set_boost(b, 0, 5, 1);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -569,7 +569,7 @@ int main() {
                          make_party(skill_pet(2, "印主1", {kHeiYe, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(27);
+        b.ctx().seed_rng(27);
         set_boost(b, 0, 5, 1);
         set_boost(b, 1, 5, 1);
         BattleContext& ctx = b.ctx();
@@ -591,7 +591,7 @@ int main() {
                          make_party(skill_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                               100, 1, kMaxHp)));
         b.start();
-        sbs_srand(28);
+        b.ctx().seed_rng(28);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(audit_int(ctx, k2035Base + 0 * 16 + 3, -1), 1, "T8680.n 票=1（已武装）");

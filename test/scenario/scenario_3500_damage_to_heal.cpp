@@ -69,7 +69,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.seerRobot[0].elfPets[0].hp = 5000;
         const int my0 = ctx.getPet(0).hp;
-        sbs_srand(kSeedHit);
+        b.ctx().seed_rng(kSeedHit);
         foe_hits(b);
         CHECK_EQ(ctx.getPet(0).hp, my0, "T3500 326：转化成功 → 净 0（受伤=回体）");
         std::cout << "  [T3500] 转化成功 通过\n";
@@ -82,7 +82,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.seerRobot[0].elfPets[0].hp = 5000;
         const int my0 = ctx.getPet(0).hp;
-        sbs_srand(kSeedMiss);
+        b.ctx().seed_rng(kSeedMiss);
         foe_hits(b);
         const int net = ctx.getPet(0).hp - my0;
         CHECK(net < 0, "T3501 326：未触发 → 净掉血（原样受伤）");

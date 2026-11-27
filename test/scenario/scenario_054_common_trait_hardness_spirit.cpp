@@ -54,9 +54,9 @@ CommonTrait hardness_trait(int star) {
 
 scenario::ScenarioBattle make_battle(const CommonTrait& attacker_trait,
                                      const CommonTrait& defender_trait,
-                                     int first_skill = kZhuangJi) {
+                                     int first_skill = kZhuangJi, int attack = 100) {
     auto p0 = scenario::make_pet(0, "攻方", {first_skill, kGaoSu, kGaoSu, kGaoSu, kGaoSu},
-                                 /*speed=*/300, /*atk=*/100, /*hp=*/3000,
+                                 /*speed=*/300, /*atk=*/attack, /*hp=*/3000,
                                  /*soul_mark=*/{}, attacker_trait);
     auto p1 = scenario::make_pet(1, "守方", {kGaoSu, kGaoSu, kGaoSu, kGaoSu, kGaoSu},
                                  /*speed=*/100, /*atk=*/100, /*hp=*/3000,
@@ -119,7 +119,8 @@ int main() {
 
     //========== H2 ★ 2 星：不读 args（7），用修正表 8% ==========
     {
-        scenario::ScenarioBattle b = make_battle(CommonTrait{}, hardness_trait(2));
+        // 伤害需足够大，使 92% 与 93% 的整数截断结果可区分。
+        scenario::ScenarioBattle b = make_battle(CommonTrait{}, hardness_trait(2), kZhuangJi, 1000);
         b.start();
         register_trace(b.ctx());
         strike(b);

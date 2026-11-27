@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 #ifndef CURSE_STACK_H
 #define CURSE_STACK_H
 
@@ -168,7 +167,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                     d.final = checked_pct_mul(d.final, n * kCurseAmpPctPerStack,
                                               "curse 诅咒层增伤");
                 }
-            });
+            }, BattleCallbackCopy::Audited);
         ctx->register_default_damage_effect(
             DamagePhase::REDUCE_PCT, owner, DamageEffectCategory::MITIGATE,
             [](BattleContext* c, int bucket_owner) {
@@ -183,7 +182,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                         d.final = 0;
                     }
                 }
-            });
+            }, BattleCallbackCopy::Audited);
         ctx->register_default_damage_effect(
             DamagePhase::FLOOR, owner, DamageEffectCategory::AMP,
             [](BattleContext* c, int bucket_owner) {
@@ -200,7 +199,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                 }
                 if (!forced) {
                     const int n = get_curse_stacks(c, bucket_owner);
-                    forced = n > 0 && (sbs_rand() % 100) < n * kCurseFloorPctPerStack;
+                    forced = n > 0 && (c->rng().next() % 100) < n * kCurseFloorPctPerStack;
                 }
                 if (!forced) {
                     return;
@@ -214,7 +213,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                 if (d.final < max_hp) {
                     d.final = max_hp;
                 }
-            });
+            }, BattleCallbackCopy::Audited);
     }
 
     // ④ 无效技能出口钩子：层数>0 且掷点命中 → 置旗 + 请求结算（FSM stage+finish，
@@ -222,7 +221,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
     ctx->invalid_skill_damage_hooks.push_back(
         [](BattleContext* c, int attacker) -> bool {
             const int n = get_curse_stacks(c, attacker);
-            if (n <= 0 || (sbs_rand() % 100) >= n * kCurseFloorPctPerStack) {
+            if (n <= 0 || (c->rng().next() % 100) >= n * kCurseFloorPctPerStack) {
                 return false;
             }
             c->plugin_storage[curse_stack_detail::kFloorFlagBase + attacker] = true;

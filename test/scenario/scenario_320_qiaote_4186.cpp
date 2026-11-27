@@ -87,7 +87,9 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.seerRobot[0].elfPets[0].hp = 1000;   // 压低自身体力（上限 100000）
-        one_round(b);
+        b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
+        b.submit_operation(1, BattleFsm::ActionType::NONE, -1); // 排除对手攻击干扰回血量
+        b.drive();
         CHECK_EQ(ctx.getPet(0).hp, 34333, "T2 回合末吸取 33333（100000/3）");
         std::cout << "  [T2] 833 未击败回合末吸取 通过（我方 hp "
                   << ctx.getPet(0).hp << "）\n";

@@ -196,7 +196,7 @@ EffectResult effect_897_no_kill_counted_reduce(BattleContext* ctx, const EffectA
 
 // ── 850 共用：掷 {1}% → 免疫**当回合**攻击伤害票（duration=1 恰好只覆盖当回合）──
 void effect_850_roll_and_grant(BattleContext* ctx, int self, int pct) {
-    if (!roll_percent(pct)) {
+    if (!roll_percent(ctx->rng(), pct)) {
         return;
     }
     ctx->rule_center_.grant_immune(

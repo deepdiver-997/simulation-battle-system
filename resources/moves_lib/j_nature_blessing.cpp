@@ -172,7 +172,7 @@ EffectResult effect_1296_nature_blessing_window(BattleContext* ctx, const Effect
                     gate_pass = true;
                     set_storage_int_local(c, key1296(owner, 13), -1);
                 } else {
-                    const int r = sbs_rand() % 100;
+                    const int r = c->rng().next() % 100;
                     set_storage_int_local(c, key1296(owner, 13), r);
                     gate_pass = r < p;
                 }
@@ -190,7 +190,7 @@ EffectResult effect_1296_nature_blessing_window(BattleContext* ctx, const Effect
                 set_storage_int_local(c, key1296(owner, 12), attempts);
 
                 // ── 三档区间选档（一次抽取）──
-                const int r2 = sbs_rand() % 100;
+                const int r2 = c->rng().next() % 100;
                 const int band = band_of(r2);
                 const int nominal = kBandAmount[band];
                 set_storage_int_local(c, key1296(owner, 6), r2);

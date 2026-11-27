@@ -80,7 +80,7 @@ int j252_zero_random_pp_slots(BattleContext* ctx, int target, int want, int acto
     const int n = std::min(want, static_cast<int>(candidates.size()));
     int zeroed = 0;
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(candidates.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(candidates.size()) - i));
         std::swap(candidates[static_cast<std::size_t>(i)],
                   candidates[static_cast<std::size_t>(j)]);
         const int slot = candidates[static_cast<std::size_t>(i)];
@@ -175,7 +175,7 @@ EffectResult effect_1621_chance_pp_reduce(BattleContext* ctx, const EffectArgs& 
     const bool full_hp = ctx->getPet(owner).hp >= max_hp_of(ctx, owner);
     const int effective_pct = full_hp ? std::min(100, pct * 2) : pct;   // pct 在位即消费
     const int effective_points = full_hp ? points * 2 : points;
-    const bool hit = roll_percent(effective_pct);
+    const bool hit = roll_percent(ctx->rng(), effective_pct);
     ctx->plugin_storage[k1621AuditBase + owner * 2] = (hit ? 1000 : 0) + effective_pct;
     ctx->plugin_storage[k1621AuditBase + owner * 2 + 1] = effective_points;
     if (hit && g_core && g_core->pp_reduce) {

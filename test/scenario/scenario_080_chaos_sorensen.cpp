@@ -279,7 +279,7 @@ int main() {
     // C 组 ③ 回合开始时：50% 次数型挡伤 / 未触发则当回合减伤 50%
     //══════════════════════════════════════════════════════════════════════
 
-    // ③ 的分支由 roll_percent(sbs_rand) 决定：在 ROUND_START 执行前 sbs_srand(seed) 即完全可控
+    // ③ 的分支由 roll_percent(sbs_rand) 决定：在 ROUND_START 执行前为该局播种即可控制
     //（播种点紧贴判定，不受开局阶段任何 rand 消耗影响），故用种子扫描分别取到两个分支。
     int block_seed = -1;
     for (int seed = 0; seed < 64 && block_seed < 0; ++seed) {
@@ -287,7 +287,7 @@ int main() {
                                    scenario::make_party(make_opp()));
         b.start();
         submit_ops_and_stop_before_round_start(b);
-        sbs_srand(seed);
+        b.ctx().seed_rng(seed);
         b.step();
         if (b.ctx().is_immune(0, ImmunityType::DAMAGE, State::BATTLE_FIRST_ATTACK_DAMAGE)) {
             block_seed = seed;
@@ -302,7 +302,7 @@ int main() {
                                    scenario::make_party(make_opp()));
         b.start();
         submit_ops_and_stop_before_round_start(b);
-        sbs_srand(block_seed);
+        b.ctx().seed_rng(block_seed);
         b.step();   // 回合开始时：掷中 → 授予"免疫下1次受到的技能攻击伤害"
         CHECK(b.ctx().is_immune(0, ImmunityType::DAMAGE, State::BATTLE_FIRST_ATTACK_DAMAGE),
               "C1) 掷中应授予 DAMAGE 次数免疫（攻击伤害时点覆盖）");
@@ -322,7 +322,7 @@ int main() {
                                    scenario::make_party(make_opp()));
         b.start();
         submit_ops_and_stop_before_round_start(b);
-        sbs_srand(block_seed);
+        b.ctx().seed_rng(block_seed);
         b.step();   // 回合开始时：掷中 → 授予次数免伤
         CHECK(b.ctx().is_immune(0, ImmunityType::DAMAGE, State::BATTLE_FIRST_ATTACK_DAMAGE),
               "C2) 前置：已授予次数免伤");
@@ -351,7 +351,7 @@ int main() {
                                    scenario::make_party(make_opp()));
         b.start();
         submit_ops_and_stop_before_round_start(b);
-        sbs_srand(seed);
+        b.ctx().seed_rng(seed);
         b.step();
         for (int i = 0; i < 4; ++i) {
             if (b.ctx().ws.damage_reduce_add[0][i] == 50) {
@@ -370,7 +370,7 @@ int main() {
                                        scenario::make_party(make_opp()));
             b.start();
             submit_ops_and_stop_before_round_start(b);
-            sbs_srand(reduce_seed);
+            b.ctx().seed_rng(reduce_seed);
             b.step();
             const int hp0 = b.ctx().getPet(0).hp;
             b.step_past(State::BATTLE_FIRST_ATTACK_DAMAGE);
@@ -381,7 +381,7 @@ int main() {
                                       scenario::make_party(make_opp()));
             b.start();
             submit_ops_and_stop_before_round_start(b);
-            sbs_srand(reduce_seed);
+            b.ctx().seed_rng(reduce_seed);
             b.step();
             for (int i = 0; i < 4; ++i) {
                 b.ctx().ws.damage_reduce_add[0][i] = 0;   // 抹掉魂印写下的减伤（其余 rand 路径完全一致）
@@ -402,7 +402,7 @@ int main() {
                                    scenario::make_party(make_opp()));
         b.start();
         submit_ops_and_stop_before_round_start(b);
-        sbs_srand(reduce_seed);
+        b.ctx().seed_rng(reduce_seed);
         b.step();
         b.ctx().getPet(0).damage_suppress_mask |= suppress_bits();   // 压制中
         const int hp0 = b.ctx().getPet(0).hp;
@@ -520,7 +520,7 @@ int main() {
                                        scenario::make_party(make_opp()));
             b.start();
             submit_ops_and_stop_before_round_start(b);
-            sbs_srand(kSeed);
+            b.ctx().seed_rng(kSeed);
             const int hp0 = b.ctx().getPet(1).hp;
             b.drive();
             base_dmg = hp0 - b.ctx().getPet(1).hp;
@@ -531,7 +531,7 @@ int main() {
             b.start();
             submit_ops_and_stop_before_round_start(b);
             b.ctx().ability_levels[0][3] = 1;   // 特防+1（只触发"处于提升"这个布尔，不改攻击）
-            sbs_srand(kSeed);
+            b.ctx().seed_rng(kSeed);
             const int hp0 = b.ctx().getPet(1).hp;
             b.drive();
             boost_dmg = hp0 - b.ctx().getPet(1).hp;
@@ -616,7 +616,9 @@ int main() {
         c.ctx().getPet(0).hp = 200;
         const int opp_hp0b = c.ctx().getPet(1).hp;
         const int self_hp0 = c.ctx().getPet(0).hp;
-        play_round(c, 0, 0);
+        c.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
+        c.submit_operation(1, BattleFsm::ActionType::NONE, -1);
+        c.drive();
         CHECK(!c.ctx().has_active_abnormal_status(1, 6), "E6) 1047：免疫生效 → 异常未落地");
         CHECK_EQ(opp_hp0b - c.ctx().getPet(1).hp, 5000 / 3, "E6) 1047：未触发 → 吸取 1/3 最大体力");
         CHECK_EQ(c.ctx().getPet(0).hp, self_hp0 + 5000 / 3, "E6) 1047：吸取量回给自身");
@@ -663,7 +665,7 @@ int main() {
             if (boosted) {
                 b.ctx().ability_levels[0][0] = 1;   // 自身处于能力提升状态 → 概率翻倍
             }
-            sbs_srand(seed);
+            b.ctx().seed_rng(seed);
             b.step_until(State::BATTLE_FIRST_SKILL_EFFECT);
             b.step();
             return static_cast<int>(b.ctx().ws.damage_add_pct[0]);

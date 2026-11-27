@@ -133,7 +133,7 @@ void j116_1259_roll_round(BattleContext* ctx, int owner, int opp, int chance,
     if (!ctx || owner < 0 || owner > 1 || opp < 0 || opp > 1 || chance <= 0) {
         return;
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         ctx->rule_center_.grant_immune(
             owner, static_cast<int>(ImmunityType::DAMAGE), ~0ULL, /*anomaly_mask=*/0,
             /*duration_rounds=*/1, ctx->roundCount, /*source_id=*/0, /*soul=*/false,

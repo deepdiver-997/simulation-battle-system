@@ -67,10 +67,13 @@ int main() {
         return 1;
     }
 
+    // 两局原本连续消费同一全局随机序列；显式接力以保持对照局的伤害浮动。
+    std::uint64_t rng_state = 1;
     // ══ T5140 1273 满体力 → 附加 max_hp/{0} 百分比伤害 ══
     {
         {   // (a) 满体力：审计槽 1666，对手掉血 1666 + 主伤[1,2]
             ScenarioBattle b(make_party(mk_attacker()), make_party(mk_foe()));
+            b.ctx().seed_rng(static_cast<unsigned>(rng_state));
             b.start();
             BattleContext& ctx = b.ctx();
             const int before = ctx.getPet(1).hp;
@@ -78,6 +81,7 @@ int main() {
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
             const int loss = before - ctx.getPet(1).hp;
+            rng_state = ctx.rng().state();
             CHECK_EQ(audit(ctx), 1666,
                      "T5140.a 1273：满体力粉伤审计 = max/3 = 1666（实测 " +
                          std::to_string(audit(ctx)) + "）");
@@ -87,6 +91,7 @@ int main() {
         }
         {   // (b) 对照：非满体力 → 门闭，无审计槽、只吃主伤
             ScenarioBattle b(make_party(mk_attacker()), make_party(mk_foe()));
+            b.ctx().seed_rng(static_cast<unsigned>(rng_state));
             b.start();
             BattleContext& ctx = b.ctx();
             ctx.getPet(0).hp = 4000;   // 非满体力

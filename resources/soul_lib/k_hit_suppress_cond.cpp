@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K6 攻击技命中率压制+条件结算族 —— effect 1314/1576/1843（3 宏 / 3 行）
 //
 // 行清单（tools/soul_effects_dump.py 1314 1576 1843，2026-10-04）：
@@ -204,7 +203,7 @@ EffectResult k6_1314_round_end(BattleContext* ctx, const EffectArgs& args) {
         int guard = 0;
         while (done < drop_count && guard < 100) {
             ++guard;
-            const int slot = sbs_rand() % 6;
+            const int slot = ctx->rng().next() % 6;
             if (picked[slot]) {
                 continue;
             }
@@ -294,7 +293,7 @@ EffectResult k6_1576_round_end(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     // 兜底：随机 1 技 pp 归零（pp=-1 无限 PP 跳过）+ 下回合先制 -1（pending）。
-    const int slot = sbs_rand() % 5;
+    const int slot = ctx->rng().next() % 5;
     Skills& sk = ctx->seerRobot[opp].elfPets[ctx->on_stage[opp]].skills[slot];
     if (sk.pp >= 0) {
         sk.pp = 0;

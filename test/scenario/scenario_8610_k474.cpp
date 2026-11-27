@@ -249,7 +249,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1430(ctx, 0, 11), expected_damage(1, 100, 160, 13),
@@ -288,7 +288,7 @@ int main() {
                                                 {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                                 100, 1, kMaxHp, /*def=*/1000)));
             b.start();
-            sbs_srand(1);   // d1%39=37 → var=254/255
+            b.ctx().seed_rng(1);   // d1%39=37 → var=254/255
             BattleContext& ctx = b.ctx();
             run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
             CHECK_EQ(slot1430(ctx, 0, 11), 200,
@@ -310,7 +310,7 @@ int main() {
                                                 {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                                 100, 1, kMaxHp, /*def=*/1000)));
             b.start();
-            sbs_srand(21);   // d1%39=36 → var=253/255
+            b.ctx().seed_rng(21);   // d1%39=36 → var=253/255
             BattleContext& ctx = b.ctx();
             run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
             CHECK_EQ(slot1430(ctx, 0, 11), 199, "T8610.b2 final=199<200（恰差 1）");
@@ -333,7 +333,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1430(ctx, 0, 0), 0, "T8610.c R1 掷歪（98≥75，slot0=0）");
@@ -376,7 +376,7 @@ int main() {
                                /*duration_rounds=*/1, /*source_id=*/990047,
                                /*soul_immunity=*/false, EffectScope::ON_STAGE,
                                /*counts=*/0, /*source_effect_id=*/990047);
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1430(ctx, 0, 0), 0, "T8610.d 主支未落地（slot0=0）");
@@ -413,7 +413,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1430(ctx, 0, 11), expected_damage(5000, 100, 150, 13),
@@ -443,7 +443,7 @@ int main() {
                                                          kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL,
                   0);
@@ -467,7 +467,7 @@ int main() {
                                             {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(6);
+        b.ctx().seed_rng(6);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1430(ctx, 0, 1), 1, "T8610.g R1 回退窗武装");
@@ -495,7 +495,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[1][0] = 2;   // 预置：对手攻击 +2
         ctx.ability_levels[1][4] = 3;   // 预置：对手速度 +3
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1150(ctx, 0, 0), 2, "T8610.h1 消强清除 2 项");
         CHECK_EQ(slot1150(ctx, 0, 1), 1, "T8610.h1 消强成功旗");
@@ -522,7 +522,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[1][0] = 1;   // 预置：对手攻击 +1
         ctx.ability_levels[1][1] = 3;   // 预置：对手特攻 +3
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1150(ctx, 0, 0), 2, "T8610.h2 消强清除 2 项（攻/特攻）");
         CHECK_EQ(ctx.ability_levels[1][0], -2, "T8610.h2 对手攻-2（row0→槽0）");
@@ -540,7 +540,7 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[1][0] = 1;   // 预置：对手攻击 +1（保证消强成功）
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1150(ctx, 0, 0), 1, "T8610.h3 消强清除 1 项");
         CHECK_EQ(ctx.ability_levels[1][0], -1, "T8610.h3 对手攻-1");
@@ -561,7 +561,7 @@ int main() {
                                             100, 1, kMaxHp)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1150(ctx, 0, 0), 0, "T8610.i1 清除 0 项（无可解）");
         CHECK_EQ(slot1150(ctx, 0, 1), 0, "T8610.i1 成功旗=0");
@@ -583,7 +583,7 @@ int main() {
                            /*duration_rounds=*/9, /*source_id=*/990048,
                            /*soul_immunity=*/false, EffectScope::ON_STAGE,
                            /*counts=*/0, /*source_effect_id=*/990048);
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1150(ctx, 0, 0), 0, "T8610.i2 免消除 → 清除 0 项");
         CHECK_EQ(slot1150(ctx, 0, 1), 0, "T8610.i2 成功旗=0（门槛闭）");
@@ -605,7 +605,7 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.ability_levels[1][0] = 1;   // 预置：对手攻击 +1
         ctx.ability_levels[1][1] = 2;   // 预置：对手特攻 +2
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot1150(ctx, 0, 0), 2, "T8610.j 消强清除 2 项（反转被免弱挡下后仍可解）");
         CHECK_EQ(slot1150(ctx, 0, 7), 2, "T8610.j 正 delta 施加 2 槽");

@@ -235,7 +235,9 @@ int main() {
                          scenario::make_party(foe));
         b.start();
         BattleContext& ctx = b.ctx();
-        use0(b, 0, 1);   // R1：挂 3 回合窗口；守方拍打（不死）
+        b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0); // R1 武装窗口
+        b.submit_operation(1, BattleFsm::ActionType::NONE, -1); // 保证存活到 R2
+        b.drive();
         const int foe_hp = ctx.getPet(1).hp;
         CHECK(ctx.getPet(0).hp > 0, "T10 前置：自身存活");
         // R2：守方大攻击致死 → 对手 -500 真伤 + 疲惫

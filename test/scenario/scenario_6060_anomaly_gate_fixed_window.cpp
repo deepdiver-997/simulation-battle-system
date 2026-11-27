@@ -80,7 +80,7 @@ int foe_hp_after_attack(bool with_anomaly, int& gate) {
     if (with_anomaly) {
         REQUIRE(apply_anomaly(&ctx, 1, 6, 3, 0) == ApplyAnomalyResult::SUCCESS);
     }
-    sbs_srand(kSeed);
+    b.ctx().seed_rng(kSeed);
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     ctx.debug_step_mode = true;
     b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
@@ -130,7 +130,7 @@ int main() {
         ScenarioBattle b(make_party(self_pet()), make_party(foe_pet()));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(kSeed);
+        b.ctx().seed_rng(kSeed);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
         b.drive();
@@ -161,7 +161,7 @@ int main() {
         ScenarioBattle b(make_party(self_pet()), make_party(foe_pet()));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(kSeed);
+        b.ctx().seed_rng(kSeed);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
         b.drive();

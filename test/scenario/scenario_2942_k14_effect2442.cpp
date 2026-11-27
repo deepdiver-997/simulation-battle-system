@@ -57,7 +57,7 @@ int probe_red_loss(bool with_mark, int monster_id, bool opp_bleeding) {
                          with_mark ? holder_pet(monster_id) : plain_holder_pet()),
                      scenario::make_party(attacker_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     dispel_active_anomalies(&ctx, 1);
     if (opp_bleeding) {
@@ -91,7 +91,7 @@ int main() {
         ScenarioBattle b(scenario::make_party(holder_pet(4826)),
                          scenario::make_party(attacker_pet()));
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261004);
+        ctx.seed_rng(20261004);
         b.start();
         dispel_active_anomalies(&ctx, 1);
         ctx.debug_step_mode = true;
@@ -117,7 +117,7 @@ int main() {
         ScenarioBattle b(scenario::make_party(holder_pet(4826)),
                          scenario::make_party(attacker_pet()));
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261004);
+        ctx.seed_rng(20261004);
         b.start();
         apply_anomaly(&ctx, 1, kBleedId, 5, 0);
         ctx.debug_step_mode = true;
@@ -134,7 +134,7 @@ int main() {
         ScenarioBattle b(scenario::make_party(holder_pet(4830)),
                          scenario::make_party(attacker_pet()));
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261004);
+        ctx.seed_rng(20261004);
         b.start();
         CHECK(ctx.has_active_abnormal_status(1, kBleedId), "C 对手满体 → 3 段流血挂上");
     }
@@ -146,7 +146,7 @@ int main() {
             ScenarioBattle t(scenario::make_party(plain_holder_pet()),
                              scenario::make_party(attacker_pet()));
             BattleContext& tctx = t.ctx();
-            sbs_srand(20261004);
+            tctx.seed_rng(20261004);
             t.start();
             apply_anomaly(&tctx, 1, kBleedId, 3, 0);
             const int hp0 = tctx.seerRobot[1].elfPets[tctx.on_stage[1]].hp;
@@ -159,7 +159,7 @@ int main() {
         ScenarioBattle b(scenario::make_party(holder_pet(4830)),
                          scenario::make_party(attacker_pet()));
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261004);
+        ctx.seed_rng(20261004);
         b.start();
         const int opp_hp0 = ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp;
         ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp = 999000;   // 留出回血空间（满血 heal 封顶）

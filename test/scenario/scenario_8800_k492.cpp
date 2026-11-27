@@ -115,8 +115,15 @@ void run_round(ScenarioBattle& b, BattleFsm::ActionType a0, int i0,
     b.drive();
     while (b.state() == State::CHOOSE_AFTER_DEATH) {
         const int dead = b.ctx().getPet(0).hp <= 0 ? 0 : 1;
-        b.submit_operation(dead, BattleFsm::ActionType::CHOOSE_PET,
-                           dead == 0 ? 1 : 0);
+        int replacement = -1;
+        for (int slot = 0; slot < 6; ++slot) {
+            if (slot != b.ctx().on_stage[dead] && b.ctx().seerRobot[dead].elfPets[slot].hp > 0) {
+                replacement = slot;
+                break;
+            }
+        }
+        CHECK(replacement >= 0, "死后补位必须有存活的非在场精灵");
+        b.submit_operation(dead, BattleFsm::ActionType::CHOOSE_PET, replacement);
         b.drive();
     }
 }

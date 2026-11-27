@@ -133,10 +133,10 @@ EffectResult monika_round_start(BattleContext* ctx, const EffectArgs& args) {
                             /*anomaly_mask=*/0, /*duration_rounds=*/1, /*source_id=*/2492100,
                             /*soul_immunity=*/false, EffectScope::ON_STAGE,
                             /*counts=*/0, /*source_effect_id=*/2492, ImmunityTier::Modern,
-                            [owner](const BattleContext* c, int) {
+                            /*condition=*/nullptr, [owner](BattleContext* c, int) {
                                 const int n =
                                     moni_pub_get(c->plugin_storage, kMoniPubLv + owner);
-                                return n > 0 && (sbs_rand() % 100) < 25 * n;
+                                return n > 0 && (c->rng().next() % 100) < 25 * n;
                             });
     }
     // 最优系别视图按到期回合重写 ws（ws 每回合 reset）

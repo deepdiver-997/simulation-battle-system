@@ -134,14 +134,14 @@ int batch_b_selected_skill_index(const BattleContext* ctx, int side) {
 }
 
 // 从 6 个能力槽里随机挑 want 个不同槽（want > 6 时按 6）。返回选中槽列表。
-std::vector<int> batch_b_pick_random_stats(int want) {
+std::vector<int> batch_b_pick_random_stats(SbsRng& rng, int want) {
     std::vector<int> all{0, 1, 2, 3, 4, 5};
     if (want >= static_cast<int>(all.size())) {
         return all;
     }
-    // Fisher-Yates 局部洗牌（sbs_rand()；场景断言按"总和"写、不依赖具体槽）。
+    // Fisher-Yates 局部洗牌（场景断言按"总和"写、不依赖具体槽）。
     for (int i = 0; i < want; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(all.size()) - i));
+        const int j = i + (rng.next() % (static_cast<int>(all.size()) - i));
         std::swap(all[static_cast<std::size_t>(i)], all[static_cast<std::size_t>(j)]);
     }
     all.resize(static_cast<std::size_t>(want));
@@ -156,7 +156,7 @@ void batch_b_zero_random_pp_slots(BattleContext* ctx, int target, int want, int 
     std::vector<int> slots{0, 1, 2, 3, 4};
     const int n = std::min(want, static_cast<int>(slots.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (sbs_rand() % (static_cast<int>(slots.size()) - i));
+        const int j = i + (ctx->rng().next() % (static_cast<int>(slots.size()) - i));
         std::swap(slots[static_cast<std::size_t>(i)], slots[static_cast<std::size_t>(j)]);
         (void)g_core->pp_zero_slot(ctx, target, slots[static_cast<std::size_t>(i)], actor);
     }
@@ -337,7 +337,7 @@ EffectResult effect_63_reflect_drops(BattleContext* ctx, const EffectArgs& args)
         return EffectResult::kOk;
     }
     // 门槛二：对手免弱 → 镜像必全 IMMUNE → 整体不触发（原子：自身不清）
-    if (ctx->is_immune(opp, ImmunityType::STAT_DROP, ctx->currentState)) {
+    if (ctx->resolve_immunity(opp, ImmunityType::STAT_DROP, ctx->currentState)) {
         ctx->plugin_storage[63000063 + owner] = 3;
         return EffectResult::kOk;
     }
@@ -795,7 +795,7 @@ EffectResult effect_198_random_drops(BattleContext* ctx, const EffectArgs& args)
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || count <= 0 || amount <= 0) {
         return EffectResult::kOk;
     }
-    for (const int slot : batch_b_pick_random_stats(count)) {
+    for (const int slot : batch_b_pick_random_stats(ctx->rng(), count)) {
         (void)g_core->stat_drop(ctx, opp, slot, amount, owner);
     }
     return EffectResult::kOk;
@@ -954,7 +954,7 @@ EffectResult effect_626_random_boosts(BattleContext* ctx, const EffectArgs& args
     if (owner < 0 || owner > 1 || count <= 0 || delta == 0) {
         return EffectResult::kOk;
     }
-    for (const int slot : batch_b_pick_random_stats(count)) {
+    for (const int slot : batch_b_pick_random_stats(ctx->rng(), count)) {
         (void)g_core->stat_change(ctx, owner, slot, delta);
     }
     return EffectResult::kOk;
@@ -1220,7 +1220,7 @@ EffectResult effect_1176_chance_multiply(BattleContext* ctx, const EffectArgs& a
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         if (multiplier > 1) {
             int(&slots)[2][4] = ctx->ws.damage_add_extra_mul;
             for (int i = 0; i < 4; ++i) {
@@ -1497,7 +1497,7 @@ EffectResult effect_438_chance_heal(BattleContext* ctx, const EffectArgs& args) 
     if (owner < 0 || owner > 1 || denom <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         (void)heal_max_hp_fraction(ctx, owner, denom);
     }
     return EffectResult::kOk;
@@ -1621,7 +1621,7 @@ EffectResult effect_1235_dodge_tick(BattleContext* ctx, const EffectArgs& args) 
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         ctx->ws.dodge_rate[owner] = 1.0f;   // 本回合闪避（ws reset 自清）
         return EffectResult::kOk;
     }
@@ -1733,7 +1733,7 @@ EffectResult effect_148_second_drop(BattleContext* ctx, const EffectArgs& args) 
         || batch_b_is_first_side(ctx, owner)) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance) && delta != 0) {
+    if (roll_percent(ctx->rng(), chance) && delta != 0) {
         (void)g_core->stat_drop(ctx, opp, stat, std::abs(delta), owner);
     }
     return EffectResult::kOk;
@@ -2706,7 +2706,7 @@ EffectResult effect_1603_chance_pp_down(BattleContext* ctx, const EffectArgs& ar
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || amount <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         (void)g_core->pp_reduce(ctx, opp, amount);
     }
     return EffectResult::kOk;

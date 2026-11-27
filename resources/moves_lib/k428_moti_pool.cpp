@@ -355,7 +355,7 @@ EffectResult effect_1908_split_percent_damage(BattleContext* ctx, const EffectAr
     } else if (p0 <= 0 && p2 >= 100) {
         branch = 2;
     } else {
-        roll = sbs_rand() % 100;
+        roll = ctx->rng().next() % 100;
         if (roll < p0) {
             branch = 1;
         } else if (roll < p0 + p2) {

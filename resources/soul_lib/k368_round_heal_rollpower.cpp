@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K368 每回合恢复+攻击概率威力翻倍族 —— effect 372（1 宏 / 2 行，战神·盖亚2780 魂印「骁」）
 //
 // 行清单（tools/soul_effects_dump.py 372，2026-10-24）：
@@ -80,14 +79,14 @@ int db_at(const HostRow& row, int idx, int fallback) {
 }
 
 // 千分比掷点（roll_percent 是百分制，166‰=1/6 需千分制）。
-inline bool roll_per_mille(int per_mille) {
+inline bool roll_per_mille(SbsRng& rng, int per_mille) {
     if (per_mille <= 0) {
         return false;
     }
     if (per_mille >= 1000) {
         return true;
     }
-    return (sbs_rand() % 1000) < per_mille;
+    return (rng.next() % 1000) < per_mille;
 }
 
 // ── ①ROUND_START：恢复 max×db[0]/1000（166‰=1/6；原语封顶钳 max）──────────────
@@ -137,7 +136,7 @@ EffectResult k368_372_roll_power(BattleContext* ctx, const SoulNodeArgs& a) {
     if (per_mille <= 0) {
         return EffectResult::kOk;   // 显式 0 关闸
     }
-    if (!roll_per_mille(per_mille)) {
+    if (!roll_per_mille(ctx->rng(), per_mille)) {
         return EffectResult::kOk;
     }
     auto& view = ctx->ws.skill_power_view[owner];

@@ -39,7 +39,7 @@ ElfPet attacker_pet(int id) {
 int probe_foe_loss(const ElfPet& attacker, const ElfPet& defender) {
     ScenarioBattle b(scenario::make_party(attacker), scenario::make_party(defender));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20260916);   // 对照局对齐：每次探针同一 rand 序
+    ctx.seed_rng(20260916);   // 对照局对齐：每次探针同一 rand 序
     b.start();
     const int hp0 = ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp;
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

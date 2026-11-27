@@ -105,7 +105,7 @@ EffectResult effect_914_status_seal_all(BattleContext* ctx, const EffectArgs& ar
         || !g_core->has_active_anomaly(ctx, opp, status)) {
         return EffectResult::kOk;   // 状态门：对手不处于{0}状态
     }
-    if (!roll_percent(pct)) {
+    if (!roll_percent(ctx->rng(), pct)) {
         return EffectResult::kOk;   // {2}% 一次掷（授予时；口径记档见文件头）
     }
     ctx->grant_skill_invalid(owner, opp, /*source_slot=*/-1, /*effect_id=*/914,

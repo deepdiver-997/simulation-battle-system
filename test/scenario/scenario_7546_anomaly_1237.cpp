@@ -98,7 +98,7 @@ std::vector<int> probe_audits(const std::vector<int>& args, int seed, int n,
                               bool* foe_clean = nullptr) {
     ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     std::vector<int> audits;
     bool all_clean = true;
     for (int i = 0; i < n; ++i) {
@@ -120,7 +120,7 @@ std::vector<int> probe_audits(const std::vector<int>& args, int seed, int n,
 bool probe_land(const std::vector<int>& args, int seed) {
     ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_hit_round(b);
     return b.ctx().has_active_abnormal_status(1, kFatigue);
 }
@@ -139,7 +139,7 @@ int find_fail_then_land_seed(const std::vector<int>& args) {
     for (int s = 1; s < 500; ++s) {
         ScenarioBattle b(make_party(mark_pet(args)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);   // R1
         if (b.ctx().has_active_abnormal_status(1, kFatigue)
             || read_key(b, kRamp) != 40) {
@@ -165,7 +165,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
         b.start();
-        sbs_srand(7551);
+        b.ctx().seed_rng(7551);
         idle_round(b);
         CHECK_EQ(b.ctx().ability_levels[0][0], 2, "T7546a R1 攻+2");
         CHECK_EQ(b.ctx().ability_levels[0][4], 2, "T7546a R1 速+2");
@@ -183,7 +183,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
             b.start();
-            sbs_srand(s_land);
+            b.ctx().seed_rng(s_land);
             own_hit_round(b);
             CHECK(b.ctx().has_active_abnormal_status(1, kFatigue), "T7546b 落地支疲惫");
             CHECK_EQ(read_key(b, kAudit), 30, "T7546b 首击申报审计=基础30");
@@ -193,7 +193,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
             b.start();
-            sbs_srand(s_fail);
+            b.ctx().seed_rng(s_fail);
             own_hit_round(b);
             CHECK(!b.ctx().has_active_abnormal_status(1, kFatigue), "T7546b 未触发支无疲惫");
             CHECK_EQ(read_key(b, kAudit), 30, "T7546b 未触发支审计照写=30");
@@ -228,7 +228,7 @@ int main() {
         CHECK(s > 0, "T7546d 自校准找到 掷歪→落地 链种子");
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);   // R1 fail
         own_hit_round(b);   // R2 land（对手带疲惫 → R3 起 mode=2）
         CHECK_EQ(read_key(b, kRamp), 30, "T7546d 落地回落账本=30");
@@ -248,7 +248,7 @@ int main() {
         CHECK(s_land > 0, "T7546e 自校准");
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
         b.start();
-        sbs_srand(s_land);
+        b.ctx().seed_rng(s_land);
         own_hit_round(b);   // R1：疲惫落地（对手进入异常）
         CHECK_EQ(read_key(b, kAudit), 30, "T7546e R1 疲惫支申报");
         own_hit_round(b);   // R2：对手异常 → mode=2 → 增伤支
@@ -266,7 +266,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet(kRowPartner)), make_party(foe_pet()));
             b.start();
-            sbs_srand(s_land);
+            b.ctx().seed_rng(s_land);
             own_hit_round(b);
             CHECK_EQ(read_key(b, kAudit), 40, "T7546f 伙伴基础申报=40（档位差位）");
             CHECK_EQ(read_key(b, kRamp), 40, "T7546f 伙伴行回落账本=40");
@@ -274,7 +274,7 @@ int main() {
         {
             ScenarioBattle b(make_party(mark_pet(kRowPartner)), make_party(foe_pet()));
             b.start();
-            sbs_srand(s_fail);
+            b.ctx().seed_rng(s_fail);
             own_hit_round(b);
             CHECK_EQ(read_key(b, kRamp), 50, "T7546f 伙伴未触发爬坡 40+10=50");
         }
@@ -298,7 +298,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
-        sbs_srand(7850);
+        b.ctx().seed_rng(7850);
         idle_round(b);
         CHECK_EQ(b.ctx().ability_levels[0][0], 0, "T7546h boss：无攻自升");
         CHECK_EQ(b.ctx().ability_levels[0][4], 0, "T7546h boss：无速自升");

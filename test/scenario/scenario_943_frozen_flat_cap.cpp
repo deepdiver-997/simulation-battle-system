@@ -44,7 +44,7 @@ int probe_loss(const SoulMark& mark, bool freeze_foe_first) {
     ScenarioBattle b(scenario::make_party(defender_pet(1, mark)),
                      scenario::make_party(attacker_pet(2)));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20260916);   // 对照局对齐：每次探针同一 rand 序
+    ctx.seed_rng(20260916);   // 对照局对齐：每次探针同一 rand 序
     b.start();
     if (freeze_foe_first) {
         ctx.apply_abnormal_status_for_rounds(1, static_cast<int>(AbnormalStatusId::Frostbite),

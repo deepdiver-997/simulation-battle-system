@@ -121,7 +121,7 @@ EffectResult effect_127_prob_reduce_half(BattleContext* ctx, const EffectArgs& a
     const int rounds = args.int_args[3];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 127, args, "owner 越界");
     EFFECT_ARG_GUARD(rounds > 0, 127, args, "rounds 应为正");
-    if (!roll_percent(prob)) {
+    if (!roll_percent(ctx->rng(), prob)) {
         return EffectResult::kOk;   // 概率未命中：不开窗
     }
     if (!ctx->is_second_mover(owner)) {

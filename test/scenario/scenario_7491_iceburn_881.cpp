@@ -80,7 +80,7 @@ int find_land_seed(const std::vector<int>& args, int speed_own, int speed_foe) {
         ScenarioBattle b(make_party(mark_pet(args, speed_own)),
                          make_party(foe_pet(speed_foe)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         if (b.ctx().has_active_abnormal_status(1, kIce)) {
             return s;
@@ -94,7 +94,7 @@ int find_miss_seed(const std::vector<int>& args, int speed_own, int speed_foe) {
         ScenarioBattle b(make_party(mark_pet(args, speed_own)),
                          make_party(foe_pet(speed_foe)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         if (!b.ctx().has_active_abnormal_status(1, kIce) && read_key(b, kAudit) >= 0) {
             return s;
@@ -118,7 +118,7 @@ int main() {
         CHECK(s > 0, "T7491a 自校准找到落地种子");
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIce), "T7491a 先手 50% 冰封落地");
         CHECK_EQ(read_key(b, kAudit), 50, "T7491a 审计=50");
@@ -132,7 +132,7 @@ int main() {
         CHECK(s > 0, "T7491b 自校准找到未触发种子");
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(!b.ctx().has_active_abnormal_status(1, kIce), "T7491b 未落地");
         CHECK_EQ(read_key(b, kPend), 2, "T7491b 未触发 → 下1次先制+2 pending");
@@ -145,12 +145,12 @@ int main() {
         CHECK(s > 0, "T7491c 自校准");
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);   // R1：先手掷歪 → pending=2
         CHECK_EQ(read_key(b, kPend), 2, "T7491c R1 pending=2");
         // R2 own 出 NONE：无再掷点 → 消费后清账断言不被重写污染。
         // 停泊形（7430 直系）：debug 先开再 submit（FSM 停在回合中段），再 step_past。
-        sbs_srand(s + 1000);
+        b.ctx().seed_rng(s + 1000);
         b.ctx().debug_step_mode = true;
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
@@ -170,7 +170,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow, 100)), make_party(foe_pet(200)));
         b.start();
-        sbs_srand(7494);
+        b.ctx().seed_rng(7494);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), -1, "T7491d 后手不申报（先出手门）");
         CHECK_EQ(read_key(b, kPend), -1, "T7491d 后手无 pending");
@@ -184,7 +184,7 @@ int main() {
         CHECK(s > 0, "T7491e 自校准");
         ScenarioBattle b(make_party(mark_pet(kVar, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kPend), 5, "T7491e args 驱动：db2=5 → pending=5");
         std::cout << "  [T7491e] args 变体 通过\n";
@@ -194,7 +194,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(7495);
+        b.ctx().seed_rng(7495);
         for (int r = 0; r < 40; ++r) {
             b.ctx().getPet(1).hp = kMaxHp;   // 冻伤 DOT 防打死
             own_hit_round(b);
@@ -209,7 +209,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.ctx().is_boss_challenge = true;
         b.start();
-        sbs_srand(7496);
+        b.ctx().seed_rng(7496);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), -1, "T7491g boss：无申报");
         CHECK(!b.ctx().has_active_abnormal_status(1, kIce), "T7491g boss：无冰封");

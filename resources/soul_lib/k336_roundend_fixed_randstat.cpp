@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K336 回合末固伤+随机三项族 —— effect 690（1 宏 / 1 行）
 //（瀚海界王 2983 args[200,3,1]；号段 4920-4929，worktree ../agents/k336，
 //  2026-10-21）
@@ -25,13 +24,13 @@ namespace {
 constexpr int kMarkId = 690;
 
 // 随机 n 个互不相同槽（K267 同款去重取法）。
-int rand_distinct_slots(int n, int* out) {
+int rand_distinct_slots(SbsRng& rng, int n, int* out) {
     bool used[6] = {false, false, false, false, false, false};
     int done = 0;
     for (int i = 0; i < n && done < 6; ++i) {
-        int s = sbs_rand() % 6;
+        int s = rng.next() % 6;
         while (used[s]) {
-            s = sbs_rand() % 6;
+            s = rng.next() % 6;
         }
         used[s] = true;
         out[done++] = s;
@@ -71,7 +70,7 @@ EffectResult k336_690_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     }
     (void)g_core->deal_pink_damage(ctx, opp, fixed, DamageKind::FIXED, owner);
     int picked[6] = {};
-    const int done = rand_distinct_slots(count, picked);
+    const int done = rand_distinct_slots(ctx->rng(), count, picked);
     for (int i = 0; i < done; ++i) {
         (void)g_core->stat_change(ctx, owner, picked[i], gain);
     }

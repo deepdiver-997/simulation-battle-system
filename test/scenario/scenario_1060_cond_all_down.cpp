@@ -4,7 +4,7 @@
 //
 // 断言口径：
 //   - 857 先手档 chance=100 → 六槽 -1 精确等式；后手档 chance=50 用 **种子校准**
-//     （T994 口径：载体 月汐之氲 属性技无伤害相位 → 掷点=校准后首个 sbs_rand()，
+//     （T994 口径：载体 月汐之氲 属性技无伤害相位 → 掷点=校准后首个对局掷点，
 //     必中/必歪两种子各一局）；免弱对照 = 免弱票全挡；
 //   - 577 门槛两半 + 增量档：六槽精确等式（stat_change 铺自身提升）。
 #include <cstdlib>
@@ -93,7 +93,7 @@ int main() {
                 }
             }
             REQUIRE(seed_fail > 0);
-            sbs_srand(seed_fail);
+            ctx.seed_rng(seed_fail);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();
@@ -114,7 +114,7 @@ int main() {
                 }
             }
             REQUIRE(seed_hit > 0);
-            sbs_srand(seed_hit);
+            ctx.seed_rng(seed_hit);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
             b.drive();

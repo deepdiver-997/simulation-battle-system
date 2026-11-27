@@ -57,7 +57,7 @@ EffectResult effect_604_random_power_ramp(BattleContext* ctx, const EffectArgs& 
                      "参数域非法（要求 0<=lo<=hi、step>=0、cap>=lo）");
     const int uses = counter_next(ctx, k604UsesKeyBase + owner);
     const int ramp = step * (uses - 1);
-    int power = (lo + (hi > lo ? sbs_rand() % (hi - lo + 1) : 0)) + ramp;
+    int power = (lo + (hi > lo ? ctx->rng().next() % (hi - lo + 1) : 0)) + ramp;
     if (power > cap) {
         power = cap;   // "最高提升至{3}"——封顶随机+递增的总威力
     }

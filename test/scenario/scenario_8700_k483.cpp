@@ -270,7 +270,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);   // 本块 rand 定标（记账见块注）
+        b.ctx().seed_rng(8);   // 本块 rand 定标（记账见块注）
         BattleContext& ctx = b.ctx();
         setup_anomaly(b, 1, kBurn);   // 对手铺烧伤（{0} 支门前提）
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -305,7 +305,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot(ctx, k151Base, 0, 0), 0, "T8700.b R1 未烧伤走非烧伤支（slot0=0）");
@@ -335,7 +335,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
         CHECK_EQ(slot(ctx, k151Base, 0, 0), 0, "T8700.c 未烧伤走非烧伤支（slot0=0）");
@@ -362,7 +362,7 @@ int main() {
                          make_party(foe_pet(2, "印主1", {kTongKu, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp)));
         b.start();
-        sbs_srand(9);
+        b.ctx().seed_rng(9);
         BattleContext& ctx = b.ctx();
         setup_anomaly(b, 1, kBurn);   // 只给 side1 铺烧伤 → 双侧分支不对称
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -401,7 +401,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp)));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         setup_anomaly(b, 1, kBurn);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -437,7 +437,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp, {5, 0})));
         b.start();
-        sbs_srand(5);
+        b.ctx().seed_rng(5);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k121Base, 0, 0), 1, "T8700.f 属性相同门开（双 {5,0}）");
@@ -469,7 +469,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp, {6, 0})));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k121Base, 0, 0), 0, "T8700.g 属性相异门闭（slot0=0）");
@@ -493,7 +493,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp, {5, 0})));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k121Base, 0, 0), 1, "T8700.h1 门开（同 {5,0}）");
@@ -510,7 +510,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp, {5, 0})));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k121Base, 0, 3), 80, "T8700.h2 消费概率={0}=80");
@@ -531,7 +531,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp, {6, 0})));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         BattleContext& ctx = b.ctx();
         surgery_element_view(ctx, 1, 3, 0);   // 对手当前视图改火（固有仍草）
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -547,7 +547,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp, {3, 0})));
         b.start();
-        sbs_srand(8);
+        b.ctx().seed_rng(8);
         BattleContext& ctx = b.ctx();
         surgery_element_view(ctx, 1, 6, 0);   // 对手当前视图改草（固有仍火）
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -568,7 +568,7 @@ int main() {
                          make_party(foe_pet(2, "印主k1", {kDianHe, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp, {5, 0})));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         CHECK_EQ(slot(ctx, k121Base, 0, 0), 1, "T8700.k R1 side0 门开+落地（14<30）");
@@ -602,7 +602,7 @@ int main() {
                          make_party(foe_pet(2, "共存1", {kDianHe, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 1, kMaxHp, {5, 0})));
         b.start();
-        sbs_srand(9);
+        b.ctx().seed_rng(9);
         BattleContext& ctx = b.ctx();
         setup_anomaly(b, 1, kBurn);
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
@@ -630,7 +630,7 @@ int main() {
                          make_party(foe_pet(2, "对手", {kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa},
                                             100, 200, kMaxHp, {5, 0})));
         b.start();
-        sbs_srand(5);
+        b.ctx().seed_rng(5);
         BattleContext& ctx = b.ctx();
         (void)ctx.grant_immunity(1, ImmunityType::ANOMALY, coverage_all(),
                                  /*anomaly_mask=*/0, /*duration_rounds=*/9);

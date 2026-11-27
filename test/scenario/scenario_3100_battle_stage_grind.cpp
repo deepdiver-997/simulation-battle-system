@@ -93,7 +93,7 @@ int main() {
                 : plain_me(/*speed=*/300);
             ScenarioBattle b(make_party(std::move(me)),
                              make_party(plain_foe(/*speed=*/100)));
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             b.start();
             round_actions(b, /*attack=*/true);
             const int foe_loss = kMaxHp - b.ctx().getPet(1).hp;
@@ -116,7 +116,7 @@ int main() {
                                                   EffectArgs(std::vector<int>{500, 5}),
                                                   /*speed=*/300)),
                          make_party(plain_foe(/*speed=*/100)));
-        sbs_srand(11);
+        b.ctx().seed_rng(11);
         b.start();
         int grinds = 0;
         for (int r = 0; r < 20; ++r) {
@@ -140,7 +140,7 @@ int main() {
                                                   /*speed=*/300)),
                          make_party(plain_foe(/*speed=*/100)));
         b.ctx().is_boss_challenge = true;
-        sbs_srand(11);
+        b.ctx().seed_rng(11);
         b.start();
         int grinds = 0;
         for (int r = 0; r < 20; ++r) {
@@ -160,7 +160,7 @@ int main() {
                                                   EffectArgs(std::vector<int>{1000, 5}),
                                                   /*speed=*/300)),
                          make_party(plain_foe(/*speed=*/100)));
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         b.start();
         round_actions(b, /*attack=*/true);
         const int foe_after_r1 = b.ctx().getPet(1).hp;

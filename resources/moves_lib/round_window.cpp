@@ -4,6 +4,9 @@
 // （2026-09-17 从 lib_1.cpp 按家族拆分；移动零改动，行为由全量场景回归守护。）
 #include "common.h"
 
+#include <any>
+#include <utility>
+
 namespace {
 
 EffectResult effect_skill_843(BattleContext* context, const EffectArgs& args) {
@@ -76,7 +79,7 @@ EffectResult effect_525_attack_damage_immune(BattleContext* ctx, const EffectArg
             if (damage.defenderId != self || !damage.isRed || damage.final <= 0) {
                 return;   // 只免疫"对手的攻击伤害"（红伤）
             }
-            if (!roll_percent(pct)) {
+            if (!roll_percent(c->rng(), pct)) {
                 return;   // {1}% 未中
             }
             damage.base = damage.afterAdd = damage.afterMul = damage.final = 0;
@@ -554,8 +557,8 @@ EffectResult effect_32_crit_rate_up(BattleContext* ctx, const EffectArgs& args) 
 // ── effect 408 —— {0}回合内每回合所受的伤害减少{1}（大气护盾 21720 等，97 技）──
 // Args=[owner,target,rounds,reduce]。无 "%" → **点数**减伤。管线 REDUCE_FLAT 条目 +
 // roundCount 半开区间窗口判（MITIGATE 不可被"挡伤失效"无视）。
-// ⚠️ **重复使用 = 刷新窗口**（官方语义），不叠加：窗口起止存 plugin_storage 的
-// shared_ptr，重复使用只改写起止；管线条目每方只注册一次（lambda 捕指针实时读）。
+// ⚠️ **重复使用 = 刷新窗口**（官方语义），不叠加：窗口起止按值存入本局 plugin_storage，
+// 管线条目仍每方只注册一次且沿用首次减免值；回调按 key 从当次 ctx 读取窗口。
 EffectResult effect_408_damage_reduce(BattleContext* ctx, const EffectArgs& args) {
     if (!ctx || !args.int_args || args.int_count < 4) {
         return EffectResult::kOk;
@@ -569,31 +572,36 @@ EffectResult effect_408_damage_reduce(BattleContext* ctx, const EffectArgs& args
     using Win = std::pair<int, int>;   // [start, expire)
     const int key = 408000 + self;
     const int start = ctx->round_effect_start_round(self, rounds, EffectWindowKind::InRounds);
-    auto win = std::make_shared<Win>(start, start + rounds);
-    if (ctx->plugin_storage.count(key)) {
-        // 已有条目：只刷新窗口（reduce 沿用首次值——同族模板每招固定，混用罕见）
-        *std::any_cast<std::shared_ptr<Win>>(ctx->plugin_storage[key]) = *win;
+    const Win window{start, start + rounds};
+    const auto [it, inserted] = ctx->plugin_storage.try_emplace(key, window);
+    if (!inserted) {
+        // 包括窗口到期或换宠后：仍只刷新窗口，不重新注册。
+        std::any_cast<Win&>(it->second) = window;
         return EffectResult::kOk;
     }
-    ctx->plugin_storage[key] = win;
     ctx->register_damage_effect(
         DamagePhase::REDUCE_FLAT,
         self,
         DamageEffectCategory::MITIGATE,
-        [self, reduce, win](BattleContext* c, int owner) {
+        [self, reduce, key](BattleContext* c, int owner) {
             if (!c || owner != self) {
                 return;
             }
+            const auto entry = c->plugin_storage.find(key);
+            if (entry == c->plugin_storage.end()) {
+                return;
+            }
+            const auto* win = std::any_cast<Win>(&entry->second);
             const int rc = c->roundCount;
-            if (rc < win->first || rc >= win->second) {
-                return;   // 窗口外
+            if (!win || rc < win->first || rc >= win->second) {
+                return;   // 无有效窗口或窗口外
             }
             DamageSnapshot& damage = c->resolvedDamage;
             if (damage.defenderId != self || !damage.isRed || damage.final <= 0) {
                 return;   // 只减"所受的攻击伤害"（红伤）
             }
             damage.final = std::max(0, damage.final - reduce);
-        });
+        }, EffectScope::ON_STAGE, BattleCallbackCopy::Audited);
     return EffectResult::kOk;
 }
 

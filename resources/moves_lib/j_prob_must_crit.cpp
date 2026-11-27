@@ -70,7 +70,7 @@ EffectResult effect_1429_crit_or_anomaly(BattleContext* ctx, const EffectArgs& a
     EFFECT_ARG_GUARD(is_valid_abnormal_status_id(anomaly), 1429, args,
                      "需要合法官方异常 id");
 
-    const bool crit = roll_percent(50);
+    const bool crit = roll_percent(ctx->rng(), 50);
     ctx->plugin_storage[k1429RollBase + owner] = crit ? 1 : 0;
     if (crit) {
         // 当前攻击必暴通道（D26 1395 既验）：掷点已过，直接置落地旗标。
@@ -102,7 +102,7 @@ EffectResult effect_1420_boosted_crit(BattleContext* ctx, const EffectArgs& args
         ctx->plugin_storage[k1420AuditBase + owner] = -1;   // 门闭
         return EffectResult::kOk;
     }
-    const bool crit = roll_percent(50);
+    const bool crit = roll_percent(ctx->rng(), 50);
     ctx->plugin_storage[k1420AuditBase + owner] = crit ? 1 : 0;
     if (crit) {
         ctx->crit_happened[owner] = true;

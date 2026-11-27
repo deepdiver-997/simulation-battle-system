@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K373 异常门降属+已损恢复+动态概率威力翻倍族 —— effect 856（1 宏 2 行）
 //
 // 行清单（tools/soul_effects_dump.py 856，2026-10-24）：
@@ -172,7 +171,7 @@ EffectResult k856_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
         int guard = 0;
         while (done < drop_count && guard < 100) {
             ++guard;
-            const int slot = sbs_rand() % 6;
+            const int slot = ctx->rng().next() % 6;
             if (picked[slot]) {
                 continue;
             }
@@ -207,7 +206,7 @@ EffectResult k856_roll_power(BattleContext* ctx, const SoulNodeArgs& a) {
     }
     const int max_hp = resolve_pet_max_hp(self);
     const int pct = (max_hp - self.hp) * 100 / max_hp;   // 已损失体力百分比
-    if (pct <= 0 || !roll_percent(pct)) {
+    if (pct <= 0 || !roll_percent(ctx->rng(), pct)) {
         return EffectResult::kOk;   // 满血不翻；本地掷点（威力翻倍非异常通道）
     }
     auto& view = ctx->ws.skill_power_view[owner];

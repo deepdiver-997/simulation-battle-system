@@ -149,7 +149,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(/*speed=*/100, kMaxHp, row1)),
                          make_party(plain_pet(/*speed=*/300)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         round1_foe_hits(b);
         const bool petrified = b.ctx().abnormal_status_end_round[1][petrify_id] > 0;
         if (petrified && seed_petrify < 0) {
@@ -173,7 +173,7 @@ int main() {
                          make_party(stare_pet(/*speed=*/300)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(seed_seal);
+        b.ctx().seed_rng(seed_seal);
         round1_foe_hits(b);
         CHECK_EQ(ctx.abnormal_status_end_round[1][petrify_id], 0,
                  "T3722 1456：未触发档不石化");
@@ -211,7 +211,7 @@ int main() {
                          make_party(plain_pet(/*speed=*/300)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(seed_petrify);
+        b.ctx().seed_rng(seed_petrify);
         round1_foe_hits(b);
         CHECK(ctx.abnormal_status_end_round[1][petrify_id] > 0,
               "T3722 1456：石化档落地（end_round > 0）");

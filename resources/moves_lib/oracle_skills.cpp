@@ -146,7 +146,7 @@ EffectResult effect_2397_transfer(BattleContext* ctx, const EffectArgs& args) {
     // 每层 → 随机一种星附属异常（星赐 33 / 星哲 34 / 星赎 38），2 回合
     static const int kStars[3] = {kStarBlessing, kStarWisdom, kStarRedemption};
     for (int i = 0; i < layers; ++i) {
-        g_core->apply_anomaly(ctx, owner, kStars[sbs_rand() % 3], /*duration=*/2, owner);
+        g_core->apply_anomaly(ctx, owner, kStars[ctx->rng().next() % 3], /*duration=*/2, owner);
     }
     return EffectResult::kOk;
 }

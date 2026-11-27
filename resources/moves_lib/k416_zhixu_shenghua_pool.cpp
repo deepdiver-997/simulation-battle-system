@@ -361,7 +361,7 @@ void k416_pp_zero_random_slots(BattleContext* ctx, int target, int actor, int co
     const int n = static_cast<int>(ctx->getPet(target).skills.size());
     const int total = n < 5 ? n : 5;
     for (int i = 0; i < total && i < count; ++i) {
-        const int j = i + (sbs_rand() % (total - i));
+        const int j = i + (ctx->rng().next() % (total - i));
         const int tmp = slots[i];
         slots[i] = slots[j];
         slots[j] = tmp;

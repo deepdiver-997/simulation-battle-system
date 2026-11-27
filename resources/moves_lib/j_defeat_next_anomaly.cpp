@@ -75,7 +75,7 @@ void register_defeat_next_anomaly(BattleContext* ctx, int self, int opp, int sta
             if (!g_core->has_active_anomaly(c, opp, state)) {
                 return;   // 状态门：倒地宠不处于{0}状态
             }
-            if (!roll_percent(chance)) {
+            if (!roll_percent(c->rng(), chance)) {
                 return;   // {1}% 未中
             }
             c->plugin_storage[pending_base + opp] = anomaly;

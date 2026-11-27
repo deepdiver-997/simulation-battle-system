@@ -110,9 +110,11 @@ int main() {
     {
         constexpr int kTrials = 16;
         int blocked_r1 = 0, blocked_window = 0, landed = 0;
+        SbsRng trial_seeds(20261004);
         for (int t = 0; t < kTrials; ++t) {
             ScenarioBattle b(make_party(attr_user(kMengsheng, 1, 50000)),
                              make_party(striker(100)));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             int hp0 = ctx.getPet(0).hp;

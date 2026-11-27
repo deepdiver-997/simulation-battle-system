@@ -24,7 +24,7 @@ EffectResult effect_skill_4(BattleContext* context, const EffectArgs& args) {
         return EffectResult::kOk;
     }
 
-    if (!roll_percent(probability)) {
+    if (!roll_percent(context->rng(), probability)) {
         return EffectResult::kOk;
     }
 
@@ -174,7 +174,7 @@ EffectResult effect_22_fatigue(BattleContext* ctx, const EffectArgs& args) {
     if (owner < 0 || owner > 1 || target < 0 || target > 1) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     if (g_core && g_core->apply_anomaly) {
@@ -419,7 +419,8 @@ EffectResult effect_9_growing_power(BattleContext* ctx, const EffectArgs& args) 
 
 
 // ── 效果注册（静态自注册：dlopen 时进本 dylib 的表）──
-    SKILL_EFFECT(4, effect_skill_4);   // 自身属性变化
+    // 只读己方参数与已发布的 CoreApi，用本局 RNG，并经原语修改本局能力等级。
+    SKILL_EFFECT_AUDITED(4, effect_skill_4);
     // 注：effect 5（对手属性变化）注册在本函数**末尾**的 effect_5_change_opp_stat——
     // 同一 effect id 后注册覆盖先注册。此处原有一个 effect_skill_5 手抄版（只改本体、
     // 不同步视图、且不查免弱），被末尾那条覆盖后就是死代码，已删。

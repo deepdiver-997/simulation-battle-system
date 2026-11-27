@@ -154,7 +154,7 @@ EffectResult effect_1298_clear_boost_punish_off_field(BattleContext* ctx,
     if (candidates.empty()) {
         return EffectResult::kOk;
     }
-    ElfPet& pet = ctx->seerRobot[target].elfPets[candidates[sbs_rand() % candidates.size()]];
+    ElfPet& pet = ctx->seerRobot[target].elfPets[candidates[ctx->rng().next() % candidates.size()]];
     const int dmg = pet_max_hp(pet) / 4;   // 模板明写 1/4（无占位符）
     if (dmg > 0) {
         pet.hp = std::max(1, pet.hp - dmg);   // "致死时令其残留1点体力"
@@ -262,64 +262,76 @@ EffectResult effect_1300_prison_guard(BattleContext* ctx, const EffectArgs& args
     if (self < 0 || self > 1 || target < 0 || target > 1 || rounds <= 0) {
         return EffectResult::kOk;
     }
-    using Win = std::pair<int, int>;
+    using Win = std::pair<int, int>;   // [start, expire)
+    const int key = kKey1300Window + self;
     const int start =
         ctx->round_effect_start_round(self, rounds, EffectWindowKind::InRounds);
-    auto win = std::make_shared<Win>(start, start + rounds);
-    if (!ctx->plugin_storage.count(kKey1300Window + self)) {
-        ctx->plugin_storage[kKey1300Window + self] = win;
-        // (a) 受到攻击伤害 -{1}%：REDUCE_PCT 阶段回调（525 窗口判套路）
-        ctx->register_damage_effect(
-            DamagePhase::REDUCE_PCT,
-            self,
-            DamageEffectCategory::MITIGATE,
-            [self, reduce_pct, win](BattleContext* c, int owner) {
-                if (!c || owner != self) {
-                    return;
-                }
-                const int rc = c->roundCount;
-                if (rc < win->first || rc >= win->second) {
-                    return;
-                }
-                DamageSnapshot& damage = c->resolvedDamage;
-                if (damage.defenderId != self || !damage.isRed || damage.final <= 0) {
-                    return;   // 只减"受到的攻击伤害"（红伤）
-                }
-                damage.final = damage.final * (100 - reduce_pct) / 100;
-            });
-        // (b) 裸伤 >{2} → 随机 {3} 种异常；一个都没进 → 消对手回合类效果
-        ctx->event_center_.register_watcher(
-            EventType::EVENT_TAKE_DAMAGE, self, ctx->roundCount, /*duration_rounds=*/0,
-            /*once=*/false,
-            [self, target, threshold, anomaly_count, win](BattleContext* wctx,
-                                                          const BattleEvent& ev) {
-                if (!wctx || ev.actor != target || ev.target != self || !g_core) {
-                    return;
-                }
-                if (ev.state != static_cast<int>(State::BATTLE_FIRST_ATTACK_DAMAGE)
-                    && ev.state != static_cast<int>(State::BATTLE_SECOND_ATTACK_DAMAGE)) {
-                    return;
-                }
-                const int rc = wctx->roundCount;
-                if (rc < win->first || rc >= win->second) {
-                    return;
-                }
-                if (wctx->ws.raw_attack_damage[target] <= threshold) {
-                    return;
-                }
-                if (g_core->attach_random_anomalies) {
-                    const RandomAnomalyResult r = g_core->attach_random_anomalies(
-                        wctx, target, anomaly_pool_all(), anomaly_count, /*probability_pct=*/100,
-                        self, ChanceSource::Skill);
-                    if (r.landed == 0 && g_core->break_round_effects) {
-                        g_core->break_round_effects(wctx, target);   // "未触发则消除"
-                    }
-                }
-            },
-            WatcherScope::TEAM);
-    } else {
-        *std::any_cast<std::shared_ptr<Win>>(ctx->plugin_storage[kKey1300Window + self]) = *win;
+    const Win window{start, start + rounds};
+    const auto [it, inserted] = ctx->plugin_storage.try_emplace(key, window);
+    if (!inserted) {
+        // 重施只刷新窗口，回调沿用首次注册时的参数。
+        std::any_cast<Win&>(it->second) = window;
+        return EffectResult::kOk;
     }
+    // (a) 受到攻击伤害 -{1}%：REDUCE_PCT 阶段回调（525 窗口判套路）
+    ctx->register_damage_effect(
+        DamagePhase::REDUCE_PCT,
+        self,
+        DamageEffectCategory::MITIGATE,
+        [self, reduce_pct, key](BattleContext* c, int owner) {
+            if (!c || owner != self) {
+                return;
+            }
+            const auto entry = c->plugin_storage.find(key);
+            if (entry == c->plugin_storage.end()) {
+                return;
+            }
+            const auto* win = std::any_cast<Win>(&entry->second);
+            const int rc = c->roundCount;
+            if (!win || rc < win->first || rc >= win->second) {
+                return;
+            }
+            DamageSnapshot& damage = c->resolvedDamage;
+            if (damage.defenderId != self || !damage.isRed || damage.final <= 0) {
+                return;   // 只减"受到的攻击伤害"（红伤）
+            }
+            damage.final = damage.final * (100 - reduce_pct) / 100;
+        }, EffectScope::ON_STAGE, BattleCallbackCopy::Audited);
+    // (b) 裸伤 >{2} → 随机 {3} 种异常；一个都没进 → 消对手回合类效果
+    ctx->event_center_.register_watcher(
+        EventType::EVENT_TAKE_DAMAGE, self, ctx->roundCount, /*duration_rounds=*/0,
+        /*once=*/false,
+        [self, target, threshold, anomaly_count, key](BattleContext* wctx,
+                                                     const BattleEvent& ev) {
+            if (!wctx || ev.actor != target || ev.target != self || !g_core) {
+                return;
+            }
+            if (ev.state != static_cast<int>(State::BATTLE_FIRST_ATTACK_DAMAGE)
+                && ev.state != static_cast<int>(State::BATTLE_SECOND_ATTACK_DAMAGE)) {
+                return;
+            }
+            const auto entry = wctx->plugin_storage.find(key);
+            if (entry == wctx->plugin_storage.end()) {
+                return;
+            }
+            const auto* win = std::any_cast<Win>(&entry->second);
+            const int rc = wctx->roundCount;
+            if (!win || rc < win->first || rc >= win->second) {
+                return;
+            }
+            if (wctx->ws.raw_attack_damage[target] <= threshold) {
+                return;
+            }
+            if (g_core->attach_random_anomalies) {
+                const RandomAnomalyResult r = g_core->attach_random_anomalies(
+                    wctx, target, anomaly_pool_all(), anomaly_count, /*probability_pct=*/100,
+                    self, ChanceSource::Skill);
+                if (r.landed == 0 && g_core->break_round_effects) {
+                    g_core->break_round_effects(wctx, target);   // "未触发则消除"
+                }
+            }
+        },
+        WatcherScope::TEAM, /*valid_id=*/0, /*source_effect_id=*/0, BattleCallbackCopy::Audited);
     return EffectResult::kOk;
 }
 
@@ -351,7 +363,7 @@ EffectResult effect_1302_all_up_maybe_double(BattleContext* ctx, const EffectArg
     if (self < 0 || self > 1 || target < 0 || target > 1 || boost == 0) {
         return EffectResult::kOk;
     }
-    const bool doubled = roll_percent(pct);
+    const bool doubled = roll_percent(ctx->rng(), pct);
     all_stats_up(ctx, self, doubled ? boost * 2 : boost);
     if (!doubled && g_core && g_core->transfer_stat_boosts) {
         g_core->transfer_stat_boosts(ctx, /*from=*/target, /*to=*/self);   // "未触发则吸取"
@@ -585,7 +597,7 @@ EffectResult effect_1315_chance_crit(BattleContext* ctx, const EffectArgs& args)
     if (self < 0 || self > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(pct)) {
+    if (roll_percent(ctx->rng(), pct)) {
         ctx->ws.must_crit[self] = true;   // SKILL_EFFECT 时点写 → 本次 ATTACK_DAMAGE 消费
     }
     return EffectResult::kOk;
@@ -612,7 +624,7 @@ EffectResult effect_1316_first_random_up(BattleContext* ctx, const EffectArgs& a
     }
     const int picks = std::min(count, BattleContext::kAbilityLevelSlotCount);
     for (int i = 0; i < picks; ++i) {
-        const int j = i + sbs_rand() % (BattleContext::kAbilityLevelSlotCount - i);
+        const int j = i + ctx->rng().next() % (BattleContext::kAbilityLevelSlotCount - i);
         const int tmp = slots[i];
         slots[i] = slots[j];
         slots[j] = tmp;

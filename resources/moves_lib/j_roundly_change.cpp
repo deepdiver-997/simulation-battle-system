@@ -96,7 +96,7 @@ EffectResult effect_643_roundly_change(BattleContext* ctx, const EffectArgs& arg
     int count = 0;
     EFFECT_ARG_GUARD(j154_engine_slots(slot_code, slots, &count), 643, args,
                      "643 {2} 槽位码非法（0-5）");
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;   // 申报掷点（100% 确定档恒过）
     }
     // 首跳（施放当回合）

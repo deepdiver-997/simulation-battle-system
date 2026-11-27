@@ -201,9 +201,11 @@ int main() {
     {
         constexpr int kTrials = 16;
         int main_up = 0, fallback_down = 0;
+        SbsRng trial_seeds(20261004);
         for (int t = 0; t < kTrials; ++t) {
             ScenarioBattle b(make_party(self_pet({kHunXue, kPaDa, kPaDa, kPaDa, kPaDa})),
                              make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
+            b.ctx().seed_rng(trial_seeds.next());
             b.start();
             BattleContext& ctx = b.ctx();
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);

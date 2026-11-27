@@ -292,7 +292,7 @@ EffectResult effect_936_anomaly_or_seal(BattleContext* ctx, const EffectArgs& ar
         return EffectResult::kOk;
     }
     bool applied = false;
-    if (roll_percent(chance) && g_core && g_core->apply_anomaly) {
+    if (roll_percent(ctx->rng(), chance) && g_core && g_core->apply_anomaly) {
         // 走真原语：免疫/抗性/反弹/转化全在 core 侧按序处理，这里只看"最终有没有中"。
         applied = g_core->apply_anomaly(ctx, opp, anomaly_id, random_anomaly_duration(), self)
                   == ApplyAnomalyResult::SUCCESS;
@@ -404,7 +404,7 @@ EffectResult effect_1222_first_move_random_pp_zero(BattleContext* ctx, const Eff
         }
     }
     for (int i = 0; i < count && !candidates.empty(); ++i) {
-        const int pick = sbs_rand() % static_cast<int>(candidates.size());
+        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
         pet.skills[candidates[pick]].pp = 0;
         candidates.erase(candidates.begin() + pick);
     }
@@ -787,7 +787,7 @@ EffectResult effect_39_lower_pp_then_lock(BattleContext* ctx, const EffectArgs& 
         return EffectResult::kOk;
     }
     ElfPet& pet = ctx->getPet(opp);
-    if (roll_percent(percent)) {
+    if (roll_percent(ctx->rng(), percent)) {
         for (int i = 0; i < 5; ++i) {
             Skills& sk = pet.skills[i];
             if (sk.pp > 0) {

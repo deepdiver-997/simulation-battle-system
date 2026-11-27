@@ -46,7 +46,7 @@ int probe_holder_heal(std::vector<int> db_args, int monster_id, int hp_start) {
     ScenarioBattle b(scenario::make_party(holder_pet(std::move(db_args), monster_id)),
                      scenario::make_party(attacker_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp = hp_start;
     b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
@@ -60,7 +60,7 @@ std::pair<int, int> probe_reflect(std::vector<int> db_args, int monster_id) {
     ScenarioBattle b(scenario::make_party(holder_pet(std::move(db_args), monster_id)),
                      scenario::make_party(attacker_pet()));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     const int holder_hp0 = ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp;
     const int atk_hp0 = ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp;

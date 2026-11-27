@@ -47,7 +47,7 @@ EffectResult effect_140_random_fraction_drain(BattleContext* ctx, const EffectAr
     EFFECT_ARG_GUARD(min_denom > 0 && max_denom >= min_denom, 140, args,
                      "需要 1 <= 下界分母 <= 上界分母");
     const int span = max_denom - min_denom + 1;
-    const int denom = min_denom + (span > 1 ? sbs_rand() % span : 0);
+    const int denom = min_denom + (span > 1 ? ctx->rng().next() % span : 0);
     const int cur = ctx->getPet(target).hp;   // 实扣前快照
     const int amount = cur / denom;
     if (amount > 0 && cur > 0 && g_core && g_core->deal_pink_damage) {

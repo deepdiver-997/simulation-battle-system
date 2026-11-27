@@ -54,7 +54,7 @@ int probe_282(int skill_id, std::vector<int> db_args) {
                                                  1000000, make_mark(282, std::move(db_args), 2516))}),
         scenario::make_party(atk));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20261004);
+    ctx.seed_rng(20261004);
     b.start();
     const int hp0 = ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp;
     b.submit_operation(0, BattleFsm::ActionType::NONE, -1);

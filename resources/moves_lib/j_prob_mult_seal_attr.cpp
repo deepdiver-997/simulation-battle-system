@@ -51,7 +51,7 @@ EffectResult effect_921_prob_mult_or_seal(BattleContext* ctx, const EffectArgs& 
     EFFECT_ARG_GUARD(mult >= 1, 921, args, "需要 倍数 ≥ 1");
     EFFECT_ARG_GUARD(rounds >= 0, 921, args, "需要 回合 ≥ 0");
 
-    const bool rolled = roll_percent(pct);
+    const bool rolled = roll_percent(ctx->rng(), pct);
     ctx->plugin_storage[k921AuditBase + owner] = rolled ? 1 : 0;
     if (!rolled) {
         // 未触发 → {2} 回合封属性技（时长型，count=0）。

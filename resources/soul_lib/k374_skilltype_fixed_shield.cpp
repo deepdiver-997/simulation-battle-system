@@ -128,7 +128,7 @@ EffectResult k374_752_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                 if (atk_pct <= 0 || !g_core->fixed_damage) {
                     return;
                 }
-                if (roll_percent(atk_pct)) {
+                if (roll_percent(c->rng(), atk_pct)) {
                     (void)g_core->fixed_damage(c, 1 - owner, fixed_amt);
                 } else {
                     compensate_burn();
@@ -139,7 +139,7 @@ EffectResult k374_752_enter(BattleContext* ctx, const SoulNodeArgs& a) {
             if (attr_pct <= 0) {
                 return;
             }
-            if (roll_percent(attr_pct)) {
+            if (roll_percent(c->rng(), attr_pct)) {
                 ElfPet& self = c->getPet(owner);
                 // 同源刷新（ShieldBank 头注约定：同魂印盾不叠条）——重挂 300 满额
                 self.shield_bank_.add(ShieldBank::kSoulShieldPriority, shield_amt,

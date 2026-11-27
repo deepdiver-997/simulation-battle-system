@@ -89,14 +89,14 @@ int main() {
         {
             ScenarioBattle b(make_party(plain_mark_pet()), make_party(foe_pet()));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             ctrl_loss = mark_strike(b, 3000);
         }
         int mark_loss = 0;
         {
             ScenarioBattle b(make_party(mark_pet()), make_party(foe_pet()));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             mark_loss = mark_strike(b, 3000);
         }
         CHECK(ctrl_loss > 0, "T4200 对照局前提：印主拍打有伤害");
@@ -113,14 +113,14 @@ int main() {
         {
             ScenarioBattle b(make_party(plain_mark_pet()), make_party(foe_pet()));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             ctrl_loss = mark_strike(b, 99999);
         }
         int mark_loss = 0;
         {
             ScenarioBattle b(make_party(mark_pet()), make_party(foe_pet()));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             mark_loss = mark_strike(b, 99999);
         }
         // 绝对断言（不与对照局比）：满血对手不该吃到 50% 增伤。

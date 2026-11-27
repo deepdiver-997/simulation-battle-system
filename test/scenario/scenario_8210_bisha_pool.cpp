@@ -142,7 +142,7 @@ int main() {
             b.start();
             BattleContext& ctx = b.ctx();
             ctx.ability_levels[1][0] = -1;   // 对手处于能力下降状态（开战清零后预置）
-            sbs_srand(kSeed);
+            b.ctx().seed_rng(kSeed);
             const int before = ctx.getPet(1).hp;
             cast_round(b, 0);
             const int d1 = before - ctx.getPet(1).hp;
@@ -160,7 +160,7 @@ int main() {
                              scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
             b2.start();
             BattleContext& ctx2 = b2.ctx();
-            sbs_srand(kSeed);   // 同 seed → 伤害方差同抽（每结算恰 1 抽）
+            b2.ctx().seed_rng(kSeed);   // 同 seed → 伤害方差同抽（每结算恰 1 抽）
             const int before2 = ctx2.getPet(1).hp;
             cast_round(b2, 0);
             const int d2 = before2 - ctx2.getPet(1).hp;
@@ -185,7 +185,7 @@ int main() {
             BattleContext& ctx = b.ctx();
             ctx.ability_levels[1][2] = 2;
             ctx.ability_levels[1][3] = 2;
-            sbs_srand(20261109);
+            b.ctx().seed_rng(20261109);
             cast_round(b, 0);
             CHECK_EQ(a1325(ctx, 0, 0), 1, "T2a 正槽不闭门（观测=1）");
             CHECK_EQ(a1325(ctx, 0, 3), 0, "T2a 负槽快照=0");
@@ -199,7 +199,7 @@ int main() {
             BattleContext& ctx = b.ctx();
             ctx.ability_levels[1][0] = -2;
             ctx.ability_levels[1][4] = -2;
-            sbs_srand(20261110);
+            b.ctx().seed_rng(20261110);
             cast_round(b, 0);
             CHECK_EQ(a1325(ctx, 0, 3), 2, "T2b 负槽快照=2（负槽计数与降幅无关）");
             CHECK_EQ(a1325(ctx, 0, 0), 0, "T2b 门闭");
@@ -213,7 +213,7 @@ int main() {
             BattleContext& ctx = b.ctx();
             ctx.ability_levels[1][0] = -1;
             ctx.ability_levels[1][4] = 3;
-            sbs_srand(20261111);
+            b.ctx().seed_rng(20261111);
             cast_round(b, 0);
             CHECK_EQ(a1325(ctx, 0, 3), 1, "T2c 负槽快照=1（正槽不计入）");
             CHECK_EQ(a1325(ctx, 0, 0), 0, "T2c 门闭（正槽不抵消负槽）");
@@ -229,7 +229,7 @@ int main() {
                                                  /*atk=*/300)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261112);
+        b.ctx().seed_rng(20261112);
         const int before0 = ctx.getPet(0).hp;
         const int before1 = ctx.getPet(1).hp;
         both_attack_round(b, 0, 0);
@@ -254,7 +254,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261113);
+        b.ctx().seed_rng(20261113);
         cast_round(b, 0);
         CHECK_EQ(a1325(ctx, 0, 0), 1, "T4 门开（长链尾零参切片正确）");
         CHECK_EQ(a1325(ctx, 0, 1), 1, "T4 置暴=1");
@@ -275,7 +275,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261114);
+        b.ctx().seed_rng(20261114);
         cast_round(b, 0);   // R0 必暴载体
         CHECK_EQ(a1748(ctx, 0, 0), 1, "V2 申报回合数=1");
         CHECK_EQ(a1748(ctx, 0, 1), 1, "V2 暴击旗观测=1（本回合已暴击）");
@@ -297,7 +297,7 @@ int main() {
                          scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b2.start();
         BattleContext& ctx2 = b2.ctx();
-        sbs_srand(20261114);   // 同 seed → V1/V2 每回合方差抽序对齐
+        b2.ctx().seed_rng(20261114);   // 同 seed → V1/V2 每回合方差抽序对齐
         cast_round(b2, 0);   // R0 载体（crit_rate=0 未暴 → 门开）
         CHECK_EQ(a1748(ctx2, 0, 0), 1, "V1 申报回合数=1");
         CHECK_EQ(a1748(ctx2, 0, 1), 0, "V1 暴击旗观测=0");
@@ -329,7 +329,7 @@ int main() {
                                                  /*atk=*/300)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261115);
+        b.ctx().seed_rng(20261115);
         both_attack_round(b, 0, 0);   // R0 双载体开窗
         CHECK_EQ(a1748(ctx, 0, 0), 2, "V3 0 侧回合数=2（35553 切片）");
         CHECK_EQ(a1748(ctx, 1, 0), 2, "V3 1 侧回合数=2（参不串位）");
@@ -365,7 +365,7 @@ int main() {
                         scenario::make_party(foe({kPaiDa, kPaiDa, kPaiDa, kPaiDa, kPaiDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(20261116);
+        b.ctx().seed_rng(20261116);
         cast_round(b, 0);   // R0 载体（crit_rate=0 未暴 → 双窗齐开）
         CHECK_EQ(a1748(ctx, 0, 0), 1, "V4 1748 申报回合数=1");
         CHECK_EQ(a1748(ctx, 0, 1), 0, "V4 1748 暴击旗观测=0");

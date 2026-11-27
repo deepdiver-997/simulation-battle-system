@@ -29,7 +29,7 @@ EffectResult effect_598_prob_restore_pp(BattleContext* ctx, const EffectArgs& ar
     if (!g_core || !g_core->pp_restore) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(prob)) {
+    if (!roll_percent(ctx->rng(), prob)) {
         return EffectResult::kOk;   // 概率未命中：不恢复
     }
     (void)g_core->pp_restore(ctx, owner, points, /*only_empty=*/false);

@@ -79,7 +79,7 @@ EffectResult effect_1534_exile_pp_drain(BattleContext* ctx, const EffectArgs& ar
             }
         }
         if (n > 0) {
-            chosen = slots[sbs_rand() % n];   // 随机 1 个被放逐的精灵
+            chosen = slots[ctx->rng().next() % n];   // 随机 1 个被放逐的精灵
         }
     }
     if (chosen < 0) {
@@ -131,7 +131,7 @@ EffectResult effect_1532_pp_zero_tick(BattleContext* ctx, const EffectArgs& args
         }
     }
     for (int n = 0; n < stacks && !candidates.empty(); ++n) {
-        const int pick = sbs_rand() % candidates.size();
+        const int pick = ctx->rng().next() % candidates.size();
         opp.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
         candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(pick));
     }
@@ -212,7 +212,7 @@ EffectResult effect_600_gender_damage_or_fatigue(BattleContext* ctx, const Effec
         ctx->ws.damage_add_pct[self] += static_cast<float>(dmg_pct);
         return EffectResult::kOk;
     }
-    if (roll_percent(chance) && g_core->apply_anomaly && is_valid_abnormal_status_id(status)) {
+    if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly && is_valid_abnormal_status_id(status)) {
         g_core->apply_anomaly(ctx, target, status, random_anomaly_duration(), self);
     }
     return EffectResult::kOk;
@@ -252,7 +252,7 @@ EffectResult effect_1346_tick(BattleContext* ctx, const EffectArgs& args) {
     if (self < 0 || self > 1 || target < 0 || target > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         all_stats_up(ctx, self, up);
     } else if (g_core->stat_drop && down > 0) {
         for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {

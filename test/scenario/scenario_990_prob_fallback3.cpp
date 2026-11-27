@@ -213,7 +213,7 @@ int main() {
     }
 
     // ══ T994 1024 免疫窗两半（25053 冥界王权 → 1024=[3,50,100]）══
-    // 种子校准：载体属性技 + 同链无 rand 消费 → 掷点=校准后首个 sbs_rand()。
+    // 种子校准：载体属性技 + 同链无 rand 消费 → 掷点=校准后首个对局掷点。
     {
         int seed_fail = -1;
         int seed_hit = -1;
@@ -235,7 +235,7 @@ int main() {
                                                 /*speed=*/100, /*atk=*/3000)));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(seed_fail);
+            ctx.seed_rng(seed_fail);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);   // 25053
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);   // 拍打
             b.drive();
@@ -254,7 +254,7 @@ int main() {
                                                 /*speed=*/100, /*atk=*/3000)));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(seed_hit);
+            ctx.seed_rng(seed_hit);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();

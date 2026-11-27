@@ -169,7 +169,7 @@ int probe_mask(int seed, const std::vector<int>& args, int monster_id) {
     ScenarioBattle b(make_party(mark_pet(2514, args, monster_id)),
                      make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_use(b);
     return read_key(b, k2514Mask);
 }
@@ -194,7 +194,7 @@ int find_seed_crit_window() {
         ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                          make_party(foe_pet()));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_use(b);
         own_use(b);
         const bool c2 = b.ctx().crit_happened[0];
@@ -217,10 +217,10 @@ int main() {
 
     // ══ T7720a 2514 触发+审计 mask+触发项数账本（R1 +1、R2 再 +1）═══════════════
     {
-        sbs_srand(77201);
         ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(77201);
         own_use(b);
         const int mask = read_key(b, k2514Mask);
         CHECK(mask > 0 && mask < 64, "T7720a 审计 mask 落账（1..63）");
@@ -242,10 +242,10 @@ int main() {
         const int seed = find_seed_crit_window();
         CHECK(seed > 0, "T7720b 找到必暴窗种子");
         if (seed > 0) {
-            sbs_srand(seed);
             ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                              make_party(foe_pet()));
             b.start();
+            b.ctx().seed_rng(seed);
             own_use(b);   // R1 触发
             own_use(b);   // R2：RS 重写 ws.must_crit → 必暴
             CHECK_EQ(b.ctx().crit_happened[0] ? 1 : 0, 1, "T7720b R2 必暴生效");
@@ -262,10 +262,10 @@ int main() {
         const int seed = find_seed_mask(2, 0, kRow2514Body, 4905);   // bit1；避 bit0
         CHECK(seed > 0, "T7720c 找到封回血种子");
         if (seed > 0) {
-            sbs_srand(seed);
             ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                              make_party(foe_healer_pet()));
             b.start();
+            b.ctx().seed_rng(seed);
             b.ctx().getPet(1).hp = kMaxHp - 400;   // 1067 低体门：回已损 1/2=200
             own_use_attr(b);   // R1 属性技触发（mask 含 bit1，无伤害污染）→
                                // HEAL_BLOCK 票挂对手；R1 末 1067 回血被票封锁
@@ -287,9 +287,9 @@ int main() {
         if (seed > 0) {
             // 对照：无印者 vs 防+6 对手 → 伤带被防御倍率压到 <85
             {
-                sbs_srand(77204);
                 ScenarioBattle b(make_party(plain_pet()), make_party(foe_pet()));
                 b.start();
+                b.ctx().seed_rng(77204);
                 (void)stat_change(&b.ctx(), 1, /*stat=防御*/ 2, 6);
                 const int hp0 = b.pet(1).hp;
                 own_use(b);
@@ -299,10 +299,10 @@ int main() {
                           + "）");
             }
             // 窗内：R2 攻击无视对手提升 → 原始带 [85,104]
-            sbs_srand(seed);
             ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                              make_party(foe_pet()));
             b.start();
+            b.ctx().seed_rng(seed);
             (void)stat_change(&b.ctx(), 1, 2, 6);
             own_use(b);   // R1 触发
             const int hp0 = b.pet(1).hp;
@@ -320,10 +320,10 @@ int main() {
         const int seed = find_seed_mask(8, 0, kRow2514Body, 4905);   // bit3
         CHECK(seed > 0, "T7720e 找到提升锁种子");
         if (seed > 0) {
-            sbs_srand(seed);
             ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                              make_party(foe_pet()));
             b.start();
+            b.ctx().seed_rng(seed);
             // 无窗控制：入场未触发 → 清提升生效
             (void)stat_change(&b.ctx(), 0, /*stat=攻击*/ 0, 2);
             (void)clear_stat_boosts(&b.ctx(), 0);
@@ -344,9 +344,9 @@ int main() {
         if (seed > 0) {
             // 无窗对照：foe 攻 owner → 原带 [85,104]
             {
-                sbs_srand(77206);
                 ScenarioBattle b(make_party(plain_pet()), make_party(foe_pet()));
                 b.start();
+                b.ctx().seed_rng(77206);
                 const int hp0 = b.pet(0).hp;
                 foe_attack(b);
                 const int d_ctl = hp0 - b.pet(0).hp;
@@ -355,10 +355,10 @@ int main() {
                           + "）");
             }
             // 本体 30%：R2 受击带 ×0.7（R2 印主 pass，无重触发污染）
-            sbs_srand(seed);
             ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                              make_party(foe_pet()));
             b.start();
+            b.ctx().seed_rng(seed);
             own_use(b);   // R1 触发
             const int hp0 = b.pet(0).hp;
             foe_attack(b);   // R2 foe 攻击（RS 重写 damage_reduce_add）
@@ -373,10 +373,10 @@ int main() {
         const int seed = find_seed_mask(16, 33, kRow2514Partner, 4905);
         CHECK(seed > 0, "T7720f 找到伙伴行减伤种子");
         if (seed > 0) {
-            sbs_srand(seed);
             ScenarioBattle b(make_party(mark_pet(2514, kRow2514Partner, 4905)),
                              make_party(foe_pet()));
             b.start();
+            b.ctx().seed_rng(seed);
             own_use(b);
             const int hp0 = b.pet(0).hp;
             foe_attack(b);
@@ -393,10 +393,10 @@ int main() {
         const int seed = find_seed_mask(32, 0, kRow2514Body, 4905);   // bit5
         CHECK(seed > 0, "T7720g 找到回合末回血种子");
         if (seed > 0) {
-            sbs_srand(seed);
             ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                              make_party(foe_pet()));
             b.start();
+            b.ctx().seed_rng(seed);
             b.ctx().getPet(0).hp = 50000;
             own_use(b);   // R1 触发 → ROUND_END 回 300
             CHECK_EQ(b.pet(0).hp, 50300, "T7720g R1 末回血 300（精确）");
@@ -410,10 +410,10 @@ int main() {
 
     // ══ T7720h 2514 伙伴行：触发 2 项（popcount=2）+ 账本 +1 语义 ═══════════════
     {
-        sbs_srand(77208);
         ScenarioBattle b(make_party(mark_pet(2514, kRow2514Partner, 4905)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(77208);
         own_use(b);
         const int mask = read_key(b, k2514Mask);
         CHECK(mask > 0 && mask < 64, "T7720h 伙伴行 mask 落账");
@@ -425,11 +425,11 @@ int main() {
 
     // ══ T7720i 2514 boss 门：全节点 boss_invalid → 无触发无账本 ═════════════════
     {
-        sbs_srand(77209);
         ScenarioBattle b(make_party(mark_pet(2514, kRow2514Body, 4905)),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
+        b.ctx().seed_rng(77209);
         own_use(b);
         CHECK_EQ(read_key(b, k2514Mask), -1, "T7720i boss：审计 mask 不落账");
         CHECK_EQ(read_key(b, k2514Ledger), -1, "T7720i boss：触发项数账本不写");
@@ -438,10 +438,10 @@ int main() {
 
     // ══ T7725a 2520 观测+致死拦截：复活回满+消强+观测退出（一次性）══════════════
     {
-        sbs_srand(77251);
         ScenarioBattle b(make_party(mark_pet(2520, kRow2520Body, 4915)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(77251);
         CHECK_EQ(read_key(b, k2520Obs), 1, "T7725a 战斗开始进入事象观测");
         (void)stat_change(&b.ctx(), 1, /*stat=攻击*/ 0, 3);   // 对手提升待消
         b.ctx().getPet(0).hp = 50;   // 必死构造：foe 原带 [87,102] > 50
@@ -455,10 +455,10 @@ int main() {
 
     // ══ T7725b 2520 观测退出后二次致死不拦 ═══════════════════════════════════════
     {
-        sbs_srand(77252);
         ScenarioBattle b(make_party(mark_pet(2520, kRow2520Body, 4915)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(77252);
         b.ctx().getPet(0).hp = 50;
         foe_attack(b);   // R1：拦截复活
         CHECK_EQ(b.pet(0).hp, kMaxHp, "T7725b R1 拦截复活");
@@ -471,10 +471,10 @@ int main() {
     // ══ T7725c 2520 记录账本：慢速印主（对手先动记录类型）+ 自施加烧伤 →
     //      同型命中附加烧伤给对手 + 当回合末自身异常解除 ══════════════════════════
     {
-        sbs_srand(77253);
         ScenarioBattle b(make_party(mark_pet(2520, kRow2520Body, 4915, /*speed=*/50)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(77253);
         CHECK_EQ(read_key(b, k2520Obs), 1, "T7725c 观测中（非致死不消耗）");
         (void)apply_anomaly(&b.ctx(), 0, kBurn, /*duration_rounds=*/3, /*actor=*/1);
         both_attack(b);   // 对手先动（speed 100>50）：记录物攻类型 → 印主同型命中
@@ -488,10 +488,10 @@ int main() {
 
     // ══ T7725d 2520 未触发→凝滞：快速印主先动（对手未用技，无类型记录）══════════
     {
-        sbs_srand(77254);
         ScenarioBattle b(make_party(mark_pet(2520, kRow2520Body, 4915, /*speed=*/300)),
                          make_party(foe_pet()));
         b.start();
+        b.ctx().seed_rng(77254);
         int stasis_seen = 0;
         b.ctx().event_center_.register_watcher(
             EventType::EVENT_ANOMALY_APPLIED, /*owner=*/0, b.ctx().roundCount,
@@ -513,10 +513,10 @@ int main() {
 
     // ══ T7725e 2520 异型不附加：对手属性技（类型 2）vs 印主攻击（类型 0）═════════
     {
-        sbs_srand(77255);
         ScenarioBattle b(make_party(mark_pet(2520, kRow2520Body, 4915, /*speed=*/50)),
                          make_party(foe_pet(/*speed=*/100, /*with_attr=*/true)));
         b.start();
+        b.ctx().seed_rng(77255);
         (void)apply_anomaly(&b.ctx(), 0, kBurn, 3, 1);   // 记录烧伤
         both_attack_foe_attr(b);   // 对手先动属性技（skill2）→ 印主物攻 → 类型不同
         // 凝滞施加面由 T7725d 探针证；本用例查结果面：对手无附加 + 自身烧伤被解除
@@ -530,11 +530,11 @@ int main() {
 
     // ══ T7725f 2520 boss 门：不进观测、致死不拦 ═════════════════════════════════
     {
-        sbs_srand(77256);
         ScenarioBattle b(make_party(mark_pet(2520, kRow2520Body, 4915)),
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
+        b.ctx().seed_rng(77256);
         CHECK_EQ(read_key(b, k2520Obs), -1, "T7725f boss：不进入事象观测");
         b.ctx().getPet(0).hp = 50;
         foe_attack(b);

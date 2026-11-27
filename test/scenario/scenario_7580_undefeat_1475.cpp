@@ -115,7 +115,7 @@ KillProbe kill_probe(const std::vector<int>& args, int seed, int own_hp0 = -1) {
     if (own_hp0 >= 0) {
         b.ctx().getPet(0).hp = own_hp0;
     }
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_hit_round(b);   // R1：拍死 50 血脆皮
     REQUIRE(b.ctx().getPet(1).hp <= 0);
     const int succ0 = b.ctx().seerRobot[1].elfPets[1].hp;
@@ -153,7 +153,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRowBase)), make_party(plain_pet()));
         b.start();
-        sbs_srand(7581);
+        b.ctx().seed_rng(7581);
         std::cerr << "[DBG7580] preR1 stamp=" << read_key(b, kBase + kRoundAStamp)
                   << " roundCount=" << b.ctx().roundCount << std::endl;
         const int hp0 = b.ctx().getPet(1).hp;
@@ -210,7 +210,7 @@ int main() {
         // 增伤档位差：R1 未击败 → R2 FMR 消费当回合攻击 ×2（消费与施放同回合）。
         ScenarioBattle b(make_party(mark_pet(kRowPartner)), make_party(plain_pet()));
         b.start();
-        sbs_srand(7582);
+        b.ctx().seed_rng(7582);
         own_hit_round(b);   // R1：未击败（raw 带）
         const int hp0 = b.ctx().getPet(1).hp;
         own_hit_round(b);   // R2：FMR 消费戳 → 本回合攻击 ×2
@@ -233,7 +233,7 @@ int main() {
         ScenarioBattle b(own, make_party(plain_pet(300, 1200, kMaxHp, 3, "凶手")));
         b.start();
         b.ctx().seerRobot[0].elfPets[1].hp = 50000;   // 压场下队友血（观测回复）
-        sbs_srand(7583);
+        b.ctx().seed_rng(7583);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R1：对手先手拍死 hp=1 持印者 → 死亡节点（场下回复+待继承账）
@@ -262,7 +262,7 @@ int main() {
                                                plain_pet(100, 300, kMaxHp, 3, "接班")});
         b.ctx().is_boss_challenge = true;
         b.start();
-        sbs_srand(7584);
+        b.ctx().seed_rng(7584);
         own_hit_round(b);
         REQUIRE(b.ctx().getPet(1).hp <= 0);
         b.submit_operation(1, BattleFsm::ActionType::CHOOSE_PET, 1);
@@ -281,7 +281,7 @@ int main() {
         b.ctx().is_boss_challenge = true;
         b.start();
         b.ctx().seerRobot[0].elfPets[1].hp = 50000;
-        sbs_srand(7585);
+        b.ctx().seed_rng(7585);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();

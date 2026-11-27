@@ -61,7 +61,7 @@ EffectResult effect_1417_no_drop_random_drop(BattleContext* ctx, const EffectArg
         pool.push_back(i);
     }
     for (int k = 0; k < count && !pool.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(pool.size());
+        const int pick = ctx->rng().next() % static_cast<int>(pool.size());
         const int stat = pool[static_cast<std::size_t>(pick)];
         pool.erase(pool.begin() + pick);
         (void)g_core->stat_drop(ctx, opp, stat, amount, owner);

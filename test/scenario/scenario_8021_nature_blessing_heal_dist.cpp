@@ -82,11 +82,11 @@ int run_hit_only(int seed, int hp0 = 1000) {
     b.start();
     BattleContext& ctx = b.ctx();
     ctx.getPet(0).hp = hp0;
-    sbs_srand(424242);
+    ctx.seed_rng(424242);
     b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
     b.drive();   // R0：武装窗（对手属性技，无事件、无伤害）
-    sbs_srand(seed);
+    ctx.seed_rng(seed);
     b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
     b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
     b.drive();   // R1：受击 → 选档（draw2）
@@ -121,11 +121,11 @@ int main() {
                 b.start();
                 BattleContext& ctx = b.ctx();
                 ctx.getPet(0).hp = 1000;
-                sbs_srand(424242);
+                ctx.seed_rng(424242);
                 b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
                 b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
                 b.drive();
-                sbs_srand(c.seed);
+                ctx.seed_rng(c.seed);
                 b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
                 b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
                 b.drive();
@@ -151,11 +151,11 @@ int main() {
         b.start();
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 100000 - 149;   // 缺口 149（受击后 149+d）
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
-        sbs_srand(765971402);   // hit-only draw2=50 → 300 档
+        ctx.seed_rng(765971402);   // hit-only draw2=50 → 300 档
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();
@@ -175,11 +175,11 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
         ctx.heal_mod_pct[0] = -50;
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
-        sbs_srand(1531942804);   // hit-only draw2=0 → 200 档
+        ctx.seed_rng(1531942804);   // hit-only draw2=0 → 200 档
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();
@@ -198,11 +198,11 @@ int main() {
         BattleContext& ctx = b.ctx();
         ctx.getPet(0).hp = 1000;
         ctx.grant_immunity(0, ImmunityType::HEAL_BLOCK, coverage_all(), 0, 0, 8001);
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();
-        sbs_srand(1531942804);
+        ctx.seed_rng(1531942804);
         b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
         b.drive();
@@ -221,7 +221,7 @@ int main() {
                                                  /*speed=*/100, /*atk=*/10000)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(424242);
+        ctx.seed_rng(424242);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.drive();   // R0：我武装（先手），对手拍打 40 威力 atk10000 → 致死
@@ -244,11 +244,11 @@ int main() {
             b.start();
             BattleContext& ctx = b.ctx();
             ctx.getPet(0).hp = 1000;
-            sbs_srand(424242);
+            ctx.seed_rng(424242);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();
-            sbs_srand(424242);
+            ctx.seed_rng(424242);
             b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
             b.drive();
@@ -271,11 +271,11 @@ int main() {
             b.start();
             BattleContext& ctx = b.ctx();
             ctx.getPet(0).hp = 1000;
-            sbs_srand(424242);
+            ctx.seed_rng(424242);
             b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
             b.drive();
-            sbs_srand(static_cast<unsigned>(s));
+            ctx.seed_rng(static_cast<unsigned>(s));
             b.submit_operation(0, BattleFsm::ActionType::NONE, -1);
             b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 1);
             b.drive();

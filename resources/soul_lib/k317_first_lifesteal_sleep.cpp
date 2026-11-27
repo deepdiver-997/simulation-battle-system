@@ -93,7 +93,7 @@ EffectResult k317_339_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             if (lifesteal > 0 && amount > 0) {
                 (void)g_core->heal_amount(c, owner, amount * lifesteal / 100);
             }
-            if (sleep_pct > 0 && roll_percent(sleep_pct) &&
+            if (sleep_pct > 0 && roll_percent(c->rng(), sleep_pct) &&
                 is_valid_abnormal_status_id(sleep_code)) {
                 (void)g_core->apply_anomaly_checked(c, 1 - owner, sleep_code,
                                                     random_anomaly_duration(), owner,

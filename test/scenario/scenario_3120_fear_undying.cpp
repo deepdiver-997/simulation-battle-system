@@ -79,7 +79,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet<400>(row_30)), make_party(plain_pet()));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
         b.drive();
@@ -90,7 +90,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet<400>(row_30)), make_party(plain_pet()));
         b.start();
-        sbs_srand(30);
+        b.ctx().seed_rng(30);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
         b.drive();
@@ -101,7 +101,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet<400>(row_30)), make_party(plain_pet()));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 1);   // 缩头（属性技）
         b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
         b.drive();
@@ -137,7 +137,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet<400>(row_40)), make_party(plain_pet()));
         b.start();
-        sbs_srand(14);
+        b.ctx().seed_rng(14);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
         b.submit_operation(1, BattleFsm::ActionType::NONE, 0);
         b.drive();

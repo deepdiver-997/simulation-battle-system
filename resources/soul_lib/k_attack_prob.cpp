@@ -101,7 +101,7 @@ void rider_dispatch(BattleContext* c, int owner, int opp, int pct_raw, int arg2)
     if (RIDER == AttackRider::Kill) {
         // 151：千分比 → 百分比（20→2%、30→3%，工单互锚口径）
         const int pct = pct_raw / 10;
-        if (!roll_percent(pct)) {
+        if (!roll_percent(c->rng(), pct)) {
             return;
         }
         if (c->getPet(opp).hp <= 0) {
@@ -113,7 +113,7 @@ void rider_dispatch(BattleContext* c, int owner, int opp, int pct_raw, int arg2)
         return;
     }
     if (RIDER == AttackRider::FixedDamage) {
-        if (!roll_percent(pct_raw)) {
+        if (!roll_percent(c->rng(), pct_raw)) {
             return;
         }
         if (g_core && g_core->fixed_damage) {

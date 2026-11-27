@@ -175,7 +175,7 @@ EffectResult effect_716_pp_zero_window(BattleContext* ctx, const EffectArgs& arg
             std::iota(idx.begin(), idx.end(), 0);
             const int n = std::min(count, slots);
             for (int i = 0; i < n; ++i) {
-                const int j = i + (slots - i > 1 ? sbs_rand() % (slots - i) : 0);
+                const int j = i + (slots - i > 1 ? c->rng().next() % (slots - i) : 0);
                 std::swap(idx[static_cast<std::size_t>(i)],
                           idx[static_cast<std::size_t>(j)]);
                 (void)g_core->pp_zero_slot(c, attacker, idx[static_cast<std::size_t>(i)],

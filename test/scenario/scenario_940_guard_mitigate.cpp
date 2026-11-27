@@ -47,7 +47,7 @@ int probe_red_loss(int defender_id, const SoulMark& mark) {
     ScenarioBattle b(scenario::make_party(defender_pet(defender_id, mark)),
                      scenario::make_party(attacker_pet(2)));
     BattleContext& ctx = b.ctx();
-    sbs_srand(20260916);   // 对照局对齐：每次探针同一 rand 序
+    ctx.seed_rng(20260916);   // 对照局对齐：每次探针同一 rand 序
     b.start();
     const int hp0 = ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp;
     b.submit_operation(0, BattleFsm::ActionType::NONE, -1);

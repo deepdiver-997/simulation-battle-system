@@ -77,41 +77,52 @@ public:
         , gender(other.gender)
         , soulMark(other.soulMark)
         , commonTrait(other.commonTrait)
+        , resistance(other.resistance)
+        , damage_resist(other.damage_resist)
         , numericalBase(other.numericalBase)
         , numericalProperties(other.numericalProperties)
         , hp(numericalProperties[NumericalPropertyIndex::HP])
         , speed_priority(other.speed_priority)
         , shield(other.shield)
         , cover(other.cover)
+        , shield_bank_(other.shield_bank_)
+        , hood_bank_(other.hood_bank_)
+        , is_spirit_king(other.is_spirit_king)
+        , has_hp_consume_kit(other.has_hp_consume_kit)
+        , damage_suppress_mask(other.damage_suppress_mask)
         , is_locked(other.is_locked)
         , skills(other.skills)
         , marks(other.marks)
         , soulmark_storage(other.soulmark_storage)
         , on_stage_storage(other.on_stage_storage)
-        , resistance(other.resistance)
-        , damage_resist(other.damage_resist)
         , id(other.id)
         , name(other.name) {}
 
-    ElfPet(ElfPet&& other) noexcept
+    // Skills has no move constructor; moving the array may invoke a throwing copy.
+    ElfPet(ElfPet&& other)
         : elementalAttributes(std::move(other.elementalAttributes))
         , soulSeal(other.soulSeal)
         , gender(other.gender)
         , soulMark(std::move(other.soulMark))
         , commonTrait(std::move(other.commonTrait))
+        , resistance(std::move(other.resistance))
+        , damage_resist(std::move(other.damage_resist))
         , numericalBase(other.numericalBase)
         , numericalProperties(other.numericalProperties)
         , hp(numericalProperties[NumericalPropertyIndex::HP])
         , speed_priority(other.speed_priority)
         , shield(other.shield)
         , cover(other.cover)
+        , shield_bank_(other.shield_bank_)
+        , hood_bank_(other.hood_bank_)
+        , is_spirit_king(other.is_spirit_king)
+        , has_hp_consume_kit(other.has_hp_consume_kit)
+        , damage_suppress_mask(other.damage_suppress_mask)
         , is_locked(other.is_locked)
         , skills(std::move(other.skills))
         , marks(std::move(other.marks))
         , soulmark_storage(std::move(other.soulmark_storage))
         , on_stage_storage(std::move(other.on_stage_storage))
-        , resistance(std::move(other.resistance))
-        , damage_resist(std::move(other.damage_resist))
         , id(other.id)
         , name(std::move(other.name)) {}
 
@@ -129,6 +140,11 @@ public:
         speed_priority = other.speed_priority;
         shield = other.shield;
         cover = other.cover;
+        shield_bank_ = other.shield_bank_;
+        hood_bank_ = other.hood_bank_;
+        is_spirit_king = other.is_spirit_king;
+        has_hp_consume_kit = other.has_hp_consume_kit;
+        damage_suppress_mask = other.damage_suppress_mask;
         is_locked = other.is_locked;
         skills = other.skills;
         marks = other.marks;
@@ -141,7 +157,7 @@ public:
         return *this;
     }
 
-    ElfPet& operator=(ElfPet&& other) noexcept {
+    ElfPet& operator=(ElfPet&& other) {
         if (this == &other) {
             return *this;
         }
@@ -155,6 +171,11 @@ public:
         speed_priority = other.speed_priority;
         shield = other.shield;
         cover = other.cover;
+        shield_bank_ = other.shield_bank_;
+        hood_bank_ = other.hood_bank_;
+        is_spirit_king = other.is_spirit_king;
+        has_hp_consume_kit = other.has_hp_consume_kit;
+        damage_suppress_mask = other.damage_suppress_mask;
         is_locked = other.is_locked;
         skills = std::move(other.skills);
         marks = std::move(other.marks);

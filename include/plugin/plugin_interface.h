@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include <effects/battle_callback_copy.h>
 #include <fsm/state.h>
 
 #include <plugin/id_collision.h>   // id 撞号审计的来源采集（2026-10-22）
@@ -124,7 +125,8 @@ struct SoulMarkHooks {
 // 重置 = 计数器清零，一份状态。
 //
 // 参数：owner = 执行方；skill_id = 正在执行的技能 id；unit_index = 单元在该技能
-//       `parsed_units_` 里的下标；condition = 该单元当前条件（UnitCondition 整数值）。
+//       解析程序中的根索引（即 `parsed_units()` 视图下标）；
+//       condition = 该单元的条件（UnitCondition 整数值）。
 // 语义：返回 false = 照常按条件求值；**不做**"强制跳过本单元不注册"（需要时加返回值，
 //       而不是加一个布尔）。
 // 时机：per-use（每次技能执行、注册分支时逐条问），不是加载期——加载期没有 BattleContext。
@@ -260,6 +262,12 @@ public:
     virtual void registerMarkType(const MarkTypeSpec& spec) {
         (void)spec;
     }
+
+    // An explicit claim about this implementation, not every handler for this id.
+    virtual void registerAuditedSkillEffect(int effect_id, EffectFn effect_fn,
+                                            const std::string& source = {}) {
+        registerSkillEffect(effect_id, effect_fn, source);
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -317,6 +325,7 @@ struct SkillEffectEntry {
     int id;
     EffectFn fn;
     std::string source;   // 注册来源（"文件:行 [宏名]"）——撞号审计用；空 = 旧调用方
+    BattleCallbackCopy copy = BattleCallbackCopy::Unverified;
 };
 struct SoulMarkEntry {
     int id;
@@ -343,8 +352,9 @@ inline std::vector<SoulProgramEntry>& soul_programs() {
     return table;
 }
 
-inline bool add_skill_effect(int id, EffectFn fn, const std::string& source = {}) {
-    skill_effects().push_back(SkillEffectEntry{id, fn, source});
+inline bool add_skill_effect(int id, EffectFn fn, const std::string& source = {},
+                             BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
+    skill_effects().push_back(SkillEffectEntry{id, fn, source, copy});
     return true;
 }
 inline bool add_soul_mark(int id, EffectFn fn, const std::string& source = {}) {
@@ -445,7 +455,11 @@ inline void flush(IEffectRegistry* registry) {
         return;
     }
     for (const SkillEffectEntry& e : skill_effects()) {
-        registry->registerSkillEffect(e.id, e.fn, e.source.c_str());
+        if (e.copy == BattleCallbackCopy::Audited) {
+            registry->registerAuditedSkillEffect(e.id, e.fn, e.source);
+        } else {
+            registry->registerSkillEffect(e.id, e.fn, e.source);
+        }
     }
     for (const SoulMarkEntry& e : soul_marks()) {
         registry->registerSoulMark(e.id, e.fn, e.source.c_str());
@@ -490,6 +504,15 @@ SBS_HIDDEN_VIS_END
     [[maybe_unused]] const bool kSkillEffectReg_##fn =                             \
         ::plugin_reg::add_skill_effect((id), &(fn),                               \
             ::id_collision::source_of(__FILE__, __LINE__, "SKILL_EFFECT"));       \
+    }
+
+// Audited handlers must obey the BattleCallbackCopy contract; normal registration is unverified.
+#define SKILL_EFFECT_AUDITED(id, fn)                                                  \
+    namespace {                                                                      \
+    [[maybe_unused]] const bool kSkillEffectReg_##fn =                                \
+        ::plugin_reg::add_skill_effect((id), &(fn),                                   \
+            ::id_collision::source_of(__FILE__, __LINE__, "SKILL_EFFECT_AUDITED"),     \
+            BattleCallbackCopy::Audited);                                            \
     }
 
 #define SOUL_MARK(id, fn)                                                           \

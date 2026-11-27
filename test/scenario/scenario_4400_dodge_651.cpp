@@ -82,7 +82,7 @@ int count_dodges(int n, bool with_mark, int seed) {
     for (int i = 0; i < n; ++i) {
         ScenarioBattle b(make_party(mark_pet(with_mark)), make_party(plain_pet()));
         b.start();
-        sbs_srand(seed + i * 104729);
+        b.ctx().seed_rng(seed + i * 104729);
         if (one_attack_loss(b) == 0) {
             ++dodges;
         }
@@ -105,7 +105,7 @@ int main() {
         for (int s = 1; s <= 200 && dodge_seed < 0; ++s) {
             ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
             b.start();
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             if (one_attack_loss(b) == 0) {
                 dodge_seed = s;
             }
@@ -113,7 +113,7 @@ int main() {
         REQUIRE(dodge_seed > 0);
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(dodge_seed);
+        b.ctx().seed_rng(dodge_seed);
         CHECK_EQ(one_attack_loss(b), 0,
                  "T4400 651：闪避发生 → 印主未掉血（seed=" + std::to_string(dodge_seed) + "）");
         std::cout << "  [T4400] 闪避生效 通过\n";
@@ -143,7 +143,7 @@ int main() {
         for (int s = 1; s <= 400 && seed < 0; ++s) {
             ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
             b.start();
-            sbs_srand(s);
+            b.ctx().seed_rng(s);
             const int r1 = one_attack_loss(b);
             const int r2 = one_attack_loss(b);
             if (r1 == 0 && r2 == 0) {
@@ -153,7 +153,7 @@ int main() {
         REQUIRE(seed > 0);
         ScenarioBattle b(make_party(mark_pet()), make_party(plain_pet()));
         b.start();
-        sbs_srand(seed);
+        b.ctx().seed_rng(seed);
         CHECK_EQ(one_attack_loss(b), 0, "T4403 第 1 回合闪避");
         CHECK_EQ(one_attack_loss(b), 0,
                  "T4403 651：第 2 回合仍闪避（ws 每回合 reset → ROUND_START 必须重注，"

@@ -81,7 +81,7 @@ struct LegalActions {
 
 // 该玩家此刻是否"必须换宠"（CHOOSE_AFTER_DEATH 且他自己的场上精灵倒了）。
 // 与 BattleContext::getStateJson 的 needDeathSwitch 同口径，供服务端决定该提示谁。
-bool player_must_switch_pet(BattleContext& ctx, int player);
+bool player_must_switch_pet(const BattleContext& ctx, int player);
 
 // 该玩家此刻是否存在**任何**合法动作。
 // false 意味着引擎把对局卡在了一个无法满足的输入要求上（已知场景：一方精灵全灭后
@@ -89,11 +89,7 @@ bool player_must_switch_pet(BattleContext& ctx, int player);
 bool has_any_legal_action(const LegalActions& legal);
 
 // 只读查询。player 取 0/1。
-//
-// 签名取非 const 引用：内核的 skill_usable / query_selectable 是历史非 const 签名
-// （内部只读，不改任何状态）。与其为它们加一层 const_cast 包装，不如把"只读"
-// 这件事写在这里的约定上，并靠"合法动作集不改变战斗结果"的回归测试守住。
-LegalActions compute_legal_actions(BattleContext& ctx, int player);
+LegalActions compute_legal_actions(const BattleContext& ctx, int player);
 
 }  // namespace server
 

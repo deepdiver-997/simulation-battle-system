@@ -92,7 +92,7 @@ void j160_random_anomalies(BattleContext* ctx, int target, int actor, int n) {
     int guard = 0;
     while (count < n && guard < 200) {   // 不重复抽 0..9；guard 防死循环（n≤10）
         ++guard;
-        const int code = sbs_rand() % 10;
+        const int code = ctx->rng().next() % 10;
         if (picked[code]) {
             continue;
         }

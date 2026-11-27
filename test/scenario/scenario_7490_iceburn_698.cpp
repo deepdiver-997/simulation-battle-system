@@ -82,7 +82,7 @@ int find_land_seed(const std::vector<int>& args, int boosts) {
         for (int i = 0; i < boosts && i < 6; ++i) {
             b.ctx().ability_levels[1][i] = 2;
         }
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         if (b.ctx().has_active_abnormal_status(1, kIce)) {
             return s;
@@ -99,7 +99,7 @@ int find_miss_seed(const std::vector<int>& args, int boosts) {
         for (int i = 0; i < boosts && i < 6; ++i) {
             b.ctx().ability_levels[1][i] = 2;
         }
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         if (!b.ctx().has_active_abnormal_status(1, kIce)
             && read_key(b, kAudit) >= 0) {
@@ -124,7 +124,7 @@ int main() {
         CHECK(s > 0, "T7490a 自校准找到落地种子");
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kIce), "T7490a 20% 冰封落地");
         CHECK_EQ(read_key(b, kAudit), 20, "T7490a 审计=基础20（无提升）");
@@ -137,7 +137,7 @@ int main() {
         CHECK(s > 0, "T7490b 自校准找到未触发种子");
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(s);
+        b.ctx().seed_rng(s);
         own_hit_round(b);
         CHECK(!b.ctx().has_active_abnormal_status(1, kIce), "T7490b 未落地");
         CHECK_EQ(read_key(b, kAudit), 20, "T7490b 审计=20（申报照记）");
@@ -153,7 +153,7 @@ int main() {
         for (int i = 0; i < 2; ++i) {
             b.ctx().ability_levels[1][i] = 2;
         }
-        sbs_srand(s2);
+        b.ctx().seed_rng(s2);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), 40, "T7490c 2种提升 → 20+2×10=40");
 
@@ -164,7 +164,7 @@ int main() {
         for (int i = 0; i < 6; ++i) {
             b6.ctx().ability_levels[1][i] = 2;
         }
-        sbs_srand(s6);
+        b6.ctx().seed_rng(s6);
         own_hit_round(b6);
         CHECK_EQ(read_key(b6, kAudit), 80, "T7490c 6种提升 → 20+6×10=80");
         std::cout << "  [T7490c] 提升梯度 40/80 通过\n";
@@ -174,7 +174,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(7490);
+        b.ctx().seed_rng(7490);
         b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 1);   // 属性技
         b.submit_operation(1, BattleFsm::ActionType::NONE, -1);
         b.drive();
@@ -191,7 +191,7 @@ int main() {
         for (int i = 0; i < 2; ++i) {
             b.ctx().ability_levels[1][i] = 2;
         }
-        sbs_srand(7491);
+        b.ctx().seed_rng(7491);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), 70, "T7490e args 驱动：step=25 → 20+2×25=70");
         std::cout << "  [T7490e] args 变体 通过\n";
@@ -201,7 +201,7 @@ int main() {
     {
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.start();
-        sbs_srand(7492);
+        b.ctx().seed_rng(7492);
         for (int r = 0; r < 40; ++r) {   // bounded 循环（禁 while(!FINISHED)）
             b.ctx().getPet(1).hp = kMaxHp;   // 冰封衍化冻伤 DOT 防打死（假死换宠污染计数）
             own_hit_round(b);
@@ -216,7 +216,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRow, 300)), make_party(foe_pet(100)));
         b.ctx().is_boss_challenge = true;
         b.start();
-        sbs_srand(7493);
+        b.ctx().seed_rng(7493);
         own_hit_round(b);
         CHECK_EQ(read_key(b, kAudit), -1, "T7490g boss：无申报");
         CHECK(!b.ctx().has_active_abnormal_status(1, kIce), "T7490g boss：无冰封");

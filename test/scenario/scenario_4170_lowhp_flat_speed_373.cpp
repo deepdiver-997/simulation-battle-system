@@ -95,7 +95,7 @@ int main() {
             ScenarioBattle b(make_party(plain_mark_pet(1000)),
                              make_party(foe_pet(100)));   // 对手速度 100 → 印主先手、对手后手攻击
             b.start();
-            sbs_srand(7);   // 钉种子 → 红伤浮动序列可复现（与实验局对齐）
+            b.ctx().seed_rng(7);   // 钉种子 → 红伤浮动序列可复现（与实验局对齐）
             ctrl_hp = foe_strike(b);
         }
         // 实验局：带印，同样条件 → 掉 raw-150。
@@ -104,7 +104,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(1000)),
                              make_party(foe_pet(100)));
             b.start();
-            sbs_srand(7);   // 同种子 → 两局红伤 raw 相同，差值 = 减伤点数
+            b.ctx().seed_rng(7);   // 同种子 → 两局红伤 raw 相同，差值 = 减伤点数
             mark_hp = foe_strike(b);
         }
         const int ctrl_loss = 1000 - ctrl_hp;
@@ -123,7 +123,7 @@ int main() {
             ScenarioBattle b(make_party(plain_mark_pet(99999)),
                              make_party(foe_pet(100)));
             b.start();
-            sbs_srand(7);   // 钉种子（与实验局对齐）
+            b.ctx().seed_rng(7);   // 钉种子（与实验局对齐）
             ctrl_hp = foe_strike(b);
         }
         int mark_hp = 0;
@@ -131,7 +131,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(99999)),
                              make_party(foe_pet(100)));
             b.start();
-            sbs_srand(7);   // 同种子 → 两局 raw 相同
+            b.ctx().seed_rng(7);   // 同种子 → 两局 raw 相同
             mark_hp = foe_strike(b);
         }
         CHECK_EQ(ctrl_hp, mark_hp,

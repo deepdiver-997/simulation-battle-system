@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K378 消回合类+冰封/PP归零/先制解降族 —— effect 1355（1 宏 2 行）
 //
 // 行清单（tools/soul_effects_dump.py 1355，2026-10-24）：
@@ -186,7 +185,7 @@ EffectResult k1355_arm_pp_zero(BattleContext* ctx, const SoulNodeArgs& a) {
             int guard = 0;
             while (done < pp_count && guard < 100) {
                 ++guard;
-                const int slot = sbs_rand() % 5;   // 5 技能槽（K230 直系：
+                const int slot = c->rng().next() % 5;   // 5 技能槽（K230 直系：
                                                     // 无限 PP 槽由原语拒并重试）
                 if (g_core->pp_zero_slot(c, 1 - owner, slot, owner)
                     == PpReduceResult::SUCCESS) {

@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K375 异常门随机降属+护盾仅1次族 —— effect 385（1 宏 / 2 行）
 //（战神·盖亚 2780 魂印「袭」row160 本体 + row458 伙伴行；号段 7220-7229，
 //  worktree ../agents/k375，2026-10-24）
@@ -116,7 +115,7 @@ EffectResult k375_385_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
             int guard = 0;
             while (done < drop_count && guard < 100) {
                 ++guard;
-                const int slot = sbs_rand() % kStatSlotCount;
+                const int slot = ctx->rng().next() % kStatSlotCount;
                 if (picked[slot]) {
                     continue;
                 }

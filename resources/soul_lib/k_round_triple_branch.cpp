@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K13 回合开始三分分支族 —— effect 1896（2 宏 2 行）
 //
 // 行清单与参数布局（tools/soul_effects_dump.py 1896，2026-10-05；双行互锚定案）：
@@ -70,7 +69,7 @@ void reduce_random_slots(BattleContext* ctx, int target, int slots, int delta) {
     }
     std::set<int> picked;
     while (static_cast<int>(picked.size()) < std::min(slots, n)) {
-        picked.insert(sbs_rand() % n);
+        picked.insert(ctx->rng().next() % n);
     }
     int slot_idx = 0;
     for (Skills& skill : pet.skills) {

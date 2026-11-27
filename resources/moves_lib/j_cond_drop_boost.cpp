@@ -80,7 +80,7 @@ EffectResult effect_175_anomaly_self_boost(BattleContext* ctx, const EffectArgs&
     if (!ctx->has_any_active_abnormal_status(opp)) {
         return EffectResult::kOk;   // 前提：对手处于（任意）异常状态
     }
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         (void)g_core->stat_change(ctx, self, slot, amount);
     }
     return EffectResult::kOk;

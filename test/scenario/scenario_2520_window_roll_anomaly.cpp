@@ -108,7 +108,7 @@ int main() {
                              make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(seed_hit);
+            ctx.seed_rng(seed_hit);
             self_skill(b, 0);   // R1 武装（属性技零 rand 消耗）
             both_act(b, 1);     // R2 我攻击 → 申报掷中
             CHECK(ctx.has_active_abnormal_status(1, kFear), "T2520.a 1007：掷中 → 对手中码 6");
@@ -119,7 +119,7 @@ int main() {
                              make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
             b.start();
             BattleContext& ctx = b.ctx();
-            sbs_srand(seed_miss);
+            ctx.seed_rng(seed_miss);
             self_skill(b, 0);
             both_act(b, 1);
             CHECK(!ctx.has_active_abnormal_status(1, kFear), "T2520.b 1007：掷歪 → 无异常");

@@ -103,14 +103,14 @@ int main() {
         {
             ScenarioBattle b(make_party(plain_mark_pet(300)), make_party(foe_pet(100)));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             ctrl_loss = mark_strike(b);   // 印主自己打 → 观测对手掉血
         }
         int mark_loss = 0;
         {
             ScenarioBattle b(make_party(mark_pet(300)), make_party(foe_pet(100)));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             mark_loss = mark_strike(b);
         }
         CHECK(ctrl_loss > 0, "T4180 对照局前提：对手拍打有伤害");
@@ -127,14 +127,14 @@ int main() {
         {
             ScenarioBattle b(make_party(plain_mark_pet(100)), make_party(foe_pet(300)));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             ctrl_loss = mark_strike(b);   // 印主后手出手 → 观测对手掉血
         }
         int mark_loss = 0;
         {
             ScenarioBattle b(make_party(mark_pet(100)), make_party(foe_pet(300)));
             b.start();
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             mark_loss = mark_strike(b);
         }
         CHECK_EQ(mark_loss, ctrl_loss,

@@ -111,7 +111,7 @@ int read_key(ScenarioBattle& b, int key) {
 int probe_r2_amp(const std::vector<int>& args, const std::vector<int>& kind, int seed) {
     ScenarioBattle b(make_party(mark_pet(args, kind)), make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     foe_attack_round(b);   // R1：对手打我 → 我 100% 烧伤对手（R2 RS 采样门料）
     const int hp0 = b.ctx().getPet(1).hp;
     own_hit_round(b);      // R2：我攻（对手已带异常 → 增幅窗）
@@ -122,7 +122,7 @@ int probe_r2_amp(const std::vector<int>& args, const std::vector<int>& kind, int
 bool probe_incinerate(const std::vector<int>& args, const std::vector<int>& kind, int seed) {
     ScenarioBattle b(make_party(mark_pet(args, kind)), make_party(foe_pet()));
     b.start();
-    sbs_srand(seed);
+    b.ctx().seed_rng(seed);
     own_hit_round(b);
     return b.ctx().has_active_abnormal_status(1, kIncinerate);
 }
@@ -149,7 +149,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRowBase, {1, 10, 14})),
                          make_party(foe_pet()));
         b.start();
-        sbs_srand(7541);
+        b.ctx().seed_rng(7541);
         foe_attack_round(b);
         CHECK(b.ctx().has_active_abnormal_status(1, kBurn), "T7540a 100% 烧伤落地");
         CHECK_EQ(read_key(b, kAuditBurn), 100, "T7540a 烧伤申报审计=100");
@@ -167,7 +167,7 @@ int main() {
         b.start();
         REQUIRE(apply_anomaly(&b.ctx(), 1, kFatigue, /*duration_rounds=*/9, /*actor=*/0,
                               /*chance_pct=*/100) == ApplyAnomalyResult::SUCCESS);
-        sbs_srand(seed);
+        b.ctx().seed_rng(seed);
         idle_round(b);         // R1：RS 采样（对手异常 → 置窗）
         CHECK_EQ(read_key(b, kMode), 1, "T7540b RS 采样：对手异常置窗");
         const int hp0 = b.ctx().getPet(1).hp;
@@ -187,7 +187,7 @@ int main() {
         ScenarioBattle b(make_party(mark_pet(kRowBase, {1, 10, 14})),
                          make_party(foe_pet()));
         b.start();
-        sbs_srand(seed);
+        b.ctx().seed_rng(seed);
         const int hp0 = b.ctx().getPet(1).hp;
         own_hit_round(b);      // R1：对手干净 → mode=0 → 无增幅
         CHECK_EQ(read_key(b, kMode), 0, "T7540c RS 采样：对手无异常 mode=0");
@@ -207,7 +207,7 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(kRowBase, {1, 10, 14})),
                              make_party(foe_pet()));
             b.start();
-            sbs_srand(s_hit);
+            b.ctx().seed_rng(s_hit);
             own_hit_round(b);
             CHECK(b.ctx().has_active_abnormal_status(1, kIncinerate), "T7540d 落地支焚烬");
             CHECK_EQ(read_key(b, kAuditInc), 50, "T7540d 本体焚烬申报审计=50");
@@ -218,11 +218,11 @@ int main() {
             ScenarioBattle b(make_party(mark_pet(kRowBase, {1, 10, 14})),
                              make_party(foe_pet()));
             b.start();
-            sbs_srand(s_miss);
+            b.ctx().seed_rng(s_miss);
             own_hit_round(b);
             CHECK(!b.ctx().has_active_abnormal_status(1, kIncinerate), "T7540d 未触发支无焚烬");
             CHECK_EQ(read_key(b, kCritPend), 1, "T7540d 未触发 → pending=R1.roundCount+1（0基）");
-            sbs_srand(s_miss + 1000);
+            b.ctx().seed_rng(s_miss + 1000);
             idle_round(b);     // R2：双方 NONE → FMR 消费 pending（无人再掷）
             CHECK(b.ctx().ws.must_crit[0], "T7540d R2 FMR 消费 → ws.must_crit");
             CHECK_EQ(read_key(b, kCritPend), -1, "T7540d pending 消费清账");
@@ -238,7 +238,7 @@ int main() {
                                /*anomaly_mask=*/0, /*duration_rounds=*/0,
                                /*source_id=*/97540);
         b.start();
-        sbs_srand(7544);
+        b.ctx().seed_rng(7544);
         const int hp0 = b.ctx().getPet(1).hp;
         foe_attack_round(b);
         CHECK(!b.ctx().has_active_abnormal_status(1, kBurn), "T7540e 免烧未落地");
@@ -256,7 +256,7 @@ int main() {
         b.start();
         REQUIRE(apply_anomaly(&b.ctx(), 1, kFatigue, /*duration_rounds=*/9, /*actor=*/0,
                               /*chance_pct=*/100) == ApplyAnomalyResult::SUCCESS);
-        sbs_srand(seed);
+        b.ctx().seed_rng(seed);
         idle_round(b);         // R1：RS 采样（疲惫门料无 tick，掉血=纯增幅）
         const int hp0 = b.ctx().getPet(1).hp;
         own_hit_round(b);      // R2：伙伴行 → FMR damage_add_pct += 100
@@ -286,7 +286,7 @@ int main() {
                          make_party(foe_pet()));
         b.ctx().is_boss_challenge = true;
         b.start();
-        sbs_srand(7546);
+        b.ctx().seed_rng(7546);
         foe_attack_round(b);   // R1：对手攻击 → 无烧伤窗
         CHECK(!b.ctx().has_active_abnormal_status(1, kBurn), "T7540h boss：无烧伤");
         CHECK_EQ(read_key(b, kAuditBurn), -1, "T7540h boss：无申报");

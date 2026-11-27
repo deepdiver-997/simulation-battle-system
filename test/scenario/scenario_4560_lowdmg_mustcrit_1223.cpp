@@ -108,7 +108,8 @@ int main() {
 
     // ══ T4561 高伤 → 门闭 ══
     {
-        ScenarioBattle b(make_party(mark_pet(/*atk=*/1000)), make_party(plain_pet()));
+        // 1000 攻击在低伤浮动时仅造成 292，不能稳定满足 ≥300 的门闭前置。
+        ScenarioBattle b(make_party(mark_pet(/*atk=*/1500)), make_party(plain_pet()));
         b.start();
         auto [dealt, crit_r1] = mark_attacks(b);
         CHECK(dealt >= kThreshold,

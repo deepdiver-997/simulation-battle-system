@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <mutex>
 #include <initializer_list>
+#include <optional>
+#include <utils/sbs_rand.h>
 
 #include <abnormal-system/abnormal-types.h>
 #include <entities/seer-robot.h>
@@ -93,6 +95,12 @@ enum class EffectContainer {
 
 class BattleContext {
 public:
+    // 单对局拥有独立序列；同一 context 的访问仍须由调用方串行化。
+    SbsRng rng_;
+    SbsRng& rng() noexcept { return rng_; }
+    const SbsRng& rng() const noexcept { return rng_; }
+    void seed_rng(unsigned int seed) noexcept { rng_.seed(seed); }
+
     //--- 持久化核心数据 ---
     SeerRobot seerRobot[2];
     int on_stage[2];
@@ -641,8 +649,9 @@ public:
     PinkDamageResolved& resolvedPink;
 
     //--- 构造函数 ---
+    // 未显式播种时复制非对局兼容序列的当前状态（不消费）；显式种子先于开战回调应用。
     BattleContext(IControlBlock* control_block, const SeerRobot robots[],
-                  bool pvp_battle = false);
+                  bool pvp_battle = false, std::optional<unsigned int> seed = std::nullopt);
     BattleContext() = delete;
     BattleContext(const BattleContext&) = delete;
     ~BattleContext();
@@ -1247,21 +1256,18 @@ public:
                        EffectScope scope = EffectScope::ON_STAGE,
                        int counts = 0, int source_effect_id = -1,
                        ImmunityTier tier = ImmunityTier::Modern,
-                       std::function<bool(const BattleContext*, int)> condition = nullptr) {
+                       std::function<bool(const BattleContext*, int)> condition = nullptr,
+                       ImmunityRoll roll = nullptr) {
         // 免疫单对象：source==target==被护方 owner。转发 RuleCenter（覆盖键含 subtype=type，
         // 免异常+免弱不同 type 各占一条）。
         // counts>0 = 次数型（"免疫下N次某威胁"）：查询命中后由 consume_immune 扣一次，扣到 0 注销。
         // source_effect_id：覆盖键的来源维度。默认 -1（匿名）→ 同类型免疫互相覆盖；
         //   需要"窗口类免控 + 次数型次免"并存时，各传自己的 effect_id 才各占一条。
-        // condition（2026-09-25 精灵王线待落②追加，直通 RuleCenter 同名参数）：
-        //   逐次施加时的掷骰条件——返回 false 则本票对这一次不响应（概率免控：圣莫 2492
-        //   "每层 25% 免疫异常施加"，lambda 现场读律层数掷 25%×n；查询点每次施加掷一次，
-        //   回合窗口票不因掷骰消耗）。**只挡走本票响应路径的施加**——古早施加
-        //   （apply_anomaly_ancient 只查 Ancient 层）天然不受影响（"挡不住主动毒"口径）。
+        // condition 为只读条件；roll 只在原语实际结算时用传入的对局 RNG。
         return rule_center_.grant_immune(owner, static_cast<int>(type), coverage, anomaly_mask,
                                          duration_rounds, roundCount, source_id, soul_immunity,
                                          scope, /*source_slot=*/-1, counts, source_effect_id,
-                                         static_cast<int>(tier), std::move(condition));
+                                         static_cast<int>(tier), std::move(condition), std::move(roll));
     }
 
     void revoke_immunity(int owner, int source_id) {
@@ -1325,6 +1331,13 @@ public:
                                       this);
     }
 
+    // 处理已发生的威胁；允许概率票掷点，但此入口不扣次数。
+    bool resolve_immunity(int owner, ImmunityType type, State timing, int status_id = 0,
+                          int soul_filter = -1, int tier_filter = -1) {
+        return rule_center_.is_immune(owner, static_cast<int>(type), state_coverage_bit(timing),
+                                      roundCount, status_id, soul_filter, tier_filter, this, this);
+    }
+
     /**
      * consume_immune - 查询并**消费**次数型免疫（"免下N次"）。
      * 与 is_immune（纯查询）配对；窗口/永久免疫（counts==0）不扣。
@@ -1335,7 +1348,7 @@ public:
         const bool consume_all = (type == ImmunityType::ANOMALY);
         return rule_center_.consume_immune(owner, static_cast<int>(type),
                                            state_coverage_bit(timing), roundCount,
-                                           status_id, soul_filter, tier_filter, this, consume_all);
+                                           status_id, soul_filter, tier_filter, this, consume_all, this);
     }
 
     //--- 伤害管线便利方法 ---
@@ -1347,10 +1360,11 @@ public:
      */
     void register_damage_effect(DamagePhase phase, int owner, DamageEffectCategory category,
                                 std::function<void(BattleContext*, int)> fn,
-                                EffectScope scope = EffectScope::ON_STAGE) {
+                                EffectScope scope = EffectScope::ON_STAGE,
+                                BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
+        if (owner < 0 || owner > 1) return;
         damage_pipeline_.register_effect(phase, owner, category, std::move(fn),
-                                         pipeline_valid_id[owner],
-                                         scope == EffectScope::TEAM);
+                                         pipeline_valid_id[owner], scope == EffectScope::TEAM, copy);
     }
 
     //--- 粉伤管线便利方法 ---
@@ -1365,10 +1379,11 @@ public:
      */
     void register_pink_damage_effect(PinkDamagePhase phase, int owner,
                                      std::function<void(BattleContext*, int)> fn,
-                                     EffectScope scope = EffectScope::ON_STAGE) {
+                                     EffectScope scope = EffectScope::ON_STAGE,
+                                     BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
+        if (owner < 0 || owner > 1) return;
         pink_damage_pipeline_.register_effect(phase, owner, std::move(fn),
-                                              pipeline_valid_id[owner],
-                                              scope == EffectScope::TEAM);
+                                              pipeline_valid_id[owner], scope == EffectScope::TEAM, copy);
     }
 
     //--- 通用特性运行时层（内联入口，插件可调；仿 grant_immunity 先例）---
@@ -1489,14 +1504,15 @@ public:
     //    若是 ON_STAGE，第一次换宠就会把整条减免链作废掉（这是最容易踩的坑）。
     template <typename Fn>
     void register_default_damage_effect(DamagePhase phase, int owner,
-                                        DamageEffectCategory category, Fn&& fn) {
-        damage_pipeline_.register_effect(phase, owner, category, std::forward<Fn>(fn),
-                                         pipeline_valid_id[owner], /*team=*/true);
+                                        DamageEffectCategory category, Fn&& fn,
+                                        BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
+        register_damage_effect(phase, owner, category, std::forward<Fn>(fn),
+                               EffectScope::TEAM, copy);
     }
     template <typename Fn>
-    void register_default_pink_effect(PinkDamagePhase phase, int owner, Fn&& fn) {
-        pink_damage_pipeline_.register_effect(phase, owner, std::forward<Fn>(fn),
-                                              pipeline_valid_id[owner], /*team=*/true);
+    void register_default_pink_effect(PinkDamagePhase phase, int owner, Fn&& fn,
+                                      BattleCallbackCopy copy = BattleCallbackCopy::Unverified) {
+        register_pink_damage_effect(phase, owner, std::forward<Fn>(fn), EffectScope::TEAM, copy);
     }
 
     /**
@@ -1864,6 +1880,11 @@ public:
     //--- 状态同步 ---
     std::string getStateJson() const;
     std::string getFullStateJson() const;
+
+private:
+    friend class BattleClone;
+    // Bind local references without running equipment, plugin or battle setup.
+    BattleContext(IControlBlock*, const SeerRobot[], SbsRng);
 };
 
 #endif

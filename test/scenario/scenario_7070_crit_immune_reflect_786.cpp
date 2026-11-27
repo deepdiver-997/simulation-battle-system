@@ -76,7 +76,6 @@ ElfPet crit_foe(int atk = 300) {
 }  // namespace
 
 int main() {
-    sbs_srand(20261024);
     if (!PetFactory::initialize_runtime_data()) {
         std::cerr << "failed to init runtime data" << std::endl;
         return 1;
@@ -218,10 +217,12 @@ int main() {
     // ══ T7070.g 50% 分支统计带（40 局独立对局）══
     {
         int cleared = 0, combo_a = 0, combo_b = 0, combo_c = 0, combo_d = 0;
+        SbsRng seeds(20261024);  // 独立对局使用可复现且不同的种子
         for (int i = 0; i < 40; ++i) {
             ScenarioBattle b(make_party(mark_pet()), make_party(crit_foe(/*atk=*/1)));
             b.start();
             BattleContext& ctx = b.ctx();
+            ctx.seed_rng(static_cast<unsigned>(seeds.next()));
             seal_skill(&ctx, 1, 0, 70991, false, true, 0, 2, false);   // 对手来源的回合类票
             ctx.ability_levels[0][static_cast<int>(NumericalPropertyIndex::PHYSICAL_ATTACK)] = 2;
             REQUIRE(clear_stat_boosts(&ctx, 0) > 0);   // 触发 EVENT_STAT_BOOSTS_LOST

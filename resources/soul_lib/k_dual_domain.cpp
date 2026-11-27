@@ -400,7 +400,7 @@ EffectResult dual_second_mover_ppzero(BattleContext* ctx, const SoulNodeArgs& a)
         }
     }
     for (int n = 0; n < count && !slots.empty(); ++n) {
-        const int pick = static_cast<int>(sbs_rand() % slots.size());
+        const int pick = static_cast<int>(ctx->rng().next() % slots.size());
         foe.skills[static_cast<std::size_t>(slots[static_cast<std::size_t>(pick)])].pp = 0;
         slots.erase(slots.begin() + pick);
     }

@@ -63,7 +63,7 @@ EffectResult soulmark_399_arm(BattleContext* ctx, const EffectArgs& args) {
             if (!onstage_has_soul_mark(wctx, owner, 399)) {
                 return;
             }
-            if (!roll_percent(pct)) {
+            if (!roll_percent(wctx->rng(), pct)) {
                 return;
             }
             if (g_core && g_core->break_round_effects) {

@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K265 随机属性+1族 —— effect 382（1 宏 / 1 行）
 //
 // 行清单（tools/soul_effects_dump.py 382，2026-10-21）：
@@ -78,7 +77,7 @@ EffectResult k265_382_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             if (!onstage_has_soul_mark(c, owner, kMarkId)) {
                 return;
             }
-            const int slot = sbs_rand() % 6;   // 0攻 1特攻 2防 3特防 4速 5命中
+            const int slot = c->rng().next() % 6;   // 0攻 1特攻 2防 3特防 4速 5命中
             (void)g_core->stat_change(c, owner, slot, /*delta=*/1);
         },
         WatcherScope::TEAM);

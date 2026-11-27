@@ -191,7 +191,7 @@ EffectResult effect_164_take_hit_status(BattleContext* ctx, const EffectArgs& ar
         EventType::EVENT_TAKE_DAMAGE, owner, ctx->roundCount, rounds,
         /*once=*/false,
         [owner, chance, status](BattleContext* c, const BattleEvent& ev) {
-            if (!c || ev.target != owner || !roll_percent(chance)) {
+            if (!c || ev.target != owner || !roll_percent(c->rng(), chance)) {
                 return;
             }
             if (g_core && g_core->apply_anomaly) {
@@ -235,7 +235,7 @@ EffectResult effect_1187_status_or_break(BattleContext* ctx, const EffectArgs& a
         return EffectResult::kOk;
     }
     bool landed = false;
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         landed = anomaly_landed(g_core->apply_anomaly(ctx, target, status,
                                                       random_anomaly_duration(), owner));
     }
@@ -420,7 +420,7 @@ EffectResult effect_1604_restore_pp(BattleContext* ctx, const EffectArgs& args) 
     const int owner = args.int_args[0];
     const int chance = args.int_args[2];
     const int amount = args.int_args[3];
-    if (owner < 0 || owner > 1 || !roll_percent(chance)) {
+    if (owner < 0 || owner > 1 || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     for (Skills& s : ctx->getPet(owner).skills) {
@@ -466,7 +466,7 @@ EffectResult effect_1148_random_drain(BattleContext* ctx, const EffectArgs& args
     if (foe.hp <= 0) {
         return EffectResult::kOk;
     }
-    const int amount = low + (high > low ? sbs_rand() % (high - low + 1) : 0);
+    const int amount = low + (high > low ? ctx->rng().next() % (high - low + 1) : 0);
     const int drained = std::min(amount, foe.hp);
     foe.hp -= drained;
     g_core->heal_amount(ctx, owner, drained);
@@ -496,7 +496,7 @@ EffectResult effect_108_hit_by_attack_burn(BattleContext* ctx, const EffectArgs&
             const bool red_attack =
                 ev.state == static_cast<int>(State::BATTLE_FIRST_ATTACK_DAMAGE)
                 || ev.state == static_cast<int>(State::BATTLE_SECOND_ATTACK_DAMAGE);
-            if (!red_attack || !roll_percent(chance)) {
+            if (!red_attack || !roll_percent(c->rng(), chance)) {
                 return;
             }
             if (g_core && g_core->apply_anomaly) {
@@ -539,7 +539,7 @@ EffectResult effect_663_tick(BattleContext* ctx, const EffectArgs& args) {
     const int status = args.int_args[2];
     const int opp = 1 - owner;
     if (acting_side_of_bucket(ctx) != opp || !executed_skill_is_attack(ctx, opp)
-        || !roll_percent(chance)) {
+        || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, opp, status, random_anomaly_duration(), owner);
@@ -897,7 +897,7 @@ EffectResult effect_1378_all_stats_chance_double(BattleContext* ctx, const Effec
         return EffectResult::kOk;
     }
     all_stats_up(ctx, owner, delta);
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         all_stats_up(ctx, owner, delta);
         return EffectResult::kOk;
     }
@@ -1040,7 +1040,7 @@ EffectResult effect_1605_chance_status(BattleContext* ctx, const EffectArgs& arg
     const int target = args.int_args[1];
     const int chance = args.int_args[2];
     const int status = args.int_args[3];
-    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(chance)) {
+    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, target, status, random_anomaly_duration(), owner);
@@ -1095,7 +1095,7 @@ EffectResult effect_1676_tick(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     bool landed = false;
-    if (roll_percent(chance)) {
+    if (roll_percent(ctx->rng(), chance)) {
         landed = anomaly_landed(g_core->apply_anomaly(ctx, 1 - owner, status,
                                                       random_anomaly_duration(), owner));
     }
@@ -1169,7 +1169,7 @@ EffectResult effect_2198_shield_status(BattleContext* ctx, const EffectArgs& arg
     const int target = args.int_args[1];
     const int chance = args.int_args[2];
     const int status = args.int_args[3];
-    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(chance)) {
+    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     const bool any_shield = !ctx->getPet(0).shield_bank_.empty()
@@ -1190,7 +1190,7 @@ EffectResult effect_2199_hood_status(BattleContext* ctx, const EffectArgs& args)
     const int target = args.int_args[1];
     const int chance = args.int_args[2];
     const int status = args.int_args[3];
-    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(chance)) {
+    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     const bool any_hood = !ctx->getPet(0).hood_bank_.empty()
@@ -1216,7 +1216,7 @@ EffectResult effect_909_first_status_or_fixed(BattleContext* ctx, const EffectAr
         return EffectResult::kOk;
     }
     bool landed = false;
-    if (roll_percent(chance) && g_core->apply_anomaly) {
+    if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly) {
         landed = anomaly_landed(g_core->apply_anomaly(ctx, target, status,
                                                       random_anomaly_duration(), owner));
     }
@@ -1290,7 +1290,7 @@ EffectResult effect_1959_break_burn_or_double(BattleContext* ctx, const EffectAr
     }
     if (had_round) {
         bool landed = false;
-        if (roll_percent(chance) && g_core->apply_anomaly) {
+        if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly) {
             landed = anomaly_landed(g_core->apply_anomaly(ctx, target, status,
                                                           random_anomaly_duration(), owner));
         }
@@ -1398,7 +1398,7 @@ EffectResult effect_572_burn_to_incinerate(BattleContext* ctx, const EffectArgs&
     const int src_status = args.int_args[2];
     const int chance = args.int_args[3];
     const int dst_status = args.int_args[4];
-    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(chance)) {
+    if (owner < 0 || owner > 1 || target < 0 || target > 1 || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     const bool condition_met = (src_status == kBurnId)

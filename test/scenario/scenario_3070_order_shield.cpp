@@ -89,7 +89,7 @@ int main() {
                 : plain_me(/*speed=*/300);
             ScenarioBattle b(make_party(std::move(me)),
                              make_party(plain_foe(/*speed=*/100)));
-            sbs_srand(7);
+            b.ctx().seed_rng(7);
             b.start();
             both_attack(b);
             BattleContext& ctx = b.ctx();
@@ -121,7 +121,7 @@ int main() {
                                                   /*speed=*/100, 0,
                                                   EffectArgs(std::vector<int>{200, 1, 2, 1}))),
                          make_party(plain_foe(/*speed=*/300)));
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         b.start();
         BattleContext& ctx = b.ctx();
         CHECK_EQ(ctx.getPet(0).shield_bank_.total(), 0, "T3071 前置：开场无盾");
@@ -146,7 +146,7 @@ int main() {
                                                   /*speed=*/100, 0,
                                                   EffectArgs(std::vector<int>{250, 1, 2, 1}))),
                          make_party(plain_foe(/*speed=*/300)));
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         b.start();
         both_attack(b);
         CHECK_EQ(b.ctx().getPet(0).shield_bank_.total(), 250,
@@ -161,7 +161,7 @@ int main() {
                                                   EffectArgs(std::vector<int>{200, 1, 2, 1}))),
                          make_party(plain_foe(/*speed=*/300)));
         b.ctx().is_boss_challenge = true;
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         b.start();
         both_attack(b);
         CHECK_EQ(b.ctx().getPet(0).shield_bank_.total(), 0,

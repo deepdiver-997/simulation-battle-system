@@ -66,7 +66,7 @@ EffectResult effect_1242_prob_mult_ramp(BattleContext* ctx, const EffectArgs& ar
     ctx->plugin_storage[kChanceAuditBase + owner] = chance;
     ctx->plugin_storage[kMultAuditBase + owner] = used_mult;
 
-    const bool proc = roll_percent(chance);
+    const bool proc = roll_percent(ctx->rng(), chance);
     ctx->plugin_storage[kProcAuditBase + owner] = proc ? 1 : 0;
     if (proc) {
         // {N}倍 = +(N-1)×100 加算百分点（1328 同款）。

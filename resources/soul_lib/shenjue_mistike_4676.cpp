@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 神觉·米斯蒂克 4676 完整魂印（4399 图鉴 996677 官方全文 + 机制解析语料 981776506821804033
 // + B站解析 993011144832581680 + 用户 2026-09-20 口径）：
 //   ① 每次登场后，对手2回合内属性技能无效，攻击技能无法附加异常状态与能力下降状态；
@@ -182,8 +181,8 @@ void on_opp_skill_use(BattleContext* ctx, int side) {
     // 随机 2 项能力等级-1（互不相同；走 stat_drop 查免弱，actor=米斯蒂克方——她不是被禁方，
     // 对手的 ATTACH_BAN 不影响本施加）。-6 再弱化还是 -6（AT_FLOOR）= 数值没变 = 未触发。
     int changed = 0;
-    int first = sbs_rand() % BattleContext::kAbilityLevelSlotCount;
-    int second = sbs_rand() % (BattleContext::kAbilityLevelSlotCount - 1);
+    int first = ctx->rng().next() % BattleContext::kAbilityLevelSlotCount;
+    int second = ctx->rng().next() % (BattleContext::kAbilityLevelSlotCount - 1);
     if (second >= first) {
         ++second;
     }

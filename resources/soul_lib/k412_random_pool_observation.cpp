@@ -101,7 +101,6 @@
 #include <abnormal-system/abnormal-types.h>
 
 #include <primitives/battle_primitives.h>
-#include <utils/sbs_rand.h>
 
 namespace {
 
@@ -354,11 +353,11 @@ EffectResult k412_2514_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                 return;
             }
             const int base = k2514Base + owner * kOwnerStride;
-            // 随机去重选 N 项（1314 rand%6 去重循环同款；sbs_rand 唯一入口）
+            // 随机去重选 N 项（1314 rand%6 去重循环同款；使用本对局 RNG）
             bool picked[6] = {false, false, false, false, false, false};
             int picked_count = 0;
             for (int tries = 0; tries < 256 && picked_count < count; ++tries) {
-                const int idx = static_cast<int>(sbs_rand() % 6);
+                const int idx = static_cast<int>(c->rng().next() % 6);
                 if (picked[idx]) {
                     continue;
                 }

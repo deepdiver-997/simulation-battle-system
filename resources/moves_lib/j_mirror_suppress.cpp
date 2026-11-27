@@ -76,7 +76,7 @@ EffectResult effect_1245_mirror_suppress(BattleContext* ctx, const EffectArgs& a
     }
     int slots[5] = {0, 1, 2, 3, 4};
     for (int i = 4; i > 0; --i) {
-        std::swap(slots[i], slots[sbs_rand() % (i + 1)]);
+        std::swap(slots[i], slots[ctx->rng().next() % (i + 1)]);
     }
     int picked = 0;
     for (int i = 0; i < 5 && picked < zero_count; ++i) {

@@ -223,6 +223,7 @@ int main() {
             b.start();
             BattleContext& ctx = b.ctx();
             ctx.rule_center_.grant_reflect(1, -1, 999, 1, 3);
+            ctx.seed_rng(1); // 固定成功分支的对局随机序列
             use0(b, /*foe_slot=*/2);
             const bool feared = ctx.has_active_abnormal_status(1, kFear);
             const bool fatigued = ctx.has_active_abnormal_status(1, kFatigue);

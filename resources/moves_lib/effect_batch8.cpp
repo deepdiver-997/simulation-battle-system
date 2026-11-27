@@ -87,7 +87,7 @@ EffectResult effect_88_chance_power(BattleContext* ctx, const EffectArgs& args) 
     if (self < 0 || self > 1 || mult <= 1) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(chance)) {
+    if (!roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     auto& view = ctx->ws.skill_power_view[self];
@@ -438,7 +438,7 @@ EffectResult effect_583_random_pp_zero(BattleContext* ctx, const EffectArgs& arg
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(candidates.size());
+        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
         (void)g_core->pp_zero_slot(ctx, opp, candidates[static_cast<std::size_t>(pick)], /*actor=*/1 - opp);
         candidates.erase(candidates.begin() + pick);
     }
@@ -491,7 +491,7 @@ EffectResult effect_425_random_stat_drain(BattleContext* ctx, const EffectArgs& 
         pool.push_back(i);
     }
     for (int k = 0; k < count && !pool.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(pool.size());
+        const int pick = ctx->rng().next() % static_cast<int>(pool.size());
         const int stat = pool[static_cast<std::size_t>(pick)];
         pool.erase(pool.begin() + pick);
         g_core->stat_drop(ctx, opp, stat, levels, owner);      // ① 附加下降（免弱可挡）
@@ -563,7 +563,7 @@ EffectResult effect_470_hit_anomaly_tick(BattleContext* ctx, const EffectArgs& a
         || !is_valid_abnormal_status_id(anomaly)) {
         return EffectResult::kOk;
     }
-    if (!executed_skill_is_attack(ctx, self) || !roll_percent(chance)) {
+    if (!executed_skill_is_attack(ctx, self) || !roll_percent(ctx->rng(), chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), self);
@@ -942,7 +942,7 @@ EffectResult effect_849_pre_damage_stat_drain_tick(BattleContext* ctx, const Eff
         pool.push_back(i);
     }
     for (int k = 0; k < count && !pool.empty(); ++k) {
-        const int pick = sbs_rand() % static_cast<int>(pool.size());
+        const int pick = ctx->rng().next() % static_cast<int>(pool.size());
         const int stat = pool[static_cast<std::size_t>(pick)];
         pool.erase(pool.begin() + pick);
         g_core->stat_drop(ctx, opp, stat, 1, self);

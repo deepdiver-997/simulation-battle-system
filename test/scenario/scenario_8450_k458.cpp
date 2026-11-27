@@ -277,7 +277,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主", kJieJing, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(1);
+        b.ctx().seed_rng(1);
         RandMirror m;
         m.seed(1);
         BattleContext& ctx = b.ctx();
@@ -321,7 +321,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "后手", kJieJing, 100, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 300, 1, kMaxHp)));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         RandMirror m;
         m.seed(2);
         BattleContext& ctx = b.ctx();
@@ -358,7 +358,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "霹雳", kPiLi, 300, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -394,7 +394,7 @@ int main() {
                                                  /*arg_index=*/1, /*value=*/5, 300, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(7);
+        b.ctx().seed_rng(7);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 1, {10, 1, 0, 7, -1});
         ctx.pp_retain_pet[1][0] = true;   // 琼华之庇保留旗（pp_zero_slot 对手来源保留分支）
@@ -446,7 +446,7 @@ int main() {
                                                  /*arg_index=*/1, /*value=*/2, 300, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(11);
+        b.ctx().seed_rng(11);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 1, {8, 8, 8, 8, 8});
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -479,7 +479,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主0", kJieJing, 300, 1, kMaxHp)),
                          make_party(carrier_pet(2, "印主1", kJieJing, 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 0, {10, 11, 12, 13, 14});
         set_foe_pp(b, 1, {20, 21, 22, 23, 24});
@@ -528,7 +528,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主", kJieJing, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -556,7 +556,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "印主", kJieJing, 300, 1, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(3);
+        b.ctx().seed_rng(3);
         RandMirror m;
         m.seed(3);
         BattleContext& ctx = b.ctx();
@@ -590,7 +590,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "满血", kFenLi, 300, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         RandMirror m;
         m.seed(13);
         BattleContext& ctx = b.ctx();
@@ -618,7 +618,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "半血", kFenLi, 300, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 1, {10, 11, 12, 13, 14});
         ctx.getPet(0).hp = max_hp_of_pet(ctx.getPet(0)) / 2;   // 压半血（坑4：只压当前）
@@ -653,7 +653,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "双槽", kJiuYou, 300, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 100, 1, kMaxHp)));
         b.start();
-        sbs_srand(21);
+        b.ctx().seed_rng(21);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 1, {9, 9, 9, 9, 9});
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -678,7 +678,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "歪腿", kMuRi, 100, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 300, 1, kMaxHp)));
         b.start();
-        sbs_srand(42);
+        b.ctx().seed_rng(42);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 1, {9, 9, 9, 9, 9});
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -701,7 +701,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "中腿", kMuRi, 100, 200, kMaxHp)),
                          make_party(foe_pet(2, "对手", 300, 1, kMaxHp)));
         b.start();
-        sbs_srand(2);
+        b.ctx().seed_rng(2);
         BattleContext& ctx = b.ctx();
         set_foe_pp(b, 1, {9, 9, 9, 9, 9});
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::NONE, 0);
@@ -727,7 +727,7 @@ int main() {
         ScenarioBattle b(make_party(carrier_pet(1, "满血0", kFenLi, 300, 200, kMaxHp)),
                          make_party(carrier_pet(2, "满血1", kFenLi, 100, 200, kMaxHp)));
         b.start();
-        sbs_srand(13);
+        b.ctx().seed_rng(13);
         BattleContext& ctx = b.ctx();
         run_round(b, BattleFsm::ActionType::SELECT_SKILL, 0, BattleFsm::ActionType::SELECT_SKILL, 0);
         // side0（先手）：门开、掷中、归零对手 1 槽

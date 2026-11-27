@@ -89,7 +89,7 @@
 //   + 威力视图赋值自动置 rewritten → 标准变威力重算管线伤害前重算。42 差异 =
 //   系别/倍数是模板常量（电=5 / ×2），行参只有区间 [下限,上限]。
 // 区间掷时长先例 = 效果 683（resources/moves_lib/heal_drain.cpp:87-103）：
-//   low + (sbs_rand() % (high - low + 1)) 闭区间掷——引擎自有确定性 RNG（MINSTD，
+//   low + (rng.next() % (high - low + 1)) 闭区间掷——引擎自有确定性 RNG（MINSTD，
 //   include/utils/sbs_rand.h），场景闭式可核（K430 T10 同款）。[lo,lo] 载体（充电/
 //   电能聚合等 7 条）退化为定值时长。
 // 复用即刷新：register_round_effect 同 (state,owner) 再注册 → 覆盖刷新（65 同款注释）。
@@ -186,7 +186,7 @@ EffectResult effect_42_electric_power_window(BattleContext* ctx, const EffectArg
     EFFECT_ARG_GUARD(lo > 0 && hi >= lo, 42, args, "需要 回合下限>0 且 上限>=下限");
 
     // 区间掷时长（683 同款闭区间；sbs_rand = 引擎自有确定性 RNG，场景闭式可核）。
-    const int rounds = lo + (sbs_rand() % (hi - lo + 1));
+    const int rounds = lo + (ctx->rng().next() % (hi - lo + 1));
     set_s432(ctx, key432(owner, 0), lo);
     set_s432(ctx, key432(owner, 1), hi);
     set_s432(ctx, key432(owner, 2), rounds);

@@ -184,7 +184,6 @@ void add_cleanse_fixture(ScenarioBattle& b,int owner) {
 
 int main() {
     if (!PetFactory::initialize_runtime_data()) return 1;
-    sbs_srand(493);
     // A：当前库9载体全链切片。2061五条只核加载数据，不伪装已有随机实现。
     {
         const std::vector<std::pair<int,std::vector<std::pair<int,std::vector<int>>>>> want={
@@ -355,9 +354,9 @@ int main() {
     for (int i:{0,1}) {
         auto b=solo(0,true,kMove,i?25:0,150);
         put(*b,0,1,3);
-        sbs_srand(8810);
+        b->ctx().seed_rng(8810);
         cast(*b,0,i?75:0,"M 2137不额外消费随机数");
-        rng[i]=sbs_rand_state();
+        rng[i]=b->ctx().rng().state();
         raw[i]=b->ctx().ws.raw_attack_damage[0];
     }
     CHECK_EQ(rng[0],rng[1],"M 同种子随机状态一致");

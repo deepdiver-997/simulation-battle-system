@@ -8,7 +8,7 @@
 //     （NextRounds 字面：武装当回合不保）；
 //   - 1259 走纯链载体 盛夏相逢 27995 [3,50,0,0,0,-2,-2,0]（特防/速各-2，50%）：
 //     50% 掷点用 **种子校准** 钉死（载体属性技纯链无 rand 消费、拍打 must_hit，
-//     掷点=校准后第 n 个 sbs_rand()%100）；"恰 {0} 掷"用 交替序列 fail/fail/hit + 第四回合
+//     掷点=校准后第 n 个对局掷点 %100）；"恰 {0} 掷"用 交替序列 fail/fail/hit + 第四回合
 //     驱动不变 钉死（InRounds [R1..R3]，NextRounds 误版会在 R4 再掷）；
 //   - 874 走纯链载体 芸生长啸 37086 [3,350]：atk=1 raw 1~3 < 350 免疫（loss==0）、
 //     atk=3000 raw ≥858 > 350 照常（浮动带远离阈值，无需种子）；R4 窗过期低伤落地；
@@ -149,7 +149,7 @@ int main() {
                                             /*atk=*/3000)));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(seed);
+        ctx.seed_rng(seed);
         both_act(b, 0);   // R1 我掷中（免攻票 duration=1）→ 对手攻击被免
         CHECK_EQ(ctx.getPet(0).hp, 99999, "T2102 1259：掷中 → 免疫对手攻击伤害");
         CHECK_EQ(foe_level(ctx, kSlotSpdef), 0, "T2102 1259：掷中不降槽（特防）");
@@ -180,7 +180,7 @@ int main() {
                          make_party(foe_pet({kPaDa, kPaDa, kPaDa, kPaDa, kPaDa})));
         b.start();
         BattleContext& ctx = b.ctx();
-        sbs_srand(seed);
+        ctx.seed_rng(seed);
         self_skill(b, 0);   // R1 掷歪 → -2
         CHECK_EQ(foe_level(ctx, kSlotSpd), -2, "T2103 1259：R1 掷歪 → 速度-2");
         both_pass(b);       // R2 掷歪 → -4

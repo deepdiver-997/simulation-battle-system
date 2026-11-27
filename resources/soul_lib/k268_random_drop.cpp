@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // K268 随机对手降能力族 —— effect 796（1 宏 / 1 行）
 //
 // 行清单（tools/soul_effects_dump.py 796，2026-10-21）：
@@ -100,7 +99,7 @@ EffectResult k268_796_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
     int guard = 0;
     while (done < count && guard < 100) {
         ++guard;
-        const int slot = sbs_rand() % 6;
+        const int slot = ctx->rng().next() % 6;
         if (picked[slot]) {
             continue;
         }
