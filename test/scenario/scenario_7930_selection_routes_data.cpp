@@ -301,17 +301,10 @@ int main() {
                   << "；451/2020/未知 id 无行\n";
     }
 
-    // ══ B 载体全量装载对照（期望值 = SQL 复刻切片；引用面按当前库实态双态）═════
+    // ══ B 载体全量装载对照（期望值 = SQL 复刻切片；统计下限按当前库实态）═════
     {
-        // 引用面（K469 双态）：
-        //   37 行态 = 473 处引用 / 469 载体（R4 附录 A 基线 454/451 + J331 扩行 +3/+2
-        //     + J332 扩行 +4/+4 + J335 扩行 +8/+8——1774 八载体链上均无既有路由 id；
-        //     ⚠️ K450 2026-11-10 11-06 数据刷新 +4/+4：新载体 慧海芙音 38583（2599）/
-        //     迟霜晏影 38584（2597/2598）/铭千古 38608（1527/496）/盛凌 38633（1774），
-        //     路由表本身 37 行不变）；
-        //   38 行态（K469 616 扩行）= 479 处引用 / 475 载体（+6/+6：17660 破锐怒冲/
-        //     19323 龙怒天火断/23413 海之契约/23836 轮回天生/24822 心怀苍生/
-        //     38016 异怪波动——六载体链上均无既有路由 id，SQL 核算 2026-11-17）。
+        // 37 行态的 K450 基线是 473/469；616 增加 6/6，953 再增加 5/5。
+        // 镜像可以新增已有路由的载体；下面仍逐一核对当前库的全部路由节点。
         int ref_total = -1, carrier_total = -1;
         ro.query(
             "SELECT COUNT(*), COUNT(DISTINCT m.id) FROM moves m, json_each(m.side_effect) j "
@@ -320,26 +313,12 @@ int main() {
                 ref_total = sqlite3_column_int(st, 0);
                 carrier_total = sqlite3_column_int(st, 1);
             });
-        if (has953_route) {
-            CHECK_EQ(ref_total, 484,
-                     "B) 引用总数 484（479 + K487 953 五载体各 1 引用：坠天断魂曲 24921/"
-                     "地底核心 25269/冰霸霸之魂 26577/福龙临世 28592/风翼护体 28714）");
-            CHECK_EQ(carrier_total, 480,
-                     "B) 载体总数 480（475 + 24921/25269/26577/28592/28714——五载体链上"
-                     "均无既有路由 id，SQL 核算 2026-11-19）");
-        } else if (has616_route) {
-            CHECK_EQ(ref_total, 479, "B) 引用总数 479（473 + K469 616 六载体各 1 引用）");
-            CHECK_EQ(carrier_total, 475,
-                     "B) 载体总数 475（469 + 破锐怒冲 17660/龙怒天火断 19323/"
-                     "海之契约 23413/轮回天生 23836/心怀苍生 24822/异怪波动 38016）");
-        } else {
-            CHECK_EQ(ref_total, 473, "B) 引用总数 473（469 + K450 刷新 新载体 38583/38584/38608/38633 各 1 引用）");
-            CHECK_EQ(carrier_total, 469,
-                     "B) 载体总数 469（465 + 慧海芙音 38583/迟霜晏影 38584/铭千古 38608/"
-                     "盛凌 38633；J335 段：启明之辰 28051/饭后甜点 28366/安魂引 28668/"
-                     "几曾识干戈 35652/兽灵震谷爪 35786/御风无痕 35907/雾停枝 36277/"
-                     "灰刻截光破 36411）");
-        }
+        const int min_refs = has953_route ? 484 : has616_route ? 479 : 473;
+        const int min_carriers = has953_route ? 480 : has616_route ? 475 : 469;
+        CHECK(ref_total >= min_refs, "B) 引用总数 " + std::to_string(ref_total)
+              + " 不低于历史下限 " + std::to_string(min_refs));
+        CHECK(carrier_total >= min_carriers, "B) 载体总数 " + std::to_string(carrier_total)
+              + " 不低于历史下限 " + std::to_string(min_carriers));
 
         std::vector<int> carriers;
         ro.query(
@@ -430,6 +409,7 @@ int main() {
                 }
             }
         }
+        CHECK_EQ(checked_nodes, ref_total, "B) 核对的路由节点覆盖当前镜像全部引用");
         std::cout << "  [B] " << carriers.size() << " 载体全量构造核验完成："
                   << checked_nodes << " 个路由节点参数逐位比对（SQL 复刻切片），"
                      "普通分支零路由 id\n";

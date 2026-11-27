@@ -47,8 +47,8 @@
 --   （25269 同链 843=下2回合全技能先制+1 已注册 round_window.cpp——行为面先制断言
 --     避开本载体，T8742-pre 切片核验不受影响）
 --
--- 引用面变化：479/475（K469 刷新后基线）→ 484/480（+5 引用 / +5 载体）——
---   场景 7930 A/B 段期望值由本单同步（三态：37/38/39 行态）。
+-- 引用面历史基线：479/475（K469）+ 五个 953 载体 = 484/480，作为下限。
+--   滚动镜像可能新增已有路由的载体；953 的五个已知载体仍各须精确含一条 953。
 --
 -- 重放/回滚：
 --   整脚本单事务 + .bail on；目标态断言 CHECK(ok=1)，第三态 → CLI 非零退出且回滚。
@@ -107,16 +107,22 @@ SELECT CASE WHEN (
     AND (SELECT COUNT(*) FROM custom_skill_selection_routes r
           JOIN effect_info e ON e.id = r.effect_id
           WHERE r.arg_adapter = 'skill_static_elements' AND e.args_num != 0) = 0
-    -- 本单 1 行双表一致（args_num=4 / side_effect.arg_count=4）
+    -- 本单路由及双表参数定义必须在位（953 plain，args_num=4 / arg_count=4）。
     AND (SELECT COUNT(*) FROM custom_skill_selection_routes r
           JOIN effect_info e ON e.id = r.effect_id
-          WHERE r.effect_id = 953 AND e.args_num != 4) = 0
-    AND (SELECT COUNT(*) FROM side_effect WHERE id = 953 AND arg_count != 4) = 0
-    -- 引用面锚定（K469 基线 479/475 + 本单 +5/+5；SQL 复刻同 7930 B 段）
+          WHERE r.effect_id = 953 AND r.arg_adapter = 'plain' AND e.args_num = 4) = 1
+    AND (SELECT COUNT(*) FROM side_effect WHERE id = 953 AND arg_count = 4) = 1
+    -- 固定载体缺失或重复不能被镜像新增引用掩盖。
+    AND (SELECT COUNT(*) FROM (
+          SELECT m.id FROM moves m, json_each(m.side_effect) j
+          WHERE m.id IN (24921,25269,26577,28592,28714) AND j.value = 953
+          GROUP BY m.id HAVING COUNT(*) = 1
+    )) = 5
+    -- 全库引用/载体是滚动镜像统计，484/480 为历史下限（同场景 7930/8742）。
     AND (SELECT COUNT(*) FROM moves m, json_each(m.side_effect) j
-          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) = 484
+          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) >= 484
     AND (SELECT COUNT(DISTINCT m.id) FROM moves m, json_each(m.side_effect) j
-          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) = 480
+          WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes)) >= 480
 ) THEN 1 ELSE 0 END;
 
 -- ═══ verify 输出 ═════════════════════════════════════════════════════════
@@ -124,7 +130,7 @@ SELECT '[verify] 路由表: ' || COUNT(*) || ' 行（预期 39；plain=' ||
        SUM(arg_adapter = 'plain') || ' static=' ||
        SUM(arg_adapter = 'skill_static_elements') || '）'
 FROM custom_skill_selection_routes;
-SELECT '[verify] 引用面: ' || COUNT(*) || ' 处引用 / ' || COUNT(DISTINCT m.id) || ' 载体（K469 基线 479/475 + 本单 +5/+5）'
+SELECT '[verify] 引用面: ' || COUNT(*) || ' 处引用 / ' || COUNT(DISTINCT m.id) || ' 载体（历史下限 484/480；五个固定 953 载体各一处）'
 FROM moves m, json_each(m.side_effect) j
 WHERE j.value IN (SELECT effect_id FROM custom_skill_selection_routes);
 

@@ -314,8 +314,7 @@ int main() {
         std::cout << "  [T8742-pre] 10 载体实际加载器切片核验 + 私有 DB 路由行在位 通过\n";
     }
 
-    // ══ T8742-pre-b 39 行态引用面 SQL 锚定（7930 B 段同式——私有 DB 已应用
-    //     expansion_7；集成侧重放后共享库收敛同值，INSERT OR IGNORE 幂等）══
+    // ══ T8742-pre-b 39 行态引用面下限（同 7930 B 段；固定载体在上段精确核验）══
     {
         sqlite3* db = nullptr;
         CHECK(sqlite3_open_v2(kPrivateDbPath, &db, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK,
@@ -341,10 +340,10 @@ int main() {
               "T8742-pre-b 引用面查询执行");
         sqlite3_free(err);
         sqlite3_close(db);
-        CHECK_EQ(ref_total, 484, "T8742-pre-b 39 行态引用总数=484（479 + 953 五载体各 1）");
-        CHECK_EQ(carrier_total, 480,
-                 "T8742-pre-b 39 行态载体总数=480（475 + 24921/25269/26577/28592/28714）");
-        std::cout << "  [T8742-pre-b] 39 行态引用面 SQL 锚定（484/480） 通过\n";
+        CHECK(ref_total >= 484, "T8742-pre-b 39 行态引用总数不低于历史下限 484");
+        CHECK(carrier_total >= 480, "T8742-pre-b 39 行态载体总数不低于历史下限 480");
+        std::cout << "  [T8742-pre-b] 39 行态引用面 " << ref_total << '/' << carrier_total
+                  << "（历史下限 484/480）\n";
     }
 
     // ══ T8742.a 953 门闭负测 + 回血首跳正测（28592 主载体；满血压 15000>40%×30000）══
