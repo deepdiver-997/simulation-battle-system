@@ -36,3 +36,6 @@ tools/agents/harnesses.conf.local
 
 # agent-workspace-kit 身份文件（new-worktree 播种，永不入库）
 .agent-env
+
+# Local-only private checkout storage.
+/private
