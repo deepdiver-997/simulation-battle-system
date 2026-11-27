@@ -85,8 +85,8 @@ EffectResult effect_1694_random_drain_range(BattleContext* ctx, const EffectArgs
     const bool boosted = j223_has_stat_boost(ctx, owner);
     const int range_lo = boosted ? lo_boost : lo;
     const int range_hi = boosted ? hi_boost : hi;
-    const int span = range_hi - range_lo + 1;
-    const int amount = range_lo + (span > 1 ? ctx->rng().next() % span : 0);
+    const int amount = choose_skill_range(*ctx, 1694, 0, owner, target, range_lo, range_hi,
+                                          ChanceSingleton::SkipDraw);
 
     ctx->plugin_storage[k1694AuditBase + owner * 2] = amount;
     ctx->plugin_storage[k1694AuditBase + owner * 2 + 1] = boosted ? 1 : 0;

@@ -80,7 +80,7 @@ EffectResult effect_912_drop_gate_zero_pp(BattleContext* ctx, const EffectArgs& 
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
+        const int pick = choose_skill_range(*ctx, 912, 0, owner, target, 0, static_cast<int>(candidates.size()) - 1);
         opp_pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
         candidates.erase(candidates.begin() + pick);
     }

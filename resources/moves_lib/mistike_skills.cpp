@@ -101,7 +101,7 @@ EffectResult effect_449_conditional_anomaly(BattleContext* ctx, const EffectArgs
         || !is_valid_abnormal_status_id(anomaly)) {
         return EffectResult::kOk;
     }
-    if (!side_has_stat_drop(ctx, opp) || !roll_percent(ctx->rng(), chance)) {
+    if (!side_has_stat_drop(ctx, opp) || !roll_skill_percent(*ctx, 449, 0, owner, opp, chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), owner);
@@ -160,7 +160,7 @@ EffectResult effect_1428_all_down_then_roundly(BattleContext* ctx, const EffectA
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || rounds <= 0) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 1428, 0, owner, opp, chance)) {
         return EffectResult::kOk;
     }
     // 即时半边：全属性-1（含命中，kAbilityLevelSlotCount 口径；逐项查免弱、钳 -6）。
@@ -289,7 +289,7 @@ EffectResult effect_1471_clear_then_fatigue(BattleContext* ctx, const EffectArgs
     }
     bool landed = false;
     if (g_core->clear_stat_boosts && g_core->clear_stat_boosts(ctx, opp) > 0
-        && roll_percent(ctx->rng(), chance)) {
+        && roll_skill_percent(*ctx, 1471, 0, owner, opp, chance)) {
         const ApplyAnomalyResult r =
             g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), owner);
         landed = (r == ApplyAnomalyResult::SUCCESS
@@ -629,18 +629,19 @@ EffectResult effect_2214_locks_zero_pp(BattleContext* ctx, const EffectArgs& arg
         return EffectResult::kOk;
     }
     // 有 PP 且非无限 PP 的攻击技能里随机挑（逐层不重复）。
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     ElfPet& opp_pet = ctx->getPet(opp);
     for (int i = 0; i < static_cast<int>(opp_pet.skills.size()); ++i) {
         if (opp_pet.skills[static_cast<std::size_t>(i)].pp > 0) {
-            candidates.push_back(i);
+            candidates.push_back({i, 1});
         }
     }
     int zeroed = 0;
     while (zeroed < locks && !candidates.empty()) {
-        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
-        opp_pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
-        candidates.erase(candidates.begin() + pick);
+        const int slot = choose_skill_slot(*ctx, 2214, 0, owner, opp, candidates);
+        opp_pet.skills[static_cast<std::size_t>(slot)].pp = 0;
+        candidates.erase(std::find_if(candidates.begin(), candidates.end(),
+                                      [slot](const ChanceOption& option) { return option.id == slot; }));
         ++zeroed;
     }
     if (zeroed < locks && boost_pct > 0) {
@@ -666,16 +667,17 @@ EffectResult effect_1114_break_then_zero_pp(BattleContext* ctx, const EffectArgs
         return EffectResult::kOk;   // 没有可清除的回合类效果 → 后续不触发
     }
     ElfPet& opp_pet = ctx->getPet(opp);
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for (int i = 0; i < static_cast<int>(opp_pet.skills.size()); ++i) {
         if (opp_pet.skills[static_cast<std::size_t>(i)].pp > 0) {
-            candidates.push_back(i);
+            candidates.push_back({i, 1});
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
-        opp_pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
-        candidates.erase(candidates.begin() + pick);
+        const int slot = choose_skill_slot(*ctx, 1114, 0, owner, opp, candidates);
+        opp_pet.skills[static_cast<std::size_t>(slot)].pp = 0;
+        candidates.erase(std::find_if(candidates.begin(), candidates.end(),
+                                      [slot](const ChanceOption& option) { return option.id == slot; }));
     }
     return EffectResult::kOk;
 }
@@ -697,16 +699,17 @@ EffectResult effect_907_reverse_then_zero_pp(BattleContext* ctx, const EffectArg
         return EffectResult::kOk;
     }
     ElfPet& opp_pet = ctx->getPet(opp);
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for (int i = 0; i < static_cast<int>(opp_pet.skills.size()); ++i) {
         if (opp_pet.skills[static_cast<std::size_t>(i)].pp > 0) {
-            candidates.push_back(i);
+            candidates.push_back({i, 1});
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
-        opp_pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
-        candidates.erase(candidates.begin() + pick);
+        const int slot = choose_skill_slot(*ctx, 907, 0, owner, opp, candidates);
+        opp_pet.skills[static_cast<std::size_t>(slot)].pp = 0;
+        candidates.erase(std::find_if(candidates.begin(), candidates.end(),
+                                      [slot](const ChanceOption& option) { return option.id == slot; }));
     }
     return EffectResult::kOk;
 }

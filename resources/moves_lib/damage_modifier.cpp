@@ -24,7 +24,7 @@ EffectResult effect_skill_4(BattleContext* context, const EffectArgs& args) {
         return EffectResult::kOk;
     }
 
-    if (!roll_percent(context->rng(), probability)) {
+    if (!roll_skill_percent(*context, 4, 0, attacker_id, attacker_id, probability)) {
         return EffectResult::kOk;
     }
 
@@ -174,7 +174,7 @@ EffectResult effect_22_fatigue(BattleContext* ctx, const EffectArgs& args) {
     if (owner < 0 || owner > 1 || target < 0 || target > 1) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 22, 0, owner, target, chance)) {
         return EffectResult::kOk;
     }
     if (g_core && g_core->apply_anomaly) {

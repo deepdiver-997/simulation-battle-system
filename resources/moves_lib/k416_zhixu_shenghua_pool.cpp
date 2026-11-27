@@ -357,15 +357,14 @@ void k416_pp_zero_random_slots(BattleContext* ctx, int target, int actor, int co
     if (!ctx || !g_core || !g_core->pp_zero_slot || count <= 0) {
         return;
     }
-    int slots[5] = {0, 1, 2, 3, 4};
+    ChanceOption slots[] = {{0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}};
     const int n = static_cast<int>(ctx->getPet(target).skills.size());
     const int total = n < 5 ? n : 5;
     for (int i = 0; i < total && i < count; ++i) {
-        const int j = i + (ctx->rng().next() % (total - i));
-        const int tmp = slots[i];
-        slots[i] = slots[j];
-        slots[j] = tmp;
-        (void)g_core->pp_zero_slot(ctx, target, slots[i], actor);
+        const auto remaining = std::span<const ChanceOption>(slots + i, total - i);
+        const int slot = choose_skill_slot(*ctx, 1758, 0, actor, target, remaining);
+        std::iter_swap(slots + i, std::find(slots + i, slots + total, ChanceOption{slot, 1}));
+        (void)g_core->pp_zero_slot(ctx, target, slot, actor);
     }
 }
 

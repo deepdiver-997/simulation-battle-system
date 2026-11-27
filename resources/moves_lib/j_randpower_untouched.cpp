@@ -41,7 +41,7 @@ EffectResult effect_61_random_power(BattleContext* ctx, const EffectArgs& args) 
                      "61 布局=[owner,target]（on_selected 绑定）");
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 61, args, "需要 owner ∈ {0,1}");
-    ctx->ws.skill_power_view[owner] = 50 + ctx->rng().next() % 101;   // 50..150 绝对置
+    ctx->ws.skill_power_view[owner] = choose_skill_range(*ctx, 61, 1, owner, args.int_args[1], 50, 150);   // 50..150 绝对置
     return EffectResult::kOk;
 }
 

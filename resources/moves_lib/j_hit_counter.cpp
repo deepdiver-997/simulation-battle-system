@@ -62,7 +62,7 @@ EffectResult effect_642_hit_counter(BattleContext* ctx, const EffectArgs& args) 
             if (ev.damage_kind != static_cast<int>(DamageKind::NORMAL) || ev.amount <= 0) {
                 return;   // "攻击技能命中" = 红伤
             }
-            if (!roll_percent(c->rng(), chance)) {
+            if (!roll_skill_percent(*c, 642, 0, self, ev.actor, chance)) {
                 return;
             }
             (void)g_core->fixed_damage(c, ev.actor, fixed);

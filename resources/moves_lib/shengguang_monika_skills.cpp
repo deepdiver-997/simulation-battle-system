@@ -140,7 +140,7 @@ EffectResult effect_2429_pp_zero_cond(BattleContext* ctx, const EffectArgs& args
     }
     int idx[5] = {0, 1, 2, 3, 4};
     for (int i = 4; i > 0; --i) {
-        const int j = ctx->rng().next() % (i + 1);
+        const int j = choose_skill_range(*ctx, 2429, 0, owner, target, 0, i);
         std::swap(idx[i], idx[j]);
     }
     for (int i = 0; i < slots_n && i < 5; ++i) {
@@ -430,7 +430,7 @@ EffectResult effect_1385_consume_all_lv_pp_zero(BattleContext* ctx, const Effect
     moni_pub_set(ctx->plugin_storage, kMoniPubNz + owner, 0);
     int idx[5] = {0, 1, 2, 3, 4};
     for (int i = 4; i > 0; --i) {
-        const int j = ctx->rng().next() % (i + 1);
+        const int j = choose_skill_range(*ctx, 1385, 0, owner, target, 0, i);
         std::swap(idx[i], idx[j]);
     }
     for (int i = 0; i < nz && i < 5; ++i) {
@@ -461,12 +461,15 @@ EffectResult effect_1485_conditional_anomaly_pair(BattleContext* ctx, const Effe
             break;
         }
     }
+    // 选定的分支在概率 > 0 时恒抽一次（包括 100%），另一支不抽。
     if (boosted) {
-        if (pct_a > 0 && (ctx->rng().next() % 100) < pct_a) {
+        if (pct_a > 0 && roll_skill_gate(*ctx, 1485, 0, owner, target, pct_a, 100,
+                                        ChanceSingleton::ConsumeDraw)) {
             g_core->apply_anomaly(ctx, target, anomaly_a, 1, owner);
         }
     } else {
-        if (pct_b > 0 && (ctx->rng().next() % 100) < pct_b) {
+        if (pct_b > 0 && roll_skill_gate(*ctx, 1485, 1, owner, target, pct_b, 100,
+                                        ChanceSingleton::ConsumeDraw)) {
             g_core->apply_anomaly(ctx, target, anomaly_b, 1, owner);
         }
     }

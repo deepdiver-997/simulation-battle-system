@@ -101,11 +101,11 @@ EffectResult j14_1024_fallback_tick(BattleContext* ctx, const EffectArgs& args) 
 
 // ── 1024 每回合掷点（850 roll_and_grant 同款）：掷中挂当回合免攻票，
 //    掷歪登记当回合 ROUND_END 一次性兜底 ──
-void j14_1024_roll_round(BattleContext* ctx, int owner, int opp, int chance, int pct) {
+void j14_1024_roll_round(BattleContext* ctx, int owner, int opp, int chance, int pct, int subsite) {
     if (!ctx || owner < 0 || owner > 1 || opp < 0 || opp > 1 || chance <= 0 || pct <= 0) {
         return;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1024, subsite, owner, owner, chance)) {
         ctx->rule_center_.grant_immune(
             owner, static_cast<int>(ImmunityType::DAMAGE), ~0ULL, /*anomaly_mask=*/0,
             /*duration_rounds=*/1, ctx->roundCount, /*source_id=*/0, /*soul=*/false,
@@ -126,7 +126,7 @@ EffectResult j14_1024_round_tick(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     j14_1024_roll_round(ctx, args.int_args[0], args.int_args[1], args.int_args[2],
-                        args.int_args[3]);
+                        args.int_args[3], /*subsite=*/1);
     return EffectResult::kOk;
 }
 
@@ -226,7 +226,7 @@ EffectResult effect_1024_chance_immune_window(BattleContext* ctx, const EffectAr
     EFFECT_ARG_GUARD(rounds > 0 && chance > 0 && pct > 0, 1024, args,
                      "需要 回合/概率/pct > 0");
     // 首回合立即掷（850 首跳先例：ROUND_START 桶本回合已跑过）。
-    j14_1024_roll_round(ctx, owner, opp, chance, pct);
+    j14_1024_roll_round(ctx, owner, opp, chance, pct, /*subsite=*/0);
     if (rounds > 1) {
         register_next_rounds_effect(ctx, State::BATTLE_ROUND_START, owner, 1024, rounds - 1,
                                     {owner, opp, chance, pct}, &j14_1024_round_tick);

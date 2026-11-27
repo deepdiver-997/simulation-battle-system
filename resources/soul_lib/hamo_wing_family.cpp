@@ -324,7 +324,7 @@ EffectResult wing_866_arm(BattleContext* ctx, const EffectArgs& args) {
                 // ① ①号效果：被击败（自己）→ 100% 随机复活背包内已被击败的 1 只
                 //    （无法复活自己；被消逝的除外——is_vanished 剔除，revive_pet 双保险）
                 if (ev.target == owner && ev.slot == host_slot) {
-                    std::vector<int> candidates;
+                    std::vector<ChanceOption> candidates;
                     for (int slot = 0; slot < 6; ++slot) {
                         if (slot == host_slot) {
                             continue;   // 无法复活自己
@@ -333,10 +333,10 @@ EffectResult wing_866_arm(BattleContext* ctx, const EffectArgs& args) {
                         if (pet.hp > 0 || wctx->is_vanished(owner, slot)) {
                             continue;
                         }
-                        candidates.push_back(slot);
+                        candidates.push_back({slot, 1});
                     }
                     if (!candidates.empty() && g_core && g_core->revive_pet) {
-                        const int slot = candidates[wctx->rng().next() % candidates.size()];
+                        const int slot = choose_soul_slot(*wctx, kWingMarkId, 0, owner, owner, candidates);
                         const int hp = hamo_wing_get(host.soulmark_storage,
                                                      kWingReviveHpBaseKey + slot,
                                                      resolve_pet_max_hp(

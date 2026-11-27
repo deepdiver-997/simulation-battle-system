@@ -94,7 +94,7 @@ EffectResult effect_1353_first_roll_break(BattleContext* ctx, const EffectArgs& 
 
 // ── 1427 回合内结算 —— 掷中闪避 / 掷歪减伤（当回合）──
 void j167_1427_round(BattleContext* ctx, int self, int chance, int down) {
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1427, 0, self, self, chance)) {
         ctx->ws.dodge_rate[self] = 1.0f;   // 当回合闪避攻击（ws reset 天然收窗）
         return;
     }

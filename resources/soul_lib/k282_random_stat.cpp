@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <array>
+#include <span>
 
 namespace {
 
@@ -94,14 +95,16 @@ EffectResult k282_645_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
         return EffectResult::kOk;
     }
     // 部分 Fisher-Yates：全六槽入袋（含命中和已 +6 槽），每次从剩余槽中取一项。
-    std::array<int, total> bag{};
+    std::array<ChanceOption, total> bag{};
     for (int i = 0; i < total; ++i) {
-        bag[i] = i;
+        bag[i] = {i, 1};
     }
     for (int pick = 0; pick < count; ++pick) {
-        const int idx = pick + static_cast<int>(ctx->rng().next() % (total - pick));
-        std::swap(bag[pick], bag[idx]);
-        (void)g_core->stat_change(ctx, owner, bag[pick], delta);
+        const auto remaining = std::span{bag}.subspan(pick);
+        const int slot = choose_soul_slot(*ctx, kMarkId, 0, owner, owner, remaining);
+        const auto selected = std::ranges::find(remaining, slot, &ChanceOption::id);
+        std::iter_swap(remaining.begin(), selected);
+        (void)g_core->stat_change(ctx, owner, slot, delta);
     }
     return EffectResult::kOk;
 }

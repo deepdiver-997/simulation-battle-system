@@ -15,7 +15,7 @@
 #include <cstdlib>
 #include <iostream>
 
-#include <effects/lingchao_layers.h>
+#include "../../resources/lingchao_layers.h"
 #include <entities/pet_factory.h>
 #include <fsm/battleContext.h>
 #include <primitives/battle_primitives.h>

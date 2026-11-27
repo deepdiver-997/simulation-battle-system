@@ -129,7 +129,7 @@ EffectResult effect_588_first_move_self_stat(BattleContext* ctx, const EffectArg
     ctx->plugin_storage[k588FirstAuditBase + owner] = first ? 1 : 0;
     ctx->plugin_storage[k588RollAuditBase + owner] = 0;
     // 先出手门 + {0}% 概率门；pct<=0 显式关闸（roll_percent 内判）。
-    if (!first || delta == 0 || !roll_percent(ctx->rng(), pct)) {
+    if (!first || delta == 0 || !roll_skill_percent(*ctx, 588, 0, owner, owner, pct)) {
         return EffectResult::kOk;
     }
     ctx->plugin_storage[k588RollAuditBase + owner] = 1;

@@ -288,7 +288,7 @@ EffectResult soulmark_1011_round_start(BattleContext* ctx, const EffectArgs& arg
     //   ⚠️ 未来若要"挡伤被无效则改判减伤"，必须**同时**改这里与场景 076 的 C2
     //     （C2 明确断言：被压制那一路的 ws.damage_reduce_add 全 0、伤害照常落地、
     //      且免疫票**未被消费**）——别在别处偷偷补一条减伤。
-    if (roll_percent(ctx->rng(), kBlockChancePct)) {
+    if (roll_soul_percent(*ctx, kChaosSorensenMarkId, 0, owner, owner, kBlockChancePct)) {
         // 命中：**次数型免伤**，duration=1 回合（官方"下次"在回合开始时逐回合重掷 → 本回合内
         // 的"下一次"）。必须走 RuleCenter DAMAGE 票 + 管线 BLOCK 阶段，才能和"挡伤失效"
         // （沧岚 蚀砚之泪≥4 滴）正确交互：被压制时既不触发也不扣次数（场景 031 Q4 契约）。

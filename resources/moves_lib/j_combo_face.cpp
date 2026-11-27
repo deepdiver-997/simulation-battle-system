@@ -21,9 +21,9 @@
 //     count = min({0} + 已命中次数×{1}, {2})，本次攻击落地（红伤 final>0）后
 //     AFTER_ACTION 计一次（单次结算模型的实用读法；官方若为"攻击内增长"需逐段
 //     重演，内核单次结算语义下不可表达，记档）。owner×技能 分账（1328 同款）。
-//   - 612 = 解析器内 roll_percent({0}) → {1} : 1（每次使用掷一次，与静态 roll 同语义）。
+//   - 612 = 解析器内 roll_skill_percent（{0}） → {1} : 1（每次使用掷一次，与静态 roll 同语义）。
 //   - 1454 = 静态次数（combo_arg_indices (0,1) 已物化）+ 逐段钩子：每段
-//     roll_percent({2}) → fixed_damage({3})（伤害类概率走本地 roll，非申报闸）。
+//     roll_skill_percent（{2}） → fixed_damage({3})（伤害类概率走原生掷点，非申报闸）。
 //   - 1172 = 静态次数（(1,2)）+ 逐段钩子：每段 apply_anomaly_checked({3}%，{4}，自身)
 //     （异常类概率走申报闸门，J3/J52 口径）。
 //   - 1685 = 解析器：对手有任一异常 → roll [{0},{2}]（上限提至{2}），否则 [{0},{1}]。
@@ -108,8 +108,8 @@ EffectResult effect_612_chance_combo(BattleContext* ctx, const EffectArgs& args)
     const int count = args.int_args[3];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1 && chance > 0 && count > 1, 612, args,
                      "需要 概率>0 且 次数>1");
-    ctx->ws.combo_count_resolver[owner] = [chance, count](BattleContext* c) {
-        return roll_percent(c->rng(), chance) ? count : 1;
+    ctx->ws.combo_count_resolver[owner] = [owner, chance, count](BattleContext* c) {
+        return roll_skill_percent(*c, 612, 0, owner, 1 - owner, chance) ? count : 1;
     };
     return EffectResult::kOk;
 }
@@ -126,7 +126,7 @@ EffectResult effect_1454_perhit_fixed(BattleContext* ctx, const EffectArgs& args
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1 && chance > 0 && fixed > 0, 1454, args,
                      "需要 概率/固伤 > 0");
     // 次数走静态 roll（combo_arg_indices (0,1)）；钩子只在攻击方挂
-    ctx->ws.combo_hit_hook[owner] = [chance, fixed](BattleContext* c, int) {
+    ctx->ws.combo_hit_hook[owner] = [owner, chance, fixed](BattleContext* c, int) {
         if (!g_core || !g_core->fixed_damage) {
             return;
         }
@@ -134,7 +134,7 @@ EffectResult effect_1454_perhit_fixed(BattleContext* ctx, const EffectArgs& args
         if (defender < 0 || defender > 1) {
             return;
         }
-        if (roll_percent(c->rng(), chance)) {
+        if (roll_skill_percent(*c, 1454, 0, owner, defender, chance)) {
             (void)g_core->fixed_damage(c, defender, fixed);
         }
     };
@@ -182,7 +182,7 @@ EffectResult effect_1685_status_cap_combo(BattleContext* ctx, const EffectArgs& 
         if (up <= lo) {
             return lo;
         }
-        return lo + (c->rng().next() % (up - lo + 1));
+        return choose_skill_range(*c, 1685, 0, owner, target, lo, up);
     };
     return EffectResult::kOk;
 }

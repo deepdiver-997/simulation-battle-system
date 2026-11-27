@@ -112,10 +112,10 @@ EffectResult k288_627_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             }
             // 审计槽：本次申报概率%（F9 口径）。
             c->plugin_storage[kChanceAuditBase + owner] = chance;
-            if (!roll_percent(c->rng(), chance)) {
+            const int opp = c->opponent(owner);
+            if (!roll_soul_percent(*c, kMarkId, 0, owner, opp, chance)) {
                 return;
             }
-            const int opp = c->opponent(owner);
             if (c->getPet(opp).hp <= 0) {
                 return;   // 存活门（K1 151 同款）
             }

@@ -168,7 +168,8 @@ int flag_of(BattleContext* ctx, int key) {
 
 // 随机槽 PP 归零 ×count（K230 1562/K378 1355 同款 guard 循环：
 // 无限 PP 槽原语拒并重试、已 0 槽幂等成功）。
-void pp_zero_random_slots(BattleContext* ctx, int target, int actor, int count) {
+void pp_zero_random_slots(BattleContext* ctx, int mark_id, int subsite,
+                          int target, int actor, int count) {
     if (!ctx || !g_core || !g_core->pp_zero_slot || count <= 0) {
         return;
     }
@@ -176,7 +177,7 @@ void pp_zero_random_slots(BattleContext* ctx, int target, int actor, int count) 
     int guard = 0;
     while (done < count && guard < 100) {
         ++guard;
-        const int slot = ctx->rng().next() % 5;   // 5 技能槽
+        const int slot = choose_soul_range(*ctx, mark_id, subsite, actor, target, 0, 4);
         if (g_core->pp_zero_slot(ctx, target, slot, actor) ==
             PpReduceResult::SUCCESS) {
             ++done;
@@ -236,7 +237,7 @@ EffectResult k759_round_start_roll(BattleContext* ctx, const SoulNodeArgs& a) {
         ctx->plugin_storage[kFlag759Base + owner] = 0;
         return EffectResult::kOk;
     }
-    const bool hit = roll_percent(ctx->rng(), pct);   // 本地掷（K316 394 口径）
+    const bool hit = roll_soul_percent(*ctx, 759, 0, owner, owner, pct);
     ctx->plugin_storage[kAudit759Base + owner] = hit ? 1 : 0;
     ctx->plugin_storage[kFlag759Base + owner] = hit ? 1 : 0;
     return EffectResult::kOk;
@@ -278,7 +279,7 @@ EffectResult k759_round_end_pp_zero(BattleContext* ctx, const SoulNodeArgs& a) {
     }
     const HostRow row = host_row(ctx, a, 759);
     const int count = db_at(row, 2, k759CountFallback);   // db[2] = 1
-    pp_zero_random_slots(ctx, 1 - owner, owner, count);
+    pp_zero_random_slots(ctx, 759, 1, 1 - owner, owner, count);
     return EffectResult::kOk;
 }
 
@@ -329,7 +330,7 @@ EffectResult k918_round_end_pp_zero(BattleContext* ctx, const SoulNodeArgs& a) {
     }
     const HostRow row = host_row(ctx, a, 918);
     const int count = db_at(row, 0, k918CountFallback);   // db[0] = 1
-    pp_zero_random_slots(ctx, 1 - owner, owner, count);
+    pp_zero_random_slots(ctx, 918, 0, 1 - owner, owner, count);
     return EffectResult::kOk;
 }
 
@@ -411,7 +412,7 @@ EffectResult k1430_round_end_heal(BattleContext* ctx, const SoulNodeArgs& a) {
     if (self.hp <= 0) {
         return EffectResult::kOk;
     }
-    const int amount = lo + ctx->rng().next() % (hi - lo + 1);   // [lo, hi] 闭区间
+    const int amount = choose_soul_range(*ctx, 1430, 0, owner, owner, lo, hi);
     ctx->plugin_storage[kAudit1430Base + owner] = amount;   // 审计槽（F9 782）
     (void)g_core->heal_amount(ctx, owner, amount);
     const int opp = 1 - owner;

@@ -135,7 +135,7 @@ EffectResult j177_1318_kill_probe(BattleContext* c, const EffectArgs& a) {
     if (c->getPet(opp).hp <= 0) {
         return EffectResult::kOk;   // 已被本次攻击打死
     }
-    if (!roll_percent(c->rng(), chance)) {
+    if (!roll_skill_percent(*c, 1318, 0, self, opp, chance)) {
         j177_all_stats_down(c, self, opp, drop);   // 未触发兜底
         return EffectResult::kOk;
     }

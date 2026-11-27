@@ -104,7 +104,7 @@ EffectResult effect_446_random_three_up(BattleContext* ctx, const EffectArgs& ar
                      "需要 stat_change 原语");
     int slots[6] = {0, 1, 2, 3, 4, 5};
     for (int i = 0; i < 3; ++i) {
-        const int j = i + (ctx->rng().next() % (6 - i));
+        const int j = choose_skill_range(*ctx, 446, 0, owner, owner, i, 5);
         const int tmp = slots[i];
         slots[i] = slots[j];
         slots[j] = tmp;

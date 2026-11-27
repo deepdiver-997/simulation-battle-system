@@ -91,7 +91,7 @@ EffectResult effect_1144_rand_fixed_drain(BattleContext* ctx, const EffectArgs& 
     if (!g_core || !g_core->fixed_damage || !g_core->heal_amount) {
         return EffectResult::kOk;
     }
-    const int amount = lo + (hi > lo ? ctx->rng().next() % (hi - lo + 1) : 0);
+    const int amount = choose_skill_range(*ctx, 1144, 0, owner, opp, lo, hi, ChanceSingleton::SkipDraw);
     const int before = ctx->getPet(opp).hp;
     (void)g_core->fixed_damage(ctx, opp, amount);
     const int dealt = before - ctx->getPet(opp).hp;

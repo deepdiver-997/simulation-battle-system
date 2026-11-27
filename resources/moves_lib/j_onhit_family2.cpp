@@ -16,9 +16,9 @@
 //     复用 break_round_effects，J3 2068 兜底同款原语、吃免断+EVENT_BREAK）。
 //   - 实例：磁暴领域 25556 [4,100,0]、迷离身姿 25713 [4,70,22]（全库 20 载体）。
 // 1594（arg_count=5）"{0}回合内受到攻击则{1}%使自身全属性+{2}，未触发则{3}%使对手全属性-{4}"：
-//   - 主干 roll_percent（{1}，850 同款掷点）→ all_stats_up（common.h，stat_change 六槽
+//   - 主干 roll_skill_percent（{1}，沿用 850 掷点口径）→ all_stats_up（common.h，stat_change 六槽
 //     真原语——自身增益不吃免弱）；未掷中 → 再掷 {3}% → stat_drop 对手全属性-{4}。
-//   - 取态记档：主干"触发"以 roll_percent 为准（不放大利好/利空方向的二级状态，
+//   - 取态记档：主干"触发"以掷点为准（不放大利好/利空方向的二级状态，
 //     850 同口径）；STAT_BOOST 被封时 roll 已消耗、不算"未触发"（全属性提升是六槽
 //     独立槽位，部分槽 AT_CAP 仍算触发）。
 //   - 实例：混沌血源 27229 [3,50,1,100,1]、玄铁核心 27258 [4,50,1,100,1]（全库 11 载体，
@@ -153,6 +153,8 @@ EffectResult effect_1594_onhit_boost_else_drop(BattleContext* ctx, const EffectA
     const int chance2 = args.int_args[5];
     const int drop = args.int_args[6];
     EFFECT_ARG_GUARD(self >= 0 && self <= 1 && rounds > 0, 1594, args, "需要 rounds>0");
+    constexpr int kSelfBoost = 0;
+    constexpr int kAttackerDrop = 1;
     ctx->event_center_.register_watcher(
         EventType::EVENT_TAKE_DAMAGE, self, ctx->roundCount, rounds, /*once=*/false,
         [self, chance, up, chance2, drop](BattleContext* c, const BattleEvent& ev) {
@@ -160,9 +162,9 @@ EffectResult effect_1594_onhit_boost_else_drop(BattleContext* ctx, const EffectA
             if (!c || !j9_attacked_by(ev, self, actor)) {
                 return;
             }
-            if (roll_percent(c->rng(), chance)) {
+            if (roll_skill_percent(*c, 1594, kSelfBoost, self, self, chance)) {
                 all_stats_up(c, self, up);   // 自身增益走 stat_change 真原语（不吃免弱）
-            } else if (roll_percent(c->rng(), chance2)) {
+            } else if (roll_skill_percent(*c, 1594, kAttackerDrop, self, actor, chance2)) {
                 j9_all_stats_down(c, self, actor, drop);   // 兜底二次掷点 → 对手全属性-{4}
             }
         },

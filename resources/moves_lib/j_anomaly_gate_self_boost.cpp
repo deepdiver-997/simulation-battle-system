@@ -82,7 +82,7 @@ EffectResult effect_182_anomaly_gate_self_boost(BattleContext* ctx, const Effect
     if (chance <= 0) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 182, 0, owner, owner, chance)) {
         return EffectResult::kOk;
     }
     if (!g_core || !g_core->stat_change) {

@@ -124,8 +124,7 @@ EffectResult effect_118_random_power(BattleContext* ctx, const EffectArgs& args)
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 118, args, "需要 owner ∈ {0,1}");
     // 下限允许 0：混色 38237 [0,255]（fuzz seed 267758 实测——0~255 即设计本意）
     EFFECT_ARG_GUARD(lo >= 0 && hi >= lo && hi > 0, 118, args, "需要 0 ≤ 下限 ≤ 上限 且 上限 > 0");
-    const int span = hi - lo + 1;
-    ctx->ws.skill_power_view[owner] = lo + ctx->rng().next() % span;   // "改为"=绝对置（604 同款）
+    ctx->ws.skill_power_view[owner] = choose_skill_range(*ctx, 118, 0, owner, args.int_args[1], lo, hi);   // "改为"=绝对置（604 同款）
     return EffectResult::kOk;
 }
 

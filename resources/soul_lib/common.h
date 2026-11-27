@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 #ifndef SOUL_LIB_COMMON_H
 #define SOUL_LIB_COMMON_H
 
@@ -13,7 +12,6 @@
 
 #include <effects/effect.h>
 #include <effects/event_center.h>
-#include <effects/curse_stack.h>
 #include <effects/trait_state.h>
 #include <fsm/battleContext.h>
 #include <plugin/plugin_interface.h>
@@ -41,6 +39,31 @@ inline int any_int_or(const std::any& a, int fallback = 0) {
 
 // core 在插件初始化时传入的原语函数指针（依赖倒置：走真原语、不链接 core 符号）。
 inline const CoreApi* g_core = nullptr;
+
+inline const CoreApi& soul_chance_core() {
+    if (!g_core) throw std::logic_error("soul chance requires the core API");
+    return *g_core;
+}
+
+inline bool roll_soul_gate(BattleContext& ctx, int rule, int subsite, int actor, int target,
+                           int pass, int total, ChanceSingleton singleton = ChanceSingleton::ConsumeDraw) {
+    return soul_chance_core().roll_legacy_gate(&ctx, pass, total,
+        chance_site(ChanceSiteKind::SoulMark, rule, subsite, actor, target), singleton);
+}
+
+inline int choose_soul_range(BattleContext& ctx, int rule, int subsite, int actor, int target,
+                             int low, int high, ChanceSingleton singleton = ChanceSingleton::ConsumeDraw) {
+    return soul_chance_core().choose_legacy_range(&ctx, low, high,
+        chance_site(ChanceSiteKind::SoulMark, rule, subsite, actor, target), singleton);
+}
+
+inline int choose_soul_slot(BattleContext& ctx, int rule, int subsite, int actor, int target,
+                            std::span<const ChanceOption> options,
+                            ChanceSingleton singleton = ChanceSingleton::ConsumeDraw) {
+    return soul_chance_core().choose_legacy_slot(&ctx, options,
+        chance_site(ChanceSiteKind::SoulMark, rule, subsite, actor, target), singleton);
+}
+
 // 梅赫维特（含皮肤）精灵 id：本魂印专属的"切换后仍使用1号位技能"目标。
 
 // ⚠️ 两个不同的官方名词，别混：
@@ -49,14 +72,10 @@ inline const CoreApi* g_core = nullptr;
 constexpr const char* kMarkNameEternalTear = "蚀砚之泪";
 constexpr int kEternalTearSealThreshold = 4;
 
-inline bool roll_percent(SbsRng& rng, int percent) {
-    if (percent <= 0) {
-        return false;
-    }
-    if (percent >= 100) {
-        return true;
-    }
-    return (rng.next() % 100) < percent;
+inline bool roll_soul_percent(BattleContext& ctx, int mark_id, int subsite_id,
+                              int actor, int target, int percent) {
+    return soul_chance_core().roll_native_percent(&ctx, ChanceSiteKind::SoulMark, mark_id, subsite_id,
+                                           actor, target, percent);
 }
 
 inline int resolve_owner_from_args(BattleContext* ctx, const EffectArgs& args) {

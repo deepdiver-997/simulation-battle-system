@@ -2,6 +2,7 @@
 //
 // （2026-09-17 从 lib_1.cpp 按家族拆分；代码零改动，行为由全量场景回归守护。）
 #include "common.h"
+#include "../curse_stack.h"
 
 namespace {
 
@@ -42,7 +43,7 @@ EffectResult soulmark_2378_arm_zhaxikes(BattleContext* ctx, const EffectArgs& ar
         return EffectResult::kOk;   // arm 一次（ROSTER 节点：首回合对全队 6 槽各调一次，幂等）
     }
     zha_storage[kSlotKey] = true;
-    ensure_curse_wiring(ctx);   // 咒怨共享接线（幂等）：增减伤/FLOOR/免控检测器/无效出口钩子
+    ensure_curse_wiring(ctx, g_core);   // 咒怨共享接线（幂等）：增减伤/FLOOR/免控检测器/无效出口钩子
 
     // ⑥ 被击败 → 对手体力上限 -35%（EVENT_DEATH watcher，函数定义见下方）。
     zha_register_defeated_max_hp_cut(ctx, owner, zha_slot);
@@ -439,7 +440,7 @@ EffectResult soulmark_2386_arm_liumeng(BattleContext* ctx, const EffectArgs& arg
         WatcherScope::TEAM);
 
     storage[kSlotKey] = hs;
-    ensure_curse_wiring(ctx);   // 琉梦也可能拿到咒怨（被秒杀击败→第五+10层），接线共享
+    ensure_curse_wiring(ctx, g_core);   // 琉梦也可能拿到咒怨（被秒杀击败→第五+10层），接线共享
     return EffectResult::kOk;
 }
 

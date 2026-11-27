@@ -101,14 +101,14 @@ EffectResult effect_656_chance_random_pp_zero(BattleContext* ctx, const EffectAr
     if (!g_core || !g_core->pp_zero_slot) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(ctx->rng(), pct)) {
+    if (!roll_skill_percent(*ctx, 656, 0, self, opp, pct)) {
         return EffectResult::kOk;
     }
     // batch_b_zero_random_pp_slots 逐行同构（want>=5 → 全部；随机不同槽）。
     std::vector<int> all{0, 1, 2, 3, 4};
     const int n = std::min(slots, static_cast<int>(all.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (ctx->rng().next() % (static_cast<int>(all.size()) - i));
+        const int j = choose_skill_range(*ctx, 656, 1, self, opp, i, static_cast<int>(all.size()) - 1);
         std::swap(all[static_cast<std::size_t>(i)], all[static_cast<std::size_t>(j)]);
         (void)g_core->pp_zero_slot(ctx, opp, all[static_cast<std::size_t>(i)], self);
     }

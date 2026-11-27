@@ -33,6 +33,7 @@ namespace {
 
 constexpr int kHamoPetId = 3809;
 constexpr int kMarkId = 1392;
+constexpr int kFixedDamageChanceSite = 1;
 constexpr int kElementDragon = 15;   // 龙系元素 id（哈莫雷特/龙神哈莫 monsters.type=15）
 
 // plugin_storage 段 38091xxx（grep 全库无撞；38090001 为龙魂 longhun 接线键）。
@@ -136,7 +137,7 @@ EffectResult ao_suppress_move_right(BattleContext* ctx, const EffectArgs& args) 
         return EffectResult::kOk;
     }
     ensure_ao_wiring(ctx, owner);
-    const int hit = roll_percent(ctx->rng(), 50) ? 1 : 0;
+    const int hit = roll_soul_percent(*ctx, kMarkId, 0, owner, 1 - owner, 50) ? 1 : 0;
     ctx->plugin_storage[kSuppressFlagKey + owner] = hit;
     if (hit && foe_view_is_dragon(ctx, owner)) {
         // 先制计算点（MOVE_RIGHT 桶在 memset 之后跑）：-1 修正，不触必先。
@@ -196,7 +197,9 @@ EffectResult ao_phase_end_tick(BattleContext* ctx, const EffectArgs& args) {
     }
     ctx->plugin_storage.erase(armed);
     // "随机附加 150-300 点固定伤害"——fixed_damage 确定值通道（无浮动）。
-    g_core->fixed_damage(ctx, 1 - owner, 150 + ctx->rng().next() % 151);
+    const int opp = 1 - owner;
+    const int amount = choose_soul_range(*ctx, kMarkId, kFixedDamageChanceSite, owner, opp, 150, 300);
+    g_core->fixed_damage(ctx, opp, amount);
     return EffectResult::kOk;
 }
 

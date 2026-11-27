@@ -518,7 +518,7 @@ EffectResult k400_1151_enter(BattleContext* ctx, const SoulNodeArgs& a) {
             // 入口先清残旗（上一攻击 miss 未消费 → 不泄漏到本次，记档⑥）。
             c->plugin_storage.erase(k1151DblFlag + owner);
             write_int(c, k1151AuditDbl + owner, dbl_pct);           // 审计槽：掷前写
-            if (roll_percent(c->rng(), dbl_pct)) {
+            if (roll_soul_percent(*c, 1151, 0, owner, 1 - owner, dbl_pct)) {
                 write_int(c, k1151DblFlag + owner, row1151_multiplier(c, owner));
                 write_int(c, k1151DblStat + owner,
                           read_int(c, k1151DblStat + owner) + 1);   // 统计带侧证

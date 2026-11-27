@@ -66,7 +66,7 @@ EffectResult j130_691_kill_probe(BattleContext* c, const EffectArgs& a) {
     if (c->getPet(opp).hp <= 0) {
         return EffectResult::kOk;   // 已被本次攻击打死（存活门，2295）
     }
-    if (roll_percent(c->rng(), pct)) {
+    if (roll_skill_percent(*c, 691, 0, self, opp, pct)) {
         (void)g_core->force_hp_to_zero(c, opp, self);
     }
     return EffectResult::kOk;

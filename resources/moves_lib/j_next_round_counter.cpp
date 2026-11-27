@@ -161,7 +161,7 @@ EffectResult j84_715_arm(BattleContext* ctx, const EffectArgs& args) {
             int pool[BattleContext::kAbilityLevelSlotCount] = {0, 1, 2, 3, 4, 5};
             const int n = BattleContext::kAbilityLevelSlotCount;
             for (int i = n - 1; i > 0; --i) {
-                std::swap(pool[i], pool[c->rng().next() % (i + 1)]);
+                std::swap(pool[i], pool[choose_skill_range(*c, 715, 0, owner, opp, 0, i)]);
             }
             for (int k = 0; k < slots && k < n; ++k) {
                 (void)g_core->stat_drop(c, opp, pool[k], drop_abs, owner);

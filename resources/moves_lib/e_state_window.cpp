@@ -63,7 +63,7 @@ EffectResult effect_469_attr_use_window(BattleContext* ctx, const EffectArgs& ar
             if (user < 0 || user > 1) {
                 return;
             }
-            if (roll_percent(c->rng(), chance)) {
+            if (roll_skill_percent(*c, 469, 0, self, user, chance)) {
                 (void)g_core->apply_anomaly(c, user, anomaly, random_anomaly_duration(), self);
             }
         },
@@ -95,7 +95,7 @@ EffectResult effect_573_boost_lost_window(BattleContext* ctx, const EffectArgs& 
             if (ev.target != self || ev.stat_loss_kind < 0) {
                 return;
             }
-            if (roll_percent(c->rng(), chance)) {
+            if (roll_skill_percent(*c, 573, 0, self, 1 - self, chance)) {
                 (void)g_core->apply_anomaly(c, 1 - self, anomaly, dur, self);
             }
         },

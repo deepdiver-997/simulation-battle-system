@@ -238,15 +238,15 @@ EffectResult leap_round_open(BattleContext* ctx, const EffectArgs& args) {
         // 高体：当回合攻击必暴 + 随机1技 PP 归零
         ctx->ws.must_crit[owner] = true;
         ElfPet& foe = ctx->getPet(opp);
-        std::vector<int> pp_slots;
+        std::vector<ChanceOption> pp_slots;
         for (int i = 0; i < static_cast<int>(foe.skills.size()); ++i) {
             if (foe.skills[static_cast<std::size_t>(i)].pp > 0) {
-                pp_slots.push_back(i);
+                pp_slots.push_back({i, 1});
             }
         }
         if (!pp_slots.empty()) {
-            foe.skills[static_cast<std::size_t>(
-                pp_slots[ctx->rng().next() % pp_slots.size()])].pp = 0;
+            const int slot = choose_soul_slot(*ctx, MACRO, 0, owner, opp, pp_slots);
+            foe.skills[static_cast<std::size_t>(slot)].pp = 0;
         }
         return EffectResult::kOk;
     }

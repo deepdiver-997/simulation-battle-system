@@ -130,7 +130,7 @@ EffectResult k372_1227_before_skill_hit(BattleContext* ctx, const SoulNodeArgs& 
         rt.crit_fail_round >= 0 && rt.crit_fail_round == ctx->roundCount - 1;
     const int pct = comp_active ? db_at(row, 2, kCompCritFallback)
                                 : db_at(row, 0, kCritFallback);
-    if (roll_percent(ctx->rng(), pct)) {
+    if (roll_soul_percent(*ctx, kMarkId, 0, owner, owner, pct)) {
         ctx->ws.must_crit[owner] = true;   // 命中时点消费（skills.cpp:948）
     } else if (!comp_active) {
         rt.crit_fail_round = ctx->roundCount;   // 未触发 → 下回合补偿

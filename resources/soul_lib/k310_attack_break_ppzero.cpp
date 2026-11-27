@@ -17,6 +17,7 @@
 
 #include "common.h"
 
+#include <algorithm>
 #include <primitives/battle_primitives.h>
 
 namespace {
@@ -83,18 +84,19 @@ EffectResult k310_830_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             if (!onstage_has_soul_mark(c, owner, kMarkId)) {
                 return;
             }
-            ElfPet& foe = c->getPet(1 - owner);
-            std::vector<int> pp_slots;
+            const int opp = 1 - owner;
+            ElfPet& foe = c->getPet(opp);
+            std::vector<ChanceOption> pp_slots;
             for (int i = 0; i < 5; ++i) {
                 if (foe.skills[i].pp > 0) {
-                    pp_slots.push_back(i);
+                    pp_slots.push_back({i, 1});
                 }
             }
             int count = k310_read_count(c, owner);
             while (count-- > 0 && !pp_slots.empty()) {
-                const int pick = c->rng().next() % static_cast<int>(pp_slots.size());
-                foe.skills[pp_slots[pick]].pp = 0;   // K239 直改手法
-                pp_slots.erase(pp_slots.begin() + pick);
+                const int slot = choose_soul_slot(*c, kMarkId, 0, owner, opp, pp_slots);
+                foe.skills[slot].pp = 0;   // K239 直改手法
+                pp_slots.erase(std::ranges::find(pp_slots, slot, &ChanceOption::id));
             }
         },
         WatcherScope::TEAM);

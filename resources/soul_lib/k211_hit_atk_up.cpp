@@ -100,7 +100,7 @@ EffectResult k211_315_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             if (!onstage_has_soul_mark(wctx, owner, kMarkId)) {
                 return;
             }
-            if (!roll_percent(wctx->rng(), chance)) {
+            if (!roll_soul_percent(*wctx, kMarkId, 0, owner, owner, chance)) {
                 return;
             }
             (void)g_core->stat_change(wctx, owner, /*stat=*/0, 1);   // 攻击 +1

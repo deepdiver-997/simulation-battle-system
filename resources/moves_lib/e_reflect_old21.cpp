@@ -72,7 +72,8 @@ EffectResult effect_21_old_reflect_shield(BattleContext* ctx, const EffectArgs& 
                      "需要 回合下限>=1 且 分母>=1");
     // roll 一次：作用 [lo,hi] 回合（数据恒 lo<=hi；防御性 max）。
     const int hi_use = hi > lo ? hi : lo;
-    const int rounds = lo + (hi_use > lo ? ctx->rng().next() % (hi_use - lo + 1) : 0);
+    const int rounds = hi_use == lo ? lo
+        : choose_skill_range(*ctx, 21, 0, self, self, lo, hi_use);
     if (!g_core || !g_core->deal_pink_damage) {
         return EffectResult::kOk;
     }

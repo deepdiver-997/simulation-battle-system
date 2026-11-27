@@ -249,7 +249,7 @@ EffectResult k12_310_fmr(BattleContext* ctx, const EffectArgs& args) {
     if (streak < threshold || streak <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_soul_percent(*ctx, 310, 0, owner, opp, chance)) {
         (void)g_core->seal_skill(ctx, owner, opp, /*effect_id=*/310,
                                  /*attribute=*/true, /*attack=*/true,
                                  /*count=*/1, /*duration_rounds=*/1,

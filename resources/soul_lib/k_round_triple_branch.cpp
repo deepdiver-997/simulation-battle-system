@@ -61,7 +61,7 @@ int db_at(const HostRow& row, int idx, int fallback) {
 }
 
 // 任意 slots 项 PP -delta：直写 + 补 emit（core pp_reduce 的事件形）。
-void reduce_random_slots(BattleContext* ctx, int target, int slots, int delta) {
+void reduce_random_slots(BattleContext* ctx, int owner, int target, int slots, int delta) {
     ElfPet& pet = ctx->getPet(target);
     const int n = static_cast<int>(pet.skills.size());
     if (n <= 0 || slots <= 0) {
@@ -69,7 +69,7 @@ void reduce_random_slots(BattleContext* ctx, int target, int slots, int delta) {
     }
     std::set<int> picked;
     while (static_cast<int>(picked.size()) < std::min(slots, n)) {
-        picked.insert(ctx->rng().next() % n);
+        picked.insert(choose_soul_range(*ctx, 1896, 0, owner, target, 0, n - 1));
     }
     int slot_idx = 0;
     for (Skills& skill : pet.skills) {
@@ -113,7 +113,7 @@ EffectResult soulmark_1896_round_start(BattleContext* ctx, const EffectArgs& arg
             && pp_slots >= static_cast<int>(ctx->getPet(foe).skills.size())) {
             g_core->pp_reduce(ctx, foe, pp_delta);   // 全量减走原语（emit 全程）
         } else if (pp_delta > 0) {
-            reduce_random_slots(ctx, foe, pp_slots, pp_delta);
+            reduce_random_slots(ctx, owner, foe, pp_slots, pp_delta);
         }
         if (amp_pct > 0) {
             ctx->ws.damage_add_pct[owner] += amp_pct;

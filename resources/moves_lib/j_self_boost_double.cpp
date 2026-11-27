@@ -47,7 +47,7 @@ EffectResult effect_622_self_boost_double(BattleContext* ctx, const EffectArgs& 
         }
     }
     // 翻倍段：掷点命中 → 逐正槽再 +当前等级（964 取法，AT_CAP 自然封顶）。
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 622, 0, self, self, chance)) {
         for (int i = 0; i < 6; ++i) {
             const int lv = ctx->ability_levels[self][kStatMap[i]];
             if (lv > 0) {

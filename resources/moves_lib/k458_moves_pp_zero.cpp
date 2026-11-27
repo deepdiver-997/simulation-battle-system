@@ -154,7 +154,7 @@ void set_storage_int_local(BattleContext* ctx, int key, int value) {
 // ── 随机选槽 + 逐槽原语归零（656 部分洗牌同构；bump 审计槽）──
 // 返回**实际归零**槽 mask（bit=槽号；pp 已 0 / 无限槽 / 庇保留不算）。
 int k458_zero_random_slots(BattleContext* ctx, int target, int want, int actor,
-                           int audit_base, int owner) {
+                           int effect_id, int subsite, int audit_base, int owner) {
     if (!g_core || !g_core->pp_zero_slot) {
         set_storage_int_local(ctx, audit_key_of(audit_base, owner, 9), 1);
         return 0;
@@ -168,7 +168,8 @@ int k458_zero_random_slots(BattleContext* ctx, int target, int want, int actor,
     }
     const int n = std::min(want, static_cast<int>(pool.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (ctx->rng().next() % (static_cast<int>(pool.size()) - i));
+        const int j = choose_skill_range(*ctx, effect_id, subsite, actor, target,
+                                         i, static_cast<int>(pool.size()) - 1);
         std::swap(pool[static_cast<std::size_t>(i)], pool[static_cast<std::size_t>(j)]);
         const int slot = pool[static_cast<std::size_t>(i)];
         const int before = ctx->getPet(target).skills[static_cast<std::size_t>(slot)].pp;
@@ -206,6 +207,7 @@ EffectResult k458_1565_round_end_tick(BattleContext* ctx, const EffectArgs& args
         return EffectResult::kOk;
     }
     const int mask = k458_zero_random_slots(ctx, opp, slots, /*actor=*/self,
+                                            /*effect_id=*/1565, /*subsite=*/0,
                                             k1565AuditBase, self);
     set_storage_int_local(ctx, audit_key_of(k1565AuditBase, self, 0), mask);
     set_storage_int_local(ctx, audit_key_of(k1565AuditBase, self, 1),
@@ -268,7 +270,7 @@ EffectResult effect_1494_full_hp_chance_random_pp_zero(BattleContext* ctx,
     }
     // 掷 {0}%（roll_percent 在位即消费：0% 短路 false、100% 短路 true 零抽、
     // 区间内一抽；掷歪=零抽不选槽）。
-    const bool hit = roll_percent(ctx->rng(), pct);
+    const bool hit = roll_skill_percent(*ctx, 1494, 0, self, opp, pct);
     set_storage_int_local(ctx, audit_key_of(k1494AuditBase, self, 2), hit ? 1 : 0);
     if (!hit) {
         return EffectResult::kOk;
@@ -276,6 +278,7 @@ EffectResult effect_1494_full_hp_chance_random_pp_zero(BattleContext* ctx,
     set_storage_int_local(ctx, audit_key_of(k1494AuditBase, self, 6),
                           storage_int_local(ctx, audit_key_of(k1494AuditBase, self, 6)) + 1);
     const int mask = k458_zero_random_slots(ctx, opp, slots, /*actor=*/self,
+                                            /*effect_id=*/1494, /*subsite=*/1,
                                             k1494AuditBase, self);
     set_storage_int_local(ctx, audit_key_of(k1494AuditBase, self, 0), mask);
     return EffectResult::kOk;

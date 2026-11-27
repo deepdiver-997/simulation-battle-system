@@ -107,7 +107,7 @@ EffectResult j161_771_tick(BattleContext* ctx, const EffectArgs& args) {
     if (!executed_skill_is_attack(ctx, self)) {
         return EffectResult::kOk;
     }
-    const int code = ctx->rng().next() % 10;   // 官方异常码 0..9 随机一种（J160 1089 同抽法）
+    const int code = choose_skill_range(*ctx, 771, 0, self, opp, 0, 9);   // 官方异常码 0..9 随机一种（J160 1089 同抽法）
     (void)g_core->apply_anomaly_checked(ctx, opp, code, random_anomaly_duration(), self,
                                         chance, ChanceSource::Skill);
     return EffectResult::kOk;

@@ -65,7 +65,7 @@ EffectResult effect_1328_ramp_multiplier(BattleContext* ctx, const EffectArgs& a
     ctx->plugin_storage[key] = uses;
     const int chance = std::min(base + (uses - 1) * step, cap);   // 首用 = base
     ctx->plugin_storage[k1328ChanceAuditBase + owner] = chance;
-    const bool proc = roll_percent(ctx->rng(), chance);
+    const bool proc = roll_skill_percent(*ctx, 1328, 0, owner, args.int_args[1], chance);
     ctx->plugin_storage[k1328ProcAuditBase + owner] = proc ? 1 : 0;
     if (proc) {
         // {1}倍 = +({1}-1)×100 加算百分点（damage_add_pct 是加算通道，×3 → +200）

@@ -77,7 +77,7 @@ EffectResult k265_382_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             if (!onstage_has_soul_mark(c, owner, kMarkId)) {
                 return;
             }
-            const int slot = c->rng().next() % 6;   // 0攻 1特攻 2防 3特防 4速 5命中
+            const int slot = choose_soul_range(*c, kMarkId, 0, owner, owner, 0, 5);   // 0攻 1特攻 2防 3特防 4速 5命中
             (void)g_core->stat_change(c, owner, slot, /*delta=*/1);
         },
         WatcherScope::TEAM);

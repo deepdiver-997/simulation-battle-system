@@ -183,9 +183,9 @@ EffectResult effect_1398_clear_boost_or_status(BattleContext* ctx, const EffectA
     if (!g_core->apply_anomaly) {
         return EffectResult::kOk;
     }
-    if (cleared && roll_percent(ctx->rng(), c1)) {
+    if (cleared && roll_skill_percent(*ctx, 1398, 0, owner, target, c1)) {
         g_core->apply_anomaly(ctx, target, s1, /*duration=*/-1, owner);
-    } else if (roll_percent(ctx->rng(), c2)) {
+    } else if (roll_skill_percent(*ctx, 1398, 1, owner, target, c2)) {
         g_core->apply_anomaly(ctx, target, s2, /*duration=*/-1, owner);
     }
     return EffectResult::kOk;
@@ -267,7 +267,8 @@ EffectResult effect_1400_break_retaliate(BattleContext* ctx, const EffectArgs& a
                 if (c->roundCount > s.break_watch_until) {
                     return;   // 窗口外
                 }
-                if (g_core && g_core->apply_anomaly && roll_percent(c->rng(), chance)) {
+                if (g_core && g_core->apply_anomaly
+                    && roll_skill_percent(*c, 1400, 0, owner, 1 - owner, chance)) {
                     g_core->apply_anomaly(c, 1 - owner, status, -1, owner);
                 }
             },
@@ -431,7 +432,7 @@ EffectResult effect_937_hit_status(BattleContext* ctx, const EffectArgs& args) {
     if (owner < 0 || owner > 1 || target < 0 || target > 1 || !g_core || !g_core->apply_anomaly) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 937, 0, owner, target, chance)) {
         g_core->apply_anomaly(ctx, target, status, /*duration=*/-1, owner);
         return EffectResult::kOk;
     }
@@ -519,7 +520,7 @@ EffectResult effect_1600_paralysis_chain(BattleContext* ctx, const EffectArgs& a
                 if (c->roundCount > s.swap_watch_until) {
                     return;
                 }
-                if (roll_percent(c->rng(), sw_chance)) {
+                if (roll_skill_percent(*c, 1600, 0, owner, ev.actor, sw_chance)) {
                     // drain 时 on_stage 已是新精灵（battleFsm EVENT_SWAP 注释）
                     g_core->apply_anomaly(c, ev.actor, sw_status, /*duration=*/-1, owner);
                 }
@@ -704,7 +705,7 @@ EffectResult effect_1419_clear_both(BattleContext* ctx, const EffectArgs& args) 
             }
         }
         for (int n = 0; n < pp_count && !candidates.empty(); ++n) {
-            const int pick = ctx->rng().next() % candidates.size();
+            const int pick = choose_skill_range(*ctx, 1419, 0, owner, target, 0, static_cast<int>(candidates.size()) - 1);
             opp.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
             candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(pick));
         }

@@ -357,7 +357,7 @@ EffectResult k412_2514_enter(BattleContext* ctx, const SoulNodeArgs& a) {
             bool picked[6] = {false, false, false, false, false, false};
             int picked_count = 0;
             for (int tries = 0; tries < 256 && picked_count < count; ++tries) {
-                const int idx = static_cast<int>(c->rng().next() % 6);
+                const int idx = choose_soul_range(*c, kMark2514, 0, owner, owner, 0, 5);
                 if (picked[idx]) {
                     continue;
                 }

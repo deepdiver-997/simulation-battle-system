@@ -11,7 +11,7 @@
 //        发 EVENT_PP_REDUCED，不直写 pp）。
 //     ② 门 = 对手六槽（含命中）任一负等级（J63/J71/J182 同判据）→ roll {2}% →
 //        从**剩余 pp>0 槽**再抽 {3} 个（已归零槽不再空转，等价"额外"语义）。
-//   - pct 在位即消费：roll_percent(p) 直调（p<=0 天然 false、p>=100 短路不耗 rand），
+//   - pct 在位即消费：roll_skill_percent 直调（p<=0 天然 false、p>=100 短路不耗 rand），
 //     不用 >0 守卫（红线 7）。
 //   - 审计槽 plugin_storage[990151900 + owner*2]     = 分支① hit*1000 + 实际清零槽数；
 //     plugin_storage[990151900 + owner*2 + 1]       = 分支② 同上；门闭记 -1。
@@ -51,7 +51,7 @@ bool j220_foe_has_drop(const BattleContext* ctx, int opp) {
 
 // 从目标方**仍有余量（pp>0）**的技能槽中随机不重复抽 want 个，走 pp_zero_slot 清零。
 // 返回实际归零的槽数（pp 原值 > 0 且清零成功）。want>=槽数 → 全清。
-int j220_zero_random_pp_slots(BattleContext* ctx, int target, int want, int actor) {
+int j220_zero_random_pp_slots(BattleContext* ctx, int subsite, int target, int want, int actor) {
     if (!ctx || !g_core || !g_core->pp_zero_slot || want <= 0) {
         return 0;
     }
@@ -66,7 +66,7 @@ int j220_zero_random_pp_slots(BattleContext* ctx, int target, int want, int acto
     int zeroed = 0;
     for (int i = 0; i < n; ++i) {
         // Fisher-Yates 局部洗牌：每次从 [i, size) 抽一个换到 i（656/931 同款）。
-        const int j = i + (ctx->rng().next() % (static_cast<int>(candidates.size()) - i));
+        const int j = choose_skill_range(*ctx, 1519, subsite, actor, target, i, static_cast<int>(candidates.size()) - 1);
         std::swap(candidates[static_cast<std::size_t>(i)],
                   candidates[static_cast<std::size_t>(j)]);
         const int slot = candidates[static_cast<std::size_t>(i)];
@@ -97,17 +97,21 @@ EffectResult effect_1519_double_branch_pp_zero(BattleContext* ctx, const EffectA
         return EffectResult::kOk;
     }
 
+    constexpr int kBaseClear = 0;
+    constexpr int kClearIfDropped = 1;
+    constexpr int kBaseSlot = 2;
+    constexpr int kSlotIfDropped = 3;
     // 分支①：无条件概率门。pct 在位即消费（0 档显式关闸，不回退）。
-    const bool hit1 = roll_percent(ctx->rng(), pct1);
-    const int zeroed1 = hit1 ? j220_zero_random_pp_slots(ctx, target, slots1, owner) : 0;
+    const bool hit1 = roll_skill_percent(*ctx, 1519, kBaseClear, owner, target, pct1);
+    const int zeroed1 = hit1 ? j220_zero_random_pp_slots(ctx, kBaseSlot, target, slots1, owner) : 0;
     ctx->plugin_storage[k1519AuditBase + owner * 2] = (hit1 ? 1000 : 0) + zeroed1;
 
     // 分支②：对手处于能力下降状态才申报；同样在位即消费。
     const bool gate = j220_foe_has_drop(ctx, target);
     int audit2 = -1;
     if (gate) {
-        const bool hit2 = roll_percent(ctx->rng(), pct2);
-        const int zeroed2 = hit2 ? j220_zero_random_pp_slots(ctx, target, slots2, owner) : 0;
+        const bool hit2 = roll_skill_percent(*ctx, 1519, kClearIfDropped, owner, target, pct2);
+        const int zeroed2 = hit2 ? j220_zero_random_pp_slots(ctx, kSlotIfDropped, target, slots2, owner) : 0;
         audit2 = (hit2 ? 1000 : 0) + zeroed2;
     }
     ctx->plugin_storage[k1519AuditBase + owner * 2 + 1] = audit2;

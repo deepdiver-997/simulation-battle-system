@@ -42,7 +42,7 @@ EffectResult effect_724_onhit_chance_heal(BattleContext* ctx, const EffectArgs& 
                 ev.amount <= 0) {
                 return;   // 受击判据（817/J9 口径）
             }
-            if (!roll_percent(c->rng(), chance)) {
+            if (!roll_skill_percent(*c, 724, 0, self, self, chance)) {
                 return;
             }
             (void)heal_max_hp_fraction(c, self, denom);

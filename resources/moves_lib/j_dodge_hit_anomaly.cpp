@@ -100,7 +100,8 @@ EffectResult effect_1975_dodge_hit_anomaly(BattleContext* ctx, const EffectArgs&
             if (!executed_skill_is_attack(c, attacker)) {
                 return;
             }
-            const int code = (c->rng().next() % 2 == 0) ? anomaly_a : anomaly_b;
+            const int code = roll_skill_gate(*c, 1975, 0, self, attacker, 1, 2)
+                ? anomaly_a : anomaly_b;
             c->plugin_storage[kAuditBase + self] = code;
             (void)g_core->apply_anomaly_checked(c, attacker, code, random_anomaly_duration(),
                                                 self, 100, ChanceSource::Skill);

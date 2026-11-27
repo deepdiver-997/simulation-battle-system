@@ -73,10 +73,10 @@ EffectResult j178_725_tick(BattleContext* c, const EffectArgs& a) {
     if (self < 0 || self > 1) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(c->rng(), chance)) {
+    const int opp = 1 - self;
+    if (!roll_skill_percent(*c, 725, 0, self, opp, chance)) {
         return EffectResult::kOk;
     }
-    const int opp = 1 - self;
     const int dmg = max_hp_of(c, opp) / denom;
     if (dmg > 0) {
         (void)g_core->deal_pink_damage(c, opp, dmg, DamageKind::PERCENT_VALUE, self);

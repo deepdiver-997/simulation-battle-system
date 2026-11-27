@@ -47,6 +47,8 @@
 namespace {
 
 constexpr int kMarkId = 1642;
+constexpr int kSelfBoostSlotChanceSite = 0;
+constexpr int kFoeDropSlotChanceSite = 1;
 constexpr int kFearId = static_cast<int>(AbnormalStatusId::Fear);
 
 // ── 账本键（plugin_storage，+own 分位）────────────────────────────────────────
@@ -109,11 +111,12 @@ bool any_level_sign(BattleContext* ctx, int side, bool positive) {
 }
 
 // 随机 count 项去重选槽 → fn(slot)（k893/K268 去重循环同款）。
-void for_random_slots(SbsRng& rng, int count, const std::function<void(int)>& fn) {
+void for_random_slots(BattleContext& ctx, int subsite, int owner, int target,
+                      int count, const std::function<void(int)>& fn) {
     bool picked[6] = {};
     int done = 0;
     while (done < count && done < 6) {
-        const int slot = rng.next() % 6;
+        const int slot = choose_soul_range(ctx, kMarkId, subsite, owner, target, 0, 5);
         if (picked[slot]) {
             continue;
         }
@@ -225,7 +228,7 @@ EffectResult k385_1642_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
                 (void)g_core->stat_change(ctx, owner, i, 1);
             }
         } else {
-            for_random_slots(ctx->rng(), self_count, [&](int slot) {
+            for_random_slots(*ctx, kSelfBoostSlotChanceSite, owner, owner, self_count, [&](int slot) {
                 (void)g_core->stat_change(ctx, owner, slot, 1);
             });
         }
@@ -235,7 +238,7 @@ EffectResult k385_1642_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
                 (void)g_core->stat_drop(ctx, opp, i, 1, owner);
             }
         } else {
-            for_random_slots(ctx->rng(), foe_count, [&](int slot) {
+            for_random_slots(*ctx, kFoeDropSlotChanceSite, owner, opp, foe_count, [&](int slot) {
                 (void)g_core->stat_drop(ctx, opp, slot, 1, owner);
             });
         }

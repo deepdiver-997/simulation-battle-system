@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 #ifndef MOVES_LIB_COMMON_H
 #define MOVES_LIB_COMMON_H
 
@@ -35,6 +34,37 @@ inline int any_int_or(const std::any& a, int fallback = 0) {
 // core 初始化时传入的原语函数指针：inline 变量，同一 .so 内所有 TU 共享一份，
 // 由 lib_1.cpp 的 skill_plugin_register 注入。效果侧原语调用一律走它的函数指针槽。
 inline const CoreApi* g_core = nullptr;
+
+inline const CoreApi& skill_chance_core() {
+    if (!g_core) throw std::logic_error("skill chance requires the core API");
+    return *g_core;
+}
+
+inline bool roll_skill_gate(BattleContext& ctx, int rule, int subsite, int actor, int target,
+                           int pass, int total, ChanceSingleton singleton = ChanceSingleton::ConsumeDraw) {
+    return skill_chance_core().roll_legacy_gate(&ctx, pass, total,
+        chance_site(ChanceSiteKind::NativeSkill, rule, subsite, actor, target), singleton);
+}
+
+inline int choose_skill_range(BattleContext& ctx, int rule, int subsite, int actor, int target,
+                             int low, int high, ChanceSingleton singleton = ChanceSingleton::ConsumeDraw) {
+    return skill_chance_core().choose_legacy_range(&ctx, low, high,
+        chance_site(ChanceSiteKind::NativeSkill, rule, subsite, actor, target), singleton);
+}
+
+inline int choose_skill_rejection_slot(BattleContext& ctx, int rule, int subsite, int actor, int target,
+                                      std::span<const ChanceOption> options) {
+    return skill_chance_core().choose_legacy_rejection_slot(&ctx, options,
+        chance_site(ChanceSiteKind::NativeSkill, rule, subsite, actor, target));
+}
+
+inline int choose_skill_slot(BattleContext& ctx, int rule, int subsite, int actor, int target,
+                            std::span<const ChanceOption> options,
+                            ChanceSingleton singleton = ChanceSingleton::ConsumeDraw) {
+    return skill_chance_core().choose_legacy_slot(&ctx, options,
+        chance_site(ChanceSiteKind::NativeSkill, rule, subsite, actor, target), singleton);
+}
+
 
 // 843/499 共用的先制累加时点效果体（MOVE_RIGHT 桶：往 ws.preemptive_level 加 bonus）。
 inline EffectResult effect_move_right_priority_bonus(BattleContext* ctx, const EffectArgs& args) {
@@ -99,10 +129,10 @@ inline bool executed_skill_is_attack(const BattleContext* ctx, int owner) {
     return ctx->ws.skill_type_view[owner] != static_cast<int>(SkillType::Attribute);
 }
 
-inline bool roll_percent(SbsRng& rng, int percent) {
-    if (percent <= 0) return false;
-    if (percent >= 100) return true;
-    return (rng.next() % 100) < percent;
+inline bool roll_skill_percent(BattleContext& ctx, int effect_id, int subsite_id,
+                               int actor, int target, int percent) {
+    return skill_chance_core().roll_native_percent(&ctx, ChanceSiteKind::NativeSkill, effect_id, subsite_id,
+                                           actor, target, percent);
 }
 
 // Helper: 天敌判定——**对手的固有属性克制自身固有属性**（倍数 > 1）。

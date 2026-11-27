@@ -39,7 +39,7 @@ void j105_zero_random_pp_slots(BattleContext* ctx, int target, int want, int act
     constexpr int kN = 5;   // 技能槽固定 5（elf-pet.h std::array<Skills, 5>）
     int slots[kN] = {0, 1, 2, 3, 4};
     for (int i = kN - 1; i > 0; --i) {
-        std::swap(slots[i], slots[ctx->rng().next() % (i + 1)]);
+        std::swap(slots[i], slots[choose_skill_range(*ctx, 1495, 1, actor, target, 0, i)]);
     }
     for (int k = 0; k < want && k < kN; ++k) {
         (void)g_core->pp_zero_slot(ctx, target, slots[k], actor);
@@ -102,7 +102,7 @@ EffectResult effect_1495_reversal_pp_zero(BattleContext* ctx, const EffectArgs& 
     if (g_core->stat_boost_reversal(ctx, opp) != StatReversalResult::REVERSED) {
         return EffectResult::kOk;   // "反转成功"门槛
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1495, 0, owner, opp, chance)) {
         j105_zero_random_pp_slots(ctx, opp, slots, owner);
     }
     return EffectResult::kOk;

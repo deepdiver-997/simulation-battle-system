@@ -393,16 +393,17 @@ EffectResult dual_second_mover_ppzero(BattleContext* ctx, const SoulNodeArgs& a)
         return EffectResult::kOk;
     }
     ElfPet& foe = ctx->getPet(1 - a.owner);
-    std::vector<int> slots;
+    std::vector<ChanceOption> slots;
     for (int i = 0; i < static_cast<int>(foe.skills.size()); ++i) {
         if (foe.skills[static_cast<std::size_t>(i)].pp > 0) {
-            slots.push_back(i);
+            slots.push_back({i, 1});
         }
     }
     for (int n = 0; n < count && !slots.empty(); ++n) {
-        const int pick = static_cast<int>(ctx->rng().next() % slots.size());
-        foe.skills[static_cast<std::size_t>(slots[static_cast<std::size_t>(pick)])].pp = 0;
-        slots.erase(slots.begin() + pick);
+        const int slot = choose_soul_slot(*ctx, MACRO, 0, a.owner, 1 - a.owner, slots);
+        foe.skills[static_cast<std::size_t>(slot)].pp = 0;
+        slots.erase(std::find_if(slots.begin(), slots.end(),
+                                 [slot](const ChanceOption& option) { return option.id == slot; }));
     }
     return EffectResult::kOk;
 }

@@ -292,7 +292,7 @@ EffectResult effect_936_anomaly_or_seal(BattleContext* ctx, const EffectArgs& ar
         return EffectResult::kOk;
     }
     bool applied = false;
-    if (roll_percent(ctx->rng(), chance) && g_core && g_core->apply_anomaly) {
+    if (roll_skill_percent(*ctx, 936, 0, self, opp, chance) && g_core && g_core->apply_anomaly) {
         // 走真原语：免疫/抗性/反弹/转化全在 core 侧按序处理，这里只看"最终有没有中"。
         applied = g_core->apply_anomaly(ctx, opp, anomaly_id, random_anomaly_duration(), self)
                   == ApplyAnomalyResult::SUCCESS;
@@ -397,16 +397,17 @@ EffectResult effect_1222_first_move_random_pp_zero(BattleContext* ctx, const Eff
     }
     ElfPet& pet = ctx->getPet(opp);
     // 只从"还有 PP 且非无限 PP"的技能里随机挑（pp == -1 = 官方无限 PP，不参与）。
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for (int i = 0; i < static_cast<int>(pet.skills.size()); ++i) {
         if (pet.skills[i].pp > 0) {
-            candidates.push_back(i);
+            candidates.push_back({i, 1});
         }
     }
     for (int i = 0; i < count && !candidates.empty(); ++i) {
-        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
-        pet.skills[candidates[pick]].pp = 0;
-        candidates.erase(candidates.begin() + pick);
+        const int slot = choose_skill_slot(*ctx, 1222, 0, self, opp, candidates);
+        pet.skills[slot].pp = 0;
+        candidates.erase(std::find_if(candidates.begin(), candidates.end(),
+                                      [slot](const ChanceOption& option) { return option.id == slot; }));
     }
     return EffectResult::kOk;
 }
@@ -787,7 +788,7 @@ EffectResult effect_39_lower_pp_then_lock(BattleContext* ctx, const EffectArgs& 
         return EffectResult::kOk;
     }
     ElfPet& pet = ctx->getPet(opp);
-    if (roll_percent(ctx->rng(), percent)) {
+    if (roll_skill_percent(*ctx, 39, 0, self, opp, percent)) {
         for (int i = 0; i < 5; ++i) {
             Skills& sk = pet.skills[i];
             if (sk.pp > 0) {

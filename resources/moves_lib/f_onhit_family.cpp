@@ -30,7 +30,7 @@
 //     final<=0（被免/被挡空）不消费——没"受到"就不算一次。
 //   - 实例：气临九渊怒 19324 [1,50]（全库 32+ 载体）。
 // 850（args_num=2）"{0}回合内每回合有{1}%的概率免疫当回合受到的攻击伤害"：
-//   - "每回合"窗口（InRounds，126/448 同族）+ 概率授票（roll_percent → grant_immune）：
+//   - "每回合"窗口（InRounds，126/448 同族）+ 概率授票（roll_skill_percent → grant_immune）：
 //     命中 → grant_immune(DAMAGE, duration=1, counts=0)——票的 window_expired 只有终门
 //     （register+duration 即过期）→ 恰好只覆盖当回合（1034 记档同款口径）；
 //   - 首跳口径（433 先例）：ROUND_START 桶在用技回合已跑过，窗口注册只能覆盖下一回合起
@@ -195,8 +195,11 @@ EffectResult effect_897_no_kill_counted_reduce(BattleContext* ctx, const EffectA
 }
 
 // ── 850 共用：掷 {1}% → 免疫**当回合**攻击伤害票（duration=1 恰好只覆盖当回合）──
-void effect_850_roll_and_grant(BattleContext* ctx, int self, int pct) {
-    if (!roll_percent(ctx->rng(), pct)) {
+constexpr int k850OnUse = 0;
+constexpr int k850RoundStart = 1;
+
+void effect_850_roll_and_grant(BattleContext* ctx, int self, int pct, int subsite) {
+    if (!roll_skill_percent(*ctx, 850, subsite, self, self, pct)) {
         return;
     }
     ctx->rule_center_.grant_immune(
@@ -215,7 +218,7 @@ EffectResult effect_850_immune_roll_tick(BattleContext* ctx, const EffectArgs& a
     if (self < 0 || self > 1 || pct <= 0) {
         return EffectResult::kOk;
     }
-    effect_850_roll_and_grant(ctx, self, pct);
+    effect_850_roll_and_grant(ctx, self, pct, k850RoundStart);
     return EffectResult::kOk;
 }
 
@@ -231,7 +234,7 @@ EffectResult effect_850_chance_immune_window(BattleContext* ctx, const EffectArg
                      "需要 rounds>0 && pct>0");
     // 首跳（433 先例）：ROUND_START 桶本回合已跑过 → 用技当回合立即掷一次；
     // 剩余 rounds-1 跳从下一回合起走 NextRounds 窗口的 ROUND_START tick。
-    effect_850_roll_and_grant(ctx, self, pct);
+    effect_850_roll_and_grant(ctx, self, pct, k850OnUse);
     if (rounds > 1) {
         register_next_rounds_effect(ctx, State::BATTLE_ROUND_START, self, 850, rounds - 1,
                                     {self, 1 - self, pct}, &effect_850_immune_roll_tick);

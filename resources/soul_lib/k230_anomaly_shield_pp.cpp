@@ -204,7 +204,8 @@ EffectResult soulmark_1562_round_end(BattleContext* ctx, const EffectArgs& args)
         int guard = 0;
         while (done < pp_count && guard < 100) {
             ++guard;
-            const int slot = ctx->rng().next() % 5;   // 5 技能槽随机（无限 PP 槽由原语拒并跳过计数外重试）
+            // 仍掷全部 5 槽；无限 PP 等由原语拒绝，已耗的这一次不计入 done。
+            const int slot = choose_soul_range(*ctx, kMark, 0, owner, opp, 0, 4);
             if (g_core->pp_zero_slot(ctx, opp, slot, owner) ==
                 PpReduceResult::SUCCESS) {
                 ++done;

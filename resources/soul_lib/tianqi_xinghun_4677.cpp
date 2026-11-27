@@ -141,18 +141,19 @@ void sync_attack_immunity(BattleContext* ctx, int side, TianqiRuntime& state) {
 }
 
 // ── 对手随机 1 项技能 PP 归零（⑤；无限 PP（pp<0）不选）──
-void zero_random_pp(BattleContext* ctx, int victim) {
+void zero_random_pp(BattleContext* ctx, int actor, int victim) {
     ElfPet& pet = ctx->seerRobot[victim].elfPets[ctx->on_stage[victim]];
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for (std::size_t i = 0; i < pet.skills.size(); ++i) {
         if (pet.skills[i].pp > 0) {
-            candidates.push_back(static_cast<int>(i));
+            candidates.push_back({static_cast<int>(i), 1});
         }
     }
     if (candidates.empty()) {
         return;
     }
-    pet.skills[candidates[ctx->rng().next() % candidates.size()]].pp = 0;
+    const int slot = choose_soul_slot(*ctx, kTianqiMarkId, 0, actor, victim, candidates);
+    pet.skills[slot].pp = 0;
 }
 
 // ── 到期事件监听（④）：自然到期 → 转盘（满盘不再转）──
@@ -337,7 +338,7 @@ EffectResult tianqi_round_end(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     state.re_star_at = -1;
-    zero_random_pp(ctx, 1 - side);
+    zero_random_pp(ctx, side, 1 - side);
     star_awaken(ctx, side);
     return EffectResult::kOk;
 }

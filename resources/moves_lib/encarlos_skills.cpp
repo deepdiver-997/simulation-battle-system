@@ -127,7 +127,7 @@ EffectResult effect_511_chance_power_double(BattleContext* ctx, const EffectArgs
             chance += extra;
         }
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 511, 0, self, args.int_args[1], chance)) {
         return EffectResult::kOk;
     }
     const int view = ctx->ws.skill_power_view[self];
@@ -174,7 +174,7 @@ EffectResult encarlos_1040_at_action_end(BattleContext* ctx, const EffectArgs& a
         return EffectResult::kOk;   // 已击败：整段不结算
     }
     const int pct = args.int_args[4];
-    if (roll_percent(ctx->rng(), pct) && g_core->apply_anomaly) {
+    if (roll_skill_percent(*ctx, 1040, 0, self, foe, pct) && g_core->apply_anomaly) {
         const ApplyAnomalyResult r =
             g_core->apply_anomaly(ctx, foe, args.int_args[5], /*duration=*/2, self);
         if (r == ApplyAnomalyResult::SUCCESS || r == ApplyAnomalyResult::REPLACED_EXISTING

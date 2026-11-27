@@ -99,7 +99,7 @@ EffectResult k268_796_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
     int guard = 0;
     while (done < count && guard < 100) {
         ++guard;
-        const int slot = ctx->rng().next() % 6;
+        const int slot = choose_soul_range(*ctx, kMarkId, 0, owner, opp, 0, 5);
         if (picked[slot]) {
             continue;
         }

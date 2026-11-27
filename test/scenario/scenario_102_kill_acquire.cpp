@@ -17,7 +17,7 @@
 // 常量 990474501（狩杀之魂）/ 930000000（副本 source_id 基底）见 soul_lib/artemis_4745.cpp。
 
 #include <entities/pet_factory.h>
-#include <effects/curse_stack.h>
+#include "../../resources/curse_stack.h"
 #include <primitives/battle_primitives.h>
 
 #include "scenario_harness.h"

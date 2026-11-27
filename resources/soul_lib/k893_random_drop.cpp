@@ -77,7 +77,7 @@ EffectResult soulmark_893_arm(BattleContext* ctx, const EffectArgs& args) {
             int guard = 0;
             while (done < drop_count && guard < 100) {
                 ++guard;
-                const int slot = wctx->rng().next() % 6;
+                const int slot = choose_soul_range(*wctx, 893, 0, owner, opp, 0, 5);
                 if (picked[slot]) {
                     continue;
                 }

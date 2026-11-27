@@ -58,7 +58,7 @@ EffectResult effect_1486_shield_chance_double(BattleContext* ctx, const EffectAr
         chance = std::min(100, pct * 2);   // "处于护盾状态时概率翻倍"（封 100）
     }
     set_storage_int(ctx, k1486ChanceBase + owner, chance);
-    const bool doubled = roll_percent(ctx->rng(), chance);
+    const bool doubled = roll_skill_percent(*ctx, 1486, 0, owner, opp, chance);
     set_storage_int(ctx, k1486OutcomeBase + owner, doubled ? 1 : 0);
     if (doubled) {
         ctx->ws.damage_add_pct[owner] += 100.0f;   // "伤害翻倍"= 通用增伤 +100%

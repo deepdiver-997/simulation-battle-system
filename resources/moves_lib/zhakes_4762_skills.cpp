@@ -87,7 +87,7 @@ EffectResult effect_skill_803(BattleContext* ctx, const EffectArgs& args) {
     if (self < 0 || self > 1 || target < 0 || target > 1 || cap_value <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 803, 0, self, target, chance)) {
         if (g_core && g_core->apply_anomaly) {
             g_core->apply_anomaly(ctx, target, anomaly, random_anomaly_duration(), self);
         }

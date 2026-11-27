@@ -251,14 +251,13 @@ EffectResult effect_1335_chance_or_stat_drain(BattleContext* ctx, const EffectAr
     if (count <= 0 || levels <= 0 || !g_core->stat_drop || !g_core->stat_change) {
         return EffectResult::kOk;
     }
-    std::vector<int> pool;
+    std::vector<ChanceOption> pool;
     for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
-        pool.push_back(i);
+        pool.push_back({i, 1});
     }
     for (int k = 0; k < count && !pool.empty(); ++k) {
-        const int pick = ctx->rng().next() % static_cast<int>(pool.size());
-        const int stat = pool[static_cast<std::size_t>(pick)];
-        pool.erase(pool.begin() + pick);
+        const int stat = choose_skill_slot(*ctx, 1335, 0, owner, opp, pool);
+        pool.erase(std::find(pool.begin(), pool.end(), ChanceOption{stat, 1}));
         g_core->stat_drop(ctx, opp, stat, levels, owner);   // ① 对手下降（免弱可挡）
         g_core->stat_change(ctx, owner, stat, levels);      // ② 自己提升（独立必成）
     }

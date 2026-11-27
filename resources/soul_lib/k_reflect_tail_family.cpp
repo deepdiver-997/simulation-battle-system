@@ -209,7 +209,7 @@ EffectResult soulmark_133_death(BattleContext* ctx, const EffectArgs& args) {
     const HostRow row = host_row(ctx, args, 133);
     const int pct = db_at(row, 0, 50);
     const int anomaly = db_at(row, 1, kParalysisId);
-    if (!roll_percent(ctx->rng(), pct)) {
+    if (!roll_soul_percent(*ctx, 133, 0, owner, foe, pct)) {
         return EffectResult::kOk;
     }
     if (g_core && g_core->apply_anomaly) {

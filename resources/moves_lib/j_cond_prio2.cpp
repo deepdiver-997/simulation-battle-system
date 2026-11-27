@@ -117,7 +117,7 @@ EffectResult effect_975_roll_power_prio(BattleContext* ctx, const EffectArgs& ar
                      975, args, "需要 owner/target ∈ {0,1}");
     EFFECT_ARG_GUARD(chance > 0 && mult > 1 && prio > 0, 975, args,
                      "需要 概率/先制 > 0 且 倍数 > 1");
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 975, 0, self, args.int_args[1], chance)) {
         const int view = ctx->ws.skill_power_view[self];
         if (view > 0) {
             ctx->ws.skill_power_view[self] = view * mult;   // ×{1}（写=声明变威力，102 通道）

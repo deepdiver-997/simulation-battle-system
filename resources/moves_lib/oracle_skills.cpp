@@ -144,9 +144,10 @@ EffectResult effect_2397_transfer(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     // 每层 → 随机一种星附属异常（星赐 33 / 星哲 34 / 星赎 38），2 回合
-    static const int kStars[3] = {kStarBlessing, kStarWisdom, kStarRedemption};
+    static const ChanceOption kStars[] = {{kStarBlessing, 1}, {kStarWisdom, 1}, {kStarRedemption, 1}};
     for (int i = 0; i < layers; ++i) {
-        g_core->apply_anomaly(ctx, owner, kStars[ctx->rng().next() % 3], /*duration=*/2, owner);
+        const int anomaly = choose_skill_slot(*ctx, 2397, 0, owner, owner, kStars);
+        g_core->apply_anomaly(ctx, owner, anomaly, /*duration=*/2, owner);
     }
     return EffectResult::kOk;
 }

@@ -13,7 +13,7 @@
 #include <plugin/core_api.h>
 #include <primitives/battle_primitives.h>
 
-#include <effects/curse_stack.h>
+#include "../../resources/curse_stack.h"
 
 #include "scenario_harness.h"
 

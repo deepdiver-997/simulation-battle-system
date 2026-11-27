@@ -203,7 +203,7 @@ EffectResult k6_1314_round_end(BattleContext* ctx, const EffectArgs& args) {
         int guard = 0;
         while (done < drop_count && guard < 100) {
             ++guard;
-            const int slot = ctx->rng().next() % 6;
+            const int slot = choose_soul_range(*ctx, 1314, 0, owner, opp, 0, 5);
             if (picked[slot]) {
                 continue;
             }
@@ -293,7 +293,7 @@ EffectResult k6_1576_round_end(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     // 兜底：随机 1 技 pp 归零（pp=-1 无限 PP 跳过）+ 下回合先制 -1（pending）。
-    const int slot = ctx->rng().next() % 5;
+    const int slot = choose_soul_range(*ctx, 1576, 0, owner, opp, 0, 4);
     Skills& sk = ctx->seerRobot[opp].elfPets[ctx->on_stage[opp]].skills[slot];
     if (sk.pp >= 0) {
         sk.pp = 0;

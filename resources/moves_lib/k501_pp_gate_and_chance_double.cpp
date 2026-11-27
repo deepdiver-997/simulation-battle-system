@@ -193,7 +193,7 @@ EffectResult effect_1710_chance_power_double(BattleContext* ctx, const EffectArg
     const int effective = foe_anomaly ? percent : percent * 2;
     set_storage_int_local(ctx, audit_key(k1710AuditBase, owner, 1), foe_anomaly ? 1 : 0);
     set_storage_int_local(ctx, audit_key(k1710AuditBase, owner, 2), effective);
-    const bool hit = roll_percent(ctx->rng(), effective);
+    const bool hit = roll_skill_percent(*ctx, 1710, 0, owner, target, effective);
     set_storage_int_local(ctx, audit_key(k1710AuditBase, owner, 3), hit ? 1 : 0);
     set_storage_int_local(ctx, audit_key(k1710AuditBase, owner, 9), 0);
     if (hit) {

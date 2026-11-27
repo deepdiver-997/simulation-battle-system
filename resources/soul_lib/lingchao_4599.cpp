@@ -26,7 +26,7 @@
 //   - 出战免疫的"上只精灵下场时异常"快照：死亡路径走 EVENT_DEATH（清异常前，精确）；
 //     主动切换路径走回合末采样（换宠发生在操作阶段，异常自回合末不变）。
 // 待做：第五技能（交换层数/未击败变威力/先制）属 moves_lib 技能线。
-#include <effects/lingchao_layers.h>
+#include "../lingchao_layers.h"
 
 #include "common.h"
 

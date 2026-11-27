@@ -83,7 +83,7 @@ EffectResult effect_410_prob_heal_fraction(BattleContext* ctx, const EffectArgs&
         set_storage_int_local(ctx, key410(owner, 6), -1);
         set_storage_int_local(ctx, key410(owner, 2), 1);
     } else {
-        const int r = ctx->rng().next() % 100;
+        const int r = choose_skill_range(*ctx, 410, 0, owner, owner, 0, 99);
         set_storage_int_local(ctx, key410(owner, 6), r);
         pass = r < chance;
         set_storage_int_local(ctx, key410(owner, 2), pass ? 1 : 0);

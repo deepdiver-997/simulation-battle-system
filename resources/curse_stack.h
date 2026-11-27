@@ -28,6 +28,7 @@
 
 #include <abnormal-system/abnormal-types.h>
 #include <fsm/battleContext.h>
+#include <plugin/core_api.h>
 #include <numerical-calculation/calculation.h>   // checked_pct_mul（乘区溢出响亮报错）
 
 // 每层数值（图鉴口径）。
@@ -143,11 +144,13 @@ inline void add_curse_stacks(BattleContext* ctx, int side, int delta) {
  *   ⑤ 登场检测器（EVENT_ENTER_STAGE）：登场宠 ≥10 层 → 授控制类免控票
  *      （补上"场下越阈值后登场"的授票；on-stage 越阈值由 add_curse_stacks_slot 即时授）。
  */
-inline void ensure_curse_wiring(BattleContext* ctx) {
+inline void ensure_curse_wiring(BattleContext* ctx, const CoreApi* core) {
     if (!ctx) {
         return;
     }
     using namespace curse_stack_detail;
+    if (!core || !core->roll_legacy_gate) throw std::logic_error("curse chance requires the core API");
+    const auto roll_floor = core->roll_legacy_gate;
     if (ctx->plugin_storage.count(kWiredFlagKey)) {
         return;   // 本场战斗已接线
     }
@@ -185,7 +188,7 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
             }, BattleCallbackCopy::Audited);
         ctx->register_default_damage_effect(
             DamagePhase::FLOOR, owner, DamageEffectCategory::AMP,
-            [](BattleContext* c, int bucket_owner) {
+            [roll_floor](BattleContext* c, int bucket_owner) {
                 DamageSnapshot& d = c->resolvedDamage;
                 if (d.attackerId != bucket_owner || !d.isRed || d.final < 0) {
                     return;
@@ -199,7 +202,10 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
                 }
                 if (!forced) {
                     const int n = get_curse_stacks(c, bucket_owner);
-                    forced = n > 0 && (c->rng().next() % 100) < n * kCurseFloorPctPerStack;
+                    // Shared curse rule, installed by either a skill or a soul mark.
+                    forced = n > 0 && roll_floor(c, n * kCurseFloorPctPerStack, 100,
+                        chance_site(ChanceSiteKind::Weighted, kCurseStorageKey, 0, bucket_owner, d.defenderId),
+                        ChanceSingleton::ConsumeDraw);
                 }
                 if (!forced) {
                     return;
@@ -219,9 +225,11 @@ inline void ensure_curse_wiring(BattleContext* ctx) {
     // ④ 无效技能出口钩子：层数>0 且掷点命中 → 置旗 + 请求结算（FSM stage+finish，
     //    ③ 读旗落保底；不掷中就不请求——无效技能默认零伤害）。
     ctx->invalid_skill_damage_hooks.push_back(
-        [](BattleContext* c, int attacker) -> bool {
+        [roll_floor](BattleContext* c, int attacker) -> bool {
             const int n = get_curse_stacks(c, attacker);
-            if (n <= 0 || (c->rng().next() % 100) >= n * kCurseFloorPctPerStack) {
+            if (n <= 0 || !roll_floor(c, n * kCurseFloorPctPerStack, 100,
+                    chance_site(ChanceSiteKind::Weighted, kCurseStorageKey, 1, attacker, 1 - attacker),
+                    ChanceSingleton::ConsumeDraw)) {
                 return false;
             }
             c->plugin_storage[curse_stack_detail::kFloorFlagBase + attacker] = true;

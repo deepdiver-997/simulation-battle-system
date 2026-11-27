@@ -167,8 +167,8 @@ EffectResult effect_1679_bleed_flush(BattleContext* ctx, const EffectArgs& args)
     if (target.hp <= 0) {
         return EffectResult::kOk;   // 真死：存活门拒收（尸体不留标志，引擎偏差记档）
     }
-    // chance=100 时 roll_percent 短路真、不消耗 rand（100% 流血确定性路径）
-    if (roll_percent(ctx->rng(), chance)) {
+    // chance=100 时短路真、不消耗 rand（100% 流血确定性路径）
+    if (roll_skill_percent(*ctx, 1679, 0, owner, opp, chance)) {
         (void)g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), owner);
     }
     return EffectResult::kOk;
@@ -245,7 +245,7 @@ EffectResult effect_1814_after_action(BattleContext* ctx, const EffectArgs& args
         return EffectResult::kOk;
     }
     bool landed = false;
-    if (roll_percent(ctx->rng(), args.int_args[2]) && g_core->apply_anomaly) {
+    if (roll_skill_percent(*ctx, 1814, 0, owner, opp, args.int_args[2]) && g_core->apply_anomaly) {
         landed = anomaly_landed(
             g_core->apply_anomaly(ctx, opp, args.int_args[3], random_anomaly_duration(),
                                   owner));

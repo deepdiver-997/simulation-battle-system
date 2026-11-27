@@ -306,7 +306,7 @@ EffectResult effect_2095_full_hp_fear(BattleContext* ctx, const EffectArgs& args
         return EffectResult::kOk;   // "自身为满体力时"
     }
     bool landed = false;
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 2095, 0, owner, opp, chance)) {
         landed = anomaly_landed(
             g_core->apply_anomaly(ctx, opp, status, random_anomaly_duration(), owner));
     }
@@ -539,7 +539,7 @@ EffectResult effect_1701_chance_double(BattleContext* ctx, const EffectArgs& arg
     if (ctx->is_second_mover(owner)) {
         chance *= 2;   // "若后出手则概率翻倍"
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 1701, 0, owner, args.int_args[1], chance)) {
         return EffectResult::kOk;
     }
     ctx->ws.damage_add_pct[owner] += 100.0f;
@@ -693,7 +693,7 @@ EffectResult effect_1162_tick(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     bool landed = false;
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1162, 0, owner, 1 - owner, chance)) {
         landed = anomaly_landed(
             g_core->apply_anomaly(ctx, 1 - owner, status, random_anomaly_duration(), owner));
     }
@@ -754,7 +754,7 @@ EffectResult effect_1035_tick(BattleContext* ctx, const EffectArgs& args) {
     if (!executed_skill_this_round(ctx, owner) || !executed_skill_is_attack(ctx, owner)) {
         return EffectResult::kOk;   // "下{N}回合**攻击**有…"
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1035, 1, owner, 1 - owner, chance)) {
         g_core->apply_anomaly(ctx, 1 - owner, status, random_anomaly_duration(), owner);
     }
     return EffectResult::kOk;
@@ -774,7 +774,7 @@ EffectResult effect_1035_hit_fear(BattleContext* ctx, const EffectArgs& args) {
         return EffectResult::kOk;
     }
     bool landed = false;
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1035, 0, owner, 1 - owner, chance)) {
         landed = anomaly_landed(
             g_core->apply_anomaly(ctx, 1 - owner, status, random_anomaly_duration(), owner));
     }

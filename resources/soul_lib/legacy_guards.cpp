@@ -22,7 +22,7 @@ EffectResult soulmark_damage_guard_sorensen(BattleContext* ctx, const SoulNodeAr
     const int owner = a.owner;
     const int chance = a.row_or(0, 30);
 
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_soul_percent(*ctx, 9901001, 0, owner, owner, chance)) {
         return EffectResult::kOk;
     }
 

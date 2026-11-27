@@ -111,11 +111,11 @@ EffectResult k325_643_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
         return EffectResult::kOk;
     }
     // 门②：概率掷骰（本地掷——不经施加通道，无亮节闸门可申报）。
-    if (!roll_percent(ctx->rng(), pct)) {
+    const int opp = ctx->opponent(owner);
+    if (!roll_soul_percent(*ctx, kMarkId, 0, owner, opp, pct)) {
         return EffectResult::kOk;
     }
     // 效果①：对手**所有**技能 pp 各减 pp_cut（钳 0，不为负；K239 直改手法）。
-    const int opp = ctx->opponent(owner);
     ElfPet& foe = ctx->getPet(opp);
     for (Skills& s : foe.skills) {
         s.pp = (s.pp > pp_cut) ? (s.pp - pp_cut) : 0;

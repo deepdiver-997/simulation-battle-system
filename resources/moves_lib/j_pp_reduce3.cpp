@@ -71,19 +71,19 @@ int j252_zero_random_pp_slots(BattleContext* ctx, int target, int want, int acto
         return 0;
     }
     ElfPet& pet = ctx->getPet(target);
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for (int i = 0; i < static_cast<int>(pet.skills.size()); ++i) {
         if (pet.skills[static_cast<std::size_t>(i)].pp > 0) {
-            candidates.push_back(i);
+            candidates.push_back({i, 1});
         }
     }
     const int n = std::min(want, static_cast<int>(candidates.size()));
     int zeroed = 0;
     for (int i = 0; i < n; ++i) {
-        const int j = i + (ctx->rng().next() % (static_cast<int>(candidates.size()) - i));
-        std::swap(candidates[static_cast<std::size_t>(i)],
-                  candidates[static_cast<std::size_t>(j)]);
-        const int slot = candidates[static_cast<std::size_t>(i)];
+        const auto remaining = std::span<const ChanceOption>(candidates).subspan(i);
+        const int slot = choose_skill_slot(*ctx, 2081, 0, actor, target, remaining);
+        const auto first = candidates.begin() + i;
+        std::iter_swap(first, std::find(first, candidates.end(), ChanceOption{slot, 1}));
         const int before = pet.skills[static_cast<std::size_t>(slot)].pp;
         (void)g_core->pp_zero_slot(ctx, target, slot, actor);
         if (before > 0 && pet.skills[static_cast<std::size_t>(slot)].pp == 0) {
@@ -175,7 +175,7 @@ EffectResult effect_1621_chance_pp_reduce(BattleContext* ctx, const EffectArgs& 
     const bool full_hp = ctx->getPet(owner).hp >= max_hp_of(ctx, owner);
     const int effective_pct = full_hp ? std::min(100, pct * 2) : pct;   // pct 在位即消费
     const int effective_points = full_hp ? points * 2 : points;
-    const bool hit = roll_percent(ctx->rng(), effective_pct);
+    const bool hit = roll_skill_percent(*ctx, 1621, 0, owner, target, effective_pct);
     ctx->plugin_storage[k1621AuditBase + owner * 2] = (hit ? 1000 : 0) + effective_pct;
     ctx->plugin_storage[k1621AuditBase + owner * 2 + 1] = effective_points;
     if (hit && g_core && g_core->pp_reduce) {

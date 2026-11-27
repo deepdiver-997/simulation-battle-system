@@ -189,7 +189,7 @@ EffectResult effect_1467_random_boost_first_double(BattleContext* ctx, const Eff
         slots.push_back(i);
     }
     for (int k = 0; k < count && !slots.empty(); ++k) {
-        const int pick = ctx->rng().next() % static_cast<int>(slots.size());
+        const int pick = choose_skill_range(*ctx, 1467, 0, owner, owner, 0, static_cast<int>(slots.size()) - 1);
         (void)g_core->stat_change(ctx, owner, slots[static_cast<std::size_t>(pick)], step);
         slots.erase(slots.begin() + pick);
     }

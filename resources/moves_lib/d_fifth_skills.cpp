@@ -43,7 +43,7 @@
 // 场景回归：test/scenario/scenario_170_zhakes4762_2295_698.cpp。
 #include "common.h"
 
-#include <effects/curse_stack.h>
+#include "../curse_stack.h"
 
 namespace {
 
@@ -120,7 +120,7 @@ EffectResult effect_2295_abolish_heal_pp_curse(BattleContext* ctx, const EffectA
         self_skill.pp = 0;
     }
     if (consumed > 0) {
-        ensure_curse_wiring(ctx);   // 幂等：首次获得咒怨时把增减伤/FLOOR/免控接线装齐
+        ensure_curse_wiring(ctx, g_core);   // 幂等：首次获得咒怨时把增减伤/FLOOR/免控接线装齐
         add_curse_stacks_slot(ctx, owner, ctx->on_stage[owner], consumed);
     }
 

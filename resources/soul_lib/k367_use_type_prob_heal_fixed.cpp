@@ -59,6 +59,8 @@
 namespace {
 
 constexpr int kMarkId = 1383;
+constexpr int kAttackChanceSite = 0;
+constexpr int kAttributeChanceSite = 1;
 constexpr int kHitSlot = 5;   // 能力等级槽 5=命中（体力无等级，kCombatStatCount 六槽口径）
 
 // ── 跨回合补偿旗标（soulmark_storage 容器，K218Runtime 同款）──────────────────
@@ -204,14 +206,16 @@ EffectResult k367_1383_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     const HostRow row = host_row(ctx, a, kMarkId);
     const bool attack_used = executed_is_attack(ctx, owner);
     const int opp = 1 - owner;
+    const bool mirrored = mirrored_mapping(row);
 
     K367Runtime& rt = k367_runtime(ctx, owner);
     // 一回合只用得出一种类型：攻击技走攻击线，属性技走属性线（skill_type_view 单值）。
     if (attack_used) {
         const int prob = db_at(row, 1, 50);
         const int amount = db_at(row, 2, 0);
-        if (roll_percent(ctx->rng(), prob)) {
-            if (mirrored_mapping(row)) {
+        const int recipient = mirrored ? opp : owner;
+        if (roll_soul_percent(*ctx, kMarkId, kAttackChanceSite, owner, recipient, prob)) {
+            if (mirrored) {
                 // 4945：攻击技 → 附加固伤。
                 if (amount > 0 && g_core && g_core->deal_pink_damage &&
                     ctx->getPet(opp).hp > 0) {
@@ -229,8 +233,9 @@ EffectResult k367_1383_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     } else {
         const int prob = db_at(row, 4, 50);
         const int amount = db_at(row, 5, 0);
-        if (roll_percent(ctx->rng(), prob)) {
-            if (mirrored_mapping(row)) {
+        const int recipient = mirrored ? owner : opp;
+        if (roll_soul_percent(*ctx, kMarkId, kAttributeChanceSite, owner, recipient, prob)) {
+            if (mirrored) {
                 // 4945：属性技 → 恢复体力。
                 if (amount > 0 && g_core && g_core->heal_amount) {
                     (void)g_core->heal_amount(ctx, owner, amount);

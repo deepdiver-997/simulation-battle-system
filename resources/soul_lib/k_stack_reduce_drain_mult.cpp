@@ -223,7 +223,7 @@ EffectResult k351_1060_pre_hit(BattleContext* ctx, const SoulNodeArgs& a) {
     if (chance > 100) {
         chance = 100;
     }
-    if (chance <= 0 || !roll_percent(ctx->rng(), chance)) {
+    if (chance <= 0 || !roll_soul_percent(*ctx, kMark1060, 0, owner, ctx->opponent(owner), chance)) {
         return EffectResult::kOk;
     }
     add_extra_mul_slot(ctx, owner, (mult - 1) * 100);

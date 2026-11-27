@@ -8,7 +8,7 @@
 //   E. 1545（抿叶扬音）：消除对手护盾并等量转移给自己
 //   F. 1279（森语百兽谣）：反转自身下降 → 成功则对手技能被拦
 //   G. 2278（森语百兽谣）：对手为狩杀之的 → 增伤；否则本回合攻击伤害归零
-#include <effects/lingchao_layers.h>
+#include "../../resources/lingchao_layers.h"
 #include <abnormal-system/abnormal-types.h>
 #include <entities/pet_factory.h>
 #include <primitives/battle_primitives.h>

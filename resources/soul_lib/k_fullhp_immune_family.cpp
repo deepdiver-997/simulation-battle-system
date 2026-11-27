@@ -93,13 +93,13 @@ EffectResult k171_285_grant(BattleContext* ctx, const SoulNodeArgs& a) {
         return EffectResult::kOk;   // 无参不挂票（K1 纪律：不造 0% 票）
     }
     // 逐次结算时先查满体力，再用本局 RNG 掷点。
-    auto roll_at_full_hp = [owner, slot](BattleContext* c, int pct) {
+    auto roll_at_full_hp = [owner, slot](BattleContext* c, int subsite, int pct) {
         if (!c || c->on_stage[owner] != slot) {
             return false;   // 换下场即失去"在场满体力"前提
         }
         const ElfPet& pet = c->seerRobot[owner].elfPets[slot];
         return pet.hp > 0 && pet.hp >= pet.numericalBase[NumericalPropertyIndex::HP]
-            && roll_percent(c->rng(), pct);
+            && roll_soul_percent(*c, 285, subsite, owner, owner, pct);
     };
     if (anomaly_pct > 0) {
         ctx->grant_immunity(owner, ImmunityType::ANOMALY, coverage_all(),
@@ -108,7 +108,7 @@ EffectResult k171_285_grant(BattleContext* ctx, const SoulNodeArgs& a) {
                             EffectScope::ON_STAGE, /*counts=*/0,
                             /*source_effect_id=*/285, ImmunityTier::Modern,
                             /*condition=*/nullptr, [anomaly_pct, roll_at_full_hp](BattleContext* c, int) {
-                                return roll_at_full_hp(c, anomaly_pct);
+                                return roll_at_full_hp(c, 0, anomaly_pct);
                             });
     }
     if (drop_pct > 0) {
@@ -118,7 +118,7 @@ EffectResult k171_285_grant(BattleContext* ctx, const SoulNodeArgs& a) {
                             EffectScope::ON_STAGE, /*counts=*/0,
                             /*source_effect_id=*/285, ImmunityTier::Modern,
                             /*condition=*/nullptr, [drop_pct, roll_at_full_hp](BattleContext* c, int) {
-                                return roll_at_full_hp(c, drop_pct);
+                                return roll_at_full_hp(c, 1, drop_pct);
                             });
     }
     return EffectResult::kOk;

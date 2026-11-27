@@ -27,7 +27,7 @@
 
 #include "common.h"
 
-#include <effects/lingchao_layers.h>
+#include "../lingchao_layers.h"
 
 namespace {
 

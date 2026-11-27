@@ -18,7 +18,7 @@
 #include <cassert>
 #include <iostream>
 
-#include <effects/curse_stack.h>
+#include "../../resources/curse_stack.h"
 #include <effects/event_center.h>
 #include <effects/trait_state.h>
 #include <entities/pet_factory.h>

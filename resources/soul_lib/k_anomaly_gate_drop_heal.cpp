@@ -171,7 +171,7 @@ EffectResult k856_round_start(BattleContext* ctx, const SoulNodeArgs& a) {
         int guard = 0;
         while (done < drop_count && guard < 100) {
             ++guard;
-            const int slot = ctx->rng().next() % 6;
+            const int slot = choose_soul_range(*ctx, kMarkId, 0, owner, opp, 0, 5);
             if (picked[slot]) {
                 continue;
             }
@@ -206,7 +206,7 @@ EffectResult k856_roll_power(BattleContext* ctx, const SoulNodeArgs& a) {
     }
     const int max_hp = resolve_pet_max_hp(self);
     const int pct = (max_hp - self.hp) * 100 / max_hp;   // 已损失体力百分比
-    if (pct <= 0 || !roll_percent(ctx->rng(), pct)) {
+    if (pct <= 0 || !roll_soul_percent(*ctx, kMarkId, 1, owner, 1 - owner, pct)) {
         return EffectResult::kOk;   // 满血不翻；本地掷点（威力翻倍非异常通道）
     }
     auto& view = ctx->ws.skill_power_view[owner];

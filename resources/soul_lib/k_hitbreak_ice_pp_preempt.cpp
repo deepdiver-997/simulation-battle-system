@@ -185,8 +185,8 @@ EffectResult k1355_arm_pp_zero(BattleContext* ctx, const SoulNodeArgs& a) {
             int guard = 0;
             while (done < pp_count && guard < 100) {
                 ++guard;
-                const int slot = c->rng().next() % 5;   // 5 技能槽（K230 直系：
-                                                    // 无限 PP 槽由原语拒并重试）
+                // 5 技能槽（K230 直系：无限 PP 槽由原语拒并重试）
+                const int slot = choose_soul_range(*c, kMarkId, 0, owner, 1 - owner, 0, 4);
                 if (g_core->pp_zero_slot(c, 1 - owner, slot, owner)
                     == PpReduceResult::SUCCESS) {
                     ++done;

@@ -66,7 +66,7 @@ EffectResult effect_1481_prob_damage_double(BattleContext* ctx, const EffectArgs
             if (j196_foe_has_drop(c, target)) {
                 p = std::min(100, p * 2);   // 对手降态：概率翻倍（封顶 100）
             }
-            const bool rolled = (p >= 100) || ((c->rng().next() % 100) < p);
+            const bool rolled = (p >= 100) || roll_skill_gate(*c, 1481, 0, owner, target, p, 100);
             c->plugin_storage[k1481AuditBase + owner] = (rolled ? 1000 : 0) + p;
             if (rolled) {
                 c->resolvedDamage.final =

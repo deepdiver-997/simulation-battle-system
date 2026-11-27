@@ -53,7 +53,7 @@ int count_boost_kinds_f5(const BattleContext* ctx, int owner) {
 
 // ── 186 —— 后出手时，{1}%使自身{0}提升{2}个等级 ──
 // Args: [owner(0), target(1), slot{0}, percent{1}, levels{2}]（int_count=5）。
-// 先手短路在掷骰**之前**（条件不成立不耗 rand；percent=100 时 roll_percent 同样零消耗）。
+// 先手短路在掷骰**之前**（条件不成立不耗 rand；percent=100 时 roll_skill_percent 同样零消耗）。
 EffectResult effect_186_second_mover_stat_up(BattleContext* ctx, const EffectArgs& args) {
     EFFECT_ARG_GUARD(ctx != nullptr, 186, args, "需要 ctx");
     EFFECT_ARG_GUARD(args.int_count >= 5, 186, args, "需要 [owner,target,slot,percent,levels]");
@@ -69,7 +69,7 @@ EffectResult effect_186_second_mover_stat_up(BattleContext* ctx, const EffectArg
     if (acting_side_is_first(ctx)) {
         return EffectResult::kOk;   // 先出手：条件不成立（不掷骰）
     }
-    if (!roll_percent(ctx->rng(), percent)) {
+    if (!roll_skill_percent(*ctx, 186, 0, owner, owner, percent)) {
         return EffectResult::kOk;   // 概率未触发
     }
     (void)g_core->stat_change(ctx, owner, slot, levels);

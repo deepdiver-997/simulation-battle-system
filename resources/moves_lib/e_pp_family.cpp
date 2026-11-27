@@ -1,7 +1,7 @@
 // E6 · PP 族批量效果 598（引用 49 次，2026-09-29，分支 feat/e-E6）
 //
 // 598 "{0}%恢复自己所有技能PP值{1}点"（args_num=2，切片如 明语释心 28449 → [100, 5]）：
-//   - SKILL_EFFECT 即时结算（链内；{0}% 概率门在**使用时掷一次**，受管 roll_percent
+//   - SKILL_EFFECT 即时结算（链内；{0}% 概率门在**使用时掷一次**，受管 roll_skill_percent
 //     ——E4 的 127 同口径，场景 103 概率闸门管辖）；
 //   - 恢复走 pp_restore 原语：clamp ≤ maxPP、无限 PP 槽跳过、只补不削
 //     （极渊 2414"20%自身全技能 PP+1"/D22 1821"未击败全技能+5PP"同款）；
@@ -29,7 +29,7 @@ EffectResult effect_598_prob_restore_pp(BattleContext* ctx, const EffectArgs& ar
     if (!g_core || !g_core->pp_restore) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(ctx->rng(), prob)) {
+    if (!roll_skill_percent(*ctx, 598, 0, owner, owner, prob)) {
         return EffectResult::kOk;   // 概率未命中：不恢复
     }
     (void)g_core->pp_restore(ctx, owner, points, /*only_empty=*/false);

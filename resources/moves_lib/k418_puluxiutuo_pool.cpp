@@ -167,20 +167,18 @@ bool k418_marker_release(BattleContext* ctx, int base, int side) {
 
 // 解放成功后的异常施加（官方行文无 % 占位 → 恒 100 申报；K176 100% 档短路口径）。
 // 返回落地掩码。trio 必须恰好 3 个合法异常码（本族两组官方三选池）。
-int k418_release_anomalies(BattleContext* ctx, int owner, int target, int kinds,
+int k418_release_anomalies(BattleContext* ctx, int rule, int owner, int target, int kinds,
                            const int trio[3], int pick_audit, int land_audit) {
     // 随机 {0} 种（不重复，Fisher-Yates，K416 446 同式）——选中掩码审计 +
     // 固定 seed = 无随机精确断言（场景纪律：概率类禁 while 步进）。
-    int idx[3] = {0, 1, 2};
+    ChanceOption pool[] = {{trio[0], 1}, {trio[1], 1}, {trio[2], 1}};
     int picked = 0;
     int chosen[3] = {-1, -1, -1};
     const int n = kinds < 3 ? kinds : 3;
     for (int i = 0; i < n; ++i) {
-        const int j = i + (ctx->rng().next() % (3 - i));
-        const int t = idx[i];
-        idx[i] = idx[j];
-        idx[j] = t;
-        chosen[i] = trio[idx[i]];
+        const auto remaining = std::span<const ChanceOption>(pool + i, 3 - i);
+        chosen[i] = choose_skill_slot(*ctx, rule, 0, owner, target, remaining);
+        std::iter_swap(pool + i, std::find(pool + i, pool + 3, ChanceOption{chosen[i], 1}));
         picked |= (1 << chosen[i]);   // 三选池最大码 27，int 位掩码安全
     }
     ctx->plugin_storage[pick_audit] = picked;
@@ -222,7 +220,7 @@ EffectResult effect_1942_release_huineng_anomaly(BattleContext* ctx,
     static const int kTrio[3] = {static_cast<int>(AbnormalStatusId::Paralysis),   // 麻痹 0
                                  static_cast<int>(AbnormalStatusId::Fear),        // 害怕 6
                                  static_cast<int>(AbnormalStatusId::Fatigue)};    // 疲惫 7
-    k418_release_anomalies(ctx, owner, target, kinds, kTrio,
+    k418_release_anomalies(ctx, 1942, owner, target, kinds, kTrio,
                            k1942PickAudit, k1942LandAudit);
     return EffectResult::kOk;
 }
@@ -247,7 +245,7 @@ EffectResult effect_1943_release_shineng_anomaly(BattleContext* ctx,
     static const int kTrio[3] = {static_cast<int>(AbnormalStatusId::Icebound),     // 冰封 15
                                  static_cast<int>(AbnormalStatusId::Incinerate),   // 焚烬 22
                                  static_cast<int>(AbnormalStatusId::Infection)};   // 感染 27
-    k418_release_anomalies(ctx, owner, target, kinds, kTrio,
+    k418_release_anomalies(ctx, 1943, owner, target, kinds, kTrio,
                            k1943PickAudit, k1943LandAudit);
     return EffectResult::kOk;
 }

@@ -179,7 +179,8 @@ int read_int(BattleContext* ctx, int key) {
 }
 
 // 随机 n 个互不相同的槽（0..5）——K267 645/shenjue_mistike_4676 同款去重取法。
-std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(SbsRng& rng, int n) {
+std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(
+        BattleContext& ctx, int owner, int target, int n) {
     std::array<int, BattleContext::kAbilityLevelSlotCount> picked{};
     const int total = BattleContext::kAbilityLevelSlotCount;
     const int count = (n < 0) ? 0 : ((n > total) ? total : n);
@@ -187,7 +188,7 @@ std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(Sbs
     for (int i = 0; i < count; ++i) {
         int slot = 0;
         for (int attempt = 0; attempt < 64; ++attempt) {
-            slot = rng.next() % total;
+            slot = choose_soul_range(ctx, 748, 0, owner, target, 0, total - 1);
             if (!used[slot]) {
                 break;
             }
@@ -271,7 +272,8 @@ EffectResult k413_274_grant(BattleContext* ctx, const SoulNodeArgs& a) {
                             }
                             // 审计槽：实际结算时才写申报概率。
                             c->plugin_storage[k274Audit + owner] = pct;
-                            return roll_percent(c->rng(), pct);
+                            // 票的对象是被护方；回调只接收异常编号，不推断施加方。
+                            return roll_soul_percent(*c, 274, 0, owner, owner, pct);
                         });
     return EffectResult::kOk;
 }
@@ -321,7 +323,7 @@ EffectResult k413_748_steal(BattleContext* ctx, const SoulNodeArgs& a) {
         return EffectResult::kOk;
     }
     const std::array<int, BattleContext::kAbilityLevelSlotCount> slots =
-        random_distinct_slots(ctx->rng(), count);
+        random_distinct_slots(*ctx, owner, opp, count);
     int landed = 0;
     for (int i = 0; i < count && i < BattleContext::kAbilityLevelSlotCount; ++i) {
         const int slot = slots[i];

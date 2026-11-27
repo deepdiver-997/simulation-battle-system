@@ -64,10 +64,11 @@ EffectResult j38_1107_probe(BattleContext* c, const EffectArgs& a) {
     if (j38_bucket_acting_side(c) != self || c->getPet(opp).hp <= 0) {
         return EffectResult::kOk;   // 只在"自己出手流程结束"判；击败了不触发
     }
-    if (roll_percent(c->rng(), pct_up)) {
+    constexpr int kSelfBoost = 0, kOpponentDrop = 1;  // Independent subsites of rule 1107.
+    if (roll_skill_percent(*c, 1107, kSelfBoost, self, self, pct_up)) {
         all_stats_up(c, self, up);
     }
-    if (roll_percent(c->rng(), pct_down)) {
+    if (roll_skill_percent(*c, 1107, kOpponentDrop, self, opp, pct_down)) {
         for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {
             (void)g_core->stat_drop(c, opp, i, down, self);
         }

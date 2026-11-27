@@ -30,8 +30,7 @@
 //     **申报概率**（亮节闸门管辖，ChanceSource::Skill；掷骰在原语内、闸门改写之后）+
 //     **指定时长 {2}**（本模板 {2} 是显式回合数，非 random_anomaly_duration——工单明示；
 //     603 全部 34 载体均带 {2}）。异常码 {1} 全域 0..43，is_valid_abnormal_status_id 校验。
-//   · 76：概率门 roll_percent（本效果无异常可申报、无 checked 通道——工单口径
-//     "apply_anomaly_checked/roll_percent"二选一，非异常概率走本地掷）→ register_round_effect
+//   · 76：非异常概率门走 roll_skill_percent，不走 apply_anomaly_checked → register_round_effect
 //     挂 **BATTLE_ROUND_REDUCTION_ALL_ROUND_MINUS（回合扣减点 = 官方"每回合结束后"**，与
 //     tick_abnormal_statuses 的异常 dot 结算同点、且在 cleanup 之前跑）每回合
 //     deal_pink_damage(FIXED, {2})。窗口 = InRounds（"N回合内"家族口径：先手当回合即结算
@@ -124,7 +123,7 @@ EffectResult effect_76_chance_rounds_dot(BattleContext* ctx, const EffectArgs& a
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1 && target >= 0 && target <= 1, 76, args,
                      "owner/target 越界");
     EFFECT_ARG_GUARD(rounds > 0 && per_round > 0, 76, args, "rounds/per_round 非正");
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 76, 0, owner, target, chance)) {
         return EffectResult::kOk;   // 概率门未过：不挂窗（76 无异常可申报 → 本地掷骰）
     }
     // "N回合内"窗口（InRounds 家族口径，见文件头）：回合扣减点每回合结算一次。

@@ -32,8 +32,8 @@
 
 namespace {
 
-// ── 651 的 ROUND_START tick —— payload={owner, lo, hi}；rand∈[lo,hi] 恢复。
-EffectResult j30_651_round_tick(BattleContext* ctx, const EffectArgs& args) {
+// ── 651 的即刻 / ROUND_START 恢复 —— payload={owner, lo, hi}；rand∈[lo,hi]。
+EffectResult j30_651_roll_heal(BattleContext* ctx, const EffectArgs& args, int subsite) {
     if (!ctx || !args.int_args || args.int_count < 3 || !g_core || !g_core->heal_amount) {
         return EffectResult::kOk;
     }
@@ -43,11 +43,16 @@ EffectResult j30_651_round_tick(BattleContext* ctx, const EffectArgs& args) {
     if (owner < 0 || owner > 1 || lo < 0 || hi < lo) {
         return EffectResult::kOk;
     }
-    const int roll = lo + (hi > lo ? ctx->rng().next() % (hi - lo + 1) : 0);
+    const int roll = choose_skill_range(*ctx, 651, subsite, owner, owner, lo, hi,
+                                        ChanceSingleton::SkipDraw);
     if (roll > 0) {
         (void)g_core->heal_amount(ctx, owner, roll);
     }
     return EffectResult::kOk;
+}
+
+EffectResult j30_651_round_tick(BattleContext* ctx, const EffectArgs& args) {
+    return j30_651_roll_heal(ctx, args, /*subsite=*/1);
 }
 
 // ── 651 —— {0}回合内每回合随机恢复{1}-{2}点体力 ──
@@ -66,7 +71,7 @@ EffectResult effect_651_roundly_random_heal(BattleContext* ctx, const EffectArgs
     // 累加型恢复：立即恢复只在窗口含当回合时做（后手顺延折算，J19 759 同防双落）。
     const int start = ctx->round_effect_start_round(owner, rounds, EffectWindowKind::InRounds);
     if (start == ctx->roundCount) {
-        j30_651_round_tick(ctx, EffectArgs(std::vector<int>{owner, lo, hi}));
+        j30_651_roll_heal(ctx, EffectArgs(std::vector<int>{owner, lo, hi}), /*subsite=*/0);
     }
     register_round_effect(ctx, State::BATTLE_ROUND_START, owner, 651, rounds,
                           {owner, lo, hi}, &j30_651_round_tick);

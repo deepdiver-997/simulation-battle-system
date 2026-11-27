@@ -23,7 +23,7 @@
 //   - "双方只能生效1次"：按持有方各自 1 次（plugin_storage 门，生效=走过判定）。
 // 1756（[100, 8, 1]）"消除对手回合类效果，消除成功则{0}%令对手{1}，未触发或对手回合类
 //   效果无法被消除则下{2}次对手使用的属性技能无效"：
-//   - had_round 快照（消除前）判分支；成功 + roll_percent(100)（短路必发）→ 施加睡眠
+//   - had_round 快照（消除前）判分支；成功 + 100% 概率门（短路必发）→ 施加睡眠
 //     （8，apply_anomaly 申报 + random_anomaly_duration，1959 同款）；未命中或本就无
 //     回合类 → seal_skill 属性单类 count=1（976/1056 次数型同款）。
 // 805（[2]）"消除对手能力提升状态，消除成功则令对手随机{0}项技能PP值归零"：
@@ -34,7 +34,7 @@
 
 #include "common.h"
 
-#include <effects/curse_stack.h>
+#include "../curse_stack.h"
 
 namespace {
 
@@ -85,7 +85,7 @@ EffectResult effect_2305_once_flower_or_curse(BattleContext* ctx, const EffectAr
         return EffectResult::kOk;
     }
     // 希望之花已被摧毁 → 获得 10 层魔王咒怨（共享层；越 10 层授控制类免控票）
-    ensure_curse_wiring(ctx);
+    ensure_curse_wiring(ctx, g_core);
     add_curse_stacks_slot(ctx, owner, lm_slot, /*delta=*/10);
     return EffectResult::kOk;
 }
@@ -106,7 +106,7 @@ EffectResult effect_1756_break_sleep_seal(BattleContext* ctx, const EffectArgs& 
     const bool had_round = ctx->rule_center_.has_round_type(target);
     if (had_round && g_core->break_round_effects) {
         g_core->break_round_effects(ctx, target);
-        if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly) {
+        if (roll_skill_percent(*ctx, 1756, 0, owner, target, chance) && g_core->apply_anomaly) {
             (void)g_core->apply_anomaly(ctx, target, status,
                                         random_anomaly_duration(), owner);
             return EffectResult::kOk;   // 施加成功（100% 短路必发）
@@ -147,7 +147,7 @@ EffectResult effect_805_clear_then_pp_zero(BattleContext* ctx, const EffectArgs&
         }
     }
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
+        const int pick = choose_skill_range(*ctx, 805, 0, owner, target, 0, static_cast<int>(candidates.size()) - 1);
         (void)g_core->pp_zero_slot(ctx, target, candidates[static_cast<std::size_t>(pick)],
                                    /*actor=*/owner);
         candidates.erase(candidates.begin() + pick);

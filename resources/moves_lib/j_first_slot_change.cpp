@@ -45,7 +45,7 @@ EffectResult effect_122_first_slot_change(BattleContext* ctx, const EffectArgs& 
     }
     // 先手门：SKILL_EFFECT 时点先手权已定（owner 即出招方）；后手不触发（148 镜像族管）。
     const int first = ctx->preemptive_right == PreemptiveRight::SEER_ROBOT_2 ? 1 : 0;
-    if (owner != first || !roll_percent(ctx->rng(), chance)) {
+    if (owner != first || !roll_skill_percent(*ctx, 122, 0, owner, target, chance)) {
         return EffectResult::kOk;
     }
     if (delta < 0) {

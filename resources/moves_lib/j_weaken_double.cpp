@@ -88,7 +88,7 @@ EffectResult effect_590_weaken_chance_double(BattleContext* ctx, const EffectArg
         return EffectResult::kOk;
     }
     // 整段一次掷骰：显式 0 走短路（不消耗 rand），>=100 必定翻倍。
-    const int scale = roll_percent(ctx->rng(), chance) ? 2 : 1;
+    const int scale = roll_skill_percent(*ctx, 590, 0, owner, target, chance) ? 2 : 1;
     ctx->plugin_storage[k590ScaleAuditBase + owner] = scale;
     apply_six_slot_weaken(ctx, owner, target, args.int_args + 2, scale);
     return EffectResult::kOk;

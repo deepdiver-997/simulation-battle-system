@@ -9,7 +9,7 @@
 //     D26 1395 的既验通道是**直接置 `ctx->crit_happened[owner] = true`**——ATTACK_DAMAGE
 //     阶段只消费该旗标并按 `ws.cached_crit_damage`（默认 200）放大整段并置 isCrit
 //     （battleFsm.cpp:693-710）。本族按同一通道落地。
-//   - 1429：SKILL_EFFECT 先掷 50%（roll_percent）；命中 → crit_happened=true；
+//   - 1429：SKILL_EFFECT 先掷 50%（roll_skill_percent）；命中 → crit_happened=true；
 //     未命中 → 再走 apply_anomaly_checked(申报 {0}%，ChanceSource::Skill) +
 //     random_anomaly_duration()（"未触发则"= 暴击未触发才轮到异常；红线7：{0}=0
 //     在位即消费，不设 >0 门）。
@@ -70,7 +70,7 @@ EffectResult effect_1429_crit_or_anomaly(BattleContext* ctx, const EffectArgs& a
     EFFECT_ARG_GUARD(is_valid_abnormal_status_id(anomaly), 1429, args,
                      "需要合法官方异常 id");
 
-    const bool crit = roll_percent(ctx->rng(), 50);
+    const bool crit = roll_skill_percent(*ctx, 1429, 0, owner, target, 50);
     ctx->plugin_storage[k1429RollBase + owner] = crit ? 1 : 0;
     if (crit) {
         // 当前攻击必暴通道（D26 1395 既验）：掷点已过，直接置落地旗标。
@@ -96,13 +96,14 @@ EffectResult effect_1420_boosted_crit(BattleContext* ctx, const EffectArgs& args
     EFFECT_ARG_GUARD(args.int_args != nullptr && args.int_count >= 2, 1420, args,
                      "1420 布局=[owner,target]");
     const int owner = args.int_args[0];
-    EFFECT_ARG_GUARD(owner >= 0 && owner <= 1 && args.int_args[1] >= 0 && args.int_args[1] <= 1,
+    const int target = args.int_args[1];
+    EFFECT_ARG_GUARD(owner >= 0 && owner <= 1 && target >= 0 && target <= 1,
                      1420, args, "需要 owner/target ∈ {0,1}");
     if (!has_boost(ctx, owner)) {
         ctx->plugin_storage[k1420AuditBase + owner] = -1;   // 门闭
         return EffectResult::kOk;
     }
-    const bool crit = roll_percent(ctx->rng(), 50);
+    const bool crit = roll_skill_percent(*ctx, 1420, 0, owner, target, 50);
     ctx->plugin_storage[k1420AuditBase + owner] = crit ? 1 : 0;
     if (crit) {
         ctx->crit_happened[owner] = true;

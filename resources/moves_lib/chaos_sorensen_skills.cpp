@@ -138,7 +138,7 @@ EffectResult effect_1131_random_fixed_boosted(BattleContext* ctx, const EffectAr
     if (lo < 0 || hi < lo) {
         return EffectResult::kOk;
     }
-    const int amount = lo + (ctx->rng().next() % (hi - lo + 1));
+    const int amount = choose_skill_range(*ctx, 1131, 0, self, target, lo, hi);
     if (amount > 0) {
         g_core->deal_pink_damage(ctx, target, amount, DamageKind::FIXED, self);
     }
@@ -167,7 +167,7 @@ EffectResult effect_1129_chance_damage_multiplier(BattleContext* ctx, const Effe
     if (chance > 100) {
         chance = 100;
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 1129, 0, self, args.int_args[1], chance)) {
         return EffectResult::kOk;
     }
     // mult 倍 = 加算 (mult-1)*100 个百分点（×3 → +200）。
@@ -245,7 +245,7 @@ EffectResult effect_1047_anomaly_or_drain(BattleContext* ctx, const EffectArgs& 
         || !is_valid_abnormal_status_id(anomaly)) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1047, 0, self, target, chance)) {
         const ApplyAnomalyResult r =
             g_core->apply_anomaly(ctx, target, anomaly, random_anomaly_duration(), self);
         if (anomaly_landed(r)) {

@@ -18,7 +18,7 @@
 #include <iostream>
 
 #include <abnormal-system/abnormal-types.h>
-#include <effects/curse_stack.h>
+#include "../../resources/curse_stack.h"
 #include <entities/pet_factory.h>
 #include <fsm/battleContext.h>
 #include <primitives/battle_primitives.h>

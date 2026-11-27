@@ -31,6 +31,8 @@
 namespace {
 
 constexpr int kMarkId = 709;
+constexpr int kBurnChanceSite = 0;
+constexpr int kParalysisChanceSite = 1;
 constexpr int kWiredKeyBase = 990840000;   // +owner：watcher 已挂旗标（防再登场双挂）
 
 // 行参：db[1]=烧伤%、db[2]=烧伤码、db[3]=麻痹%、db[4]=麻痹码、db[6]=威力倍数。
@@ -103,14 +105,14 @@ EffectResult k340_709_arm(BattleContext* ctx, const SoulNodeArgs& a) {
             if (c->getPet(opp).hp <= 0) {
                 return;   // 存活门
             }
-            if (burn_pct > 0 && roll_percent(c->rng(), burn_pct) &&
+            if (burn_pct > 0 && roll_soul_percent(*c, kMarkId, kBurnChanceSite, owner, opp, burn_pct) &&
                 is_valid_abnormal_status_id(burn_code)) {
                 (void)g_core->apply_anomaly_checked(c, opp, burn_code,
                                                     random_anomaly_duration(), owner,
                                                     /*chance_pct=*/100,
                                                     ChanceSource::SoulMark);
             }
-            if (para_pct > 0 && roll_percent(c->rng(), para_pct) &&
+            if (para_pct > 0 && roll_soul_percent(*c, kMarkId, kParalysisChanceSite, owner, opp, para_pct) &&
                 is_valid_abnormal_status_id(para_code)) {
                 (void)g_core->apply_anomaly_checked(c, opp, para_code,
                                                     random_anomaly_duration(), owner,

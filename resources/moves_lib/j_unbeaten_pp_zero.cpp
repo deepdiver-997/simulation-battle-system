@@ -41,7 +41,7 @@ EffectResult effect_739_unbeaten_pp_zero_tick(BattleContext* ctx, const EffectAr
     if (ctx->getPet(opp).hp <= 0) {
         return EffectResult::kOk;   // 当回合已击败 → 不触发
     }
-    const bool rolled = roll_percent(ctx->rng(), chance);
+    const bool rolled = roll_skill_percent(*ctx, 739, 0, self, opp, chance);
     int landed = 0;
     if (rolled && g_core && g_core->pp_zero_slot) {
         const int slots = static_cast<int>(ctx->getPet(opp).skills.size());

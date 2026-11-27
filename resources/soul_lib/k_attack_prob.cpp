@@ -97,11 +97,11 @@ enum class AttackRider {
 };
 
 template <AttackRider RIDER>
-void rider_dispatch(BattleContext* c, int owner, int opp, int pct_raw, int arg2) {
+void rider_dispatch(BattleContext* c, int mark_id, int owner, int opp, int pct_raw, int arg2) {
     if (RIDER == AttackRider::Kill) {
         // 151：千分比 → 百分比（20→2%、30→3%，工单互锚口径）
         const int pct = pct_raw / 10;
-        if (!roll_percent(c->rng(), pct)) {
+        if (!roll_soul_percent(*c, mark_id, 0, owner, opp, pct)) {
             return;
         }
         if (c->getPet(opp).hp <= 0) {
@@ -113,7 +113,7 @@ void rider_dispatch(BattleContext* c, int owner, int opp, int pct_raw, int arg2)
         return;
     }
     if (RIDER == AttackRider::FixedDamage) {
-        if (!roll_percent(c->rng(), pct_raw)) {
+        if (!roll_soul_percent(*c, mark_id, 0, owner, opp, pct_raw)) {
             return;
         }
         if (g_core && g_core->fixed_damage) {
@@ -155,7 +155,7 @@ EffectResult attack_prob_arm(BattleContext* ctx, const EffectArgs& args) {
             if (!c || !own_attack_event(c, owner, ev, MARK)) {
                 return;
             }
-            rider_dispatch<RIDER>(c, owner, 1 - owner, db0, db1);
+            rider_dispatch<RIDER>(c, MARK, owner, 1 - owner, db0, db1);
         },
         WatcherScope::TEAM);
     return EffectResult::kOk;

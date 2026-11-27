@@ -52,9 +52,9 @@ bool anomaly_landed(ApplyAnomalyResult r) {
     }
 }
 
-// 1458/1622 共用前段：掷 {1}% → 封属性当回合一回合。
-bool j271_try_seal(BattleContext* ctx, int self, int opp, int chance) {
-    if (!roll_percent(ctx->rng(), chance)) {
+// 1458/1622 共用前段：掷点按来源宏分账；封属票保留原有 1458 句柄。
+bool j271_try_seal(BattleContext* ctx, int rule_id, int self, int opp, int chance) {
+    if (!roll_skill_percent(*ctx, rule_id, 0, self, opp, chance)) {
         return false;
     }
     if (g_core && g_core->seal_skill) {
@@ -70,7 +70,7 @@ bool j271_try_seal(BattleContext* ctx, int self, int opp, int chance) {
 
 // ── 1458 单回合掷点 ──
 void j271_1458_round(BattleContext* ctx, int self, int opp, int p1, int p2, int anomaly) {
-    const bool sealed = j271_try_seal(ctx, self, opp, p1);
+    const bool sealed = j271_try_seal(ctx, 1458, self, opp, p1);
     ctx->plugin_storage[kAudit1458Seal + self] = sealed ? 1 : 0;
     if (sealed) {
         ctx->plugin_storage[kAudit1458Anom + self] = 0;
@@ -121,7 +121,7 @@ EffectResult effect_1458_chance_seal_or_anomaly(BattleContext* ctx, const Effect
 
 // ── 1622 单回合掷点 ──
 void j271_1622_round(BattleContext* ctx, int self, int opp, int p1, int times, int pct) {
-    const bool sealed = j271_try_seal(ctx, self, opp, p1);
+    const bool sealed = j271_try_seal(ctx, 1622, self, opp, p1);
     ctx->plugin_storage[kAudit1622Arm + self] = sealed ? 0 : 1;
     if (sealed) {
         return;

@@ -34,7 +34,7 @@ EffectResult k220_292_skill_effect(BattleContext* ctx, const SoulNodeArgs& a) {
         || ctx->getPet(owner).skills[idx].type == SkillType::Attribute) {
         return EffectResult::kOk;   // 只翻攻击技（K4 判据：类型表门）
     }
-    if (!roll_percent(ctx->rng(), 6)) {
+    if (!roll_soul_percent(*ctx, kMarkId, 0, owner, owner, 6)) {
         return EffectResult::kOk;   // 6% 掷点（调用方自掷，293 同款）
     }
     auto& view = ctx->ws.skill_power_view[owner];

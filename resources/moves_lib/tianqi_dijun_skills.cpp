@@ -146,15 +146,16 @@ EffectResult effect_1298_clear_boost_punish_off_field(BattleContext* ctx,
     if (g_core->clear_stat_boosts(ctx, target) <= 0) {
         return EffectResult::kOk;   // 消除不成功 → 无后续
     }
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for_each_off_field_alive(ctx, target, /*skip_protected=*/true,
                              [&candidates](int slot, const ElfPet&) {
-                                 candidates.push_back(slot);
+                                 candidates.push_back({slot, 1});
                              });
     if (candidates.empty()) {
         return EffectResult::kOk;
     }
-    ElfPet& pet = ctx->seerRobot[target].elfPets[candidates[ctx->rng().next() % candidates.size()]];
+    const int slot = choose_skill_slot(*ctx, 1298, 0, self, target, candidates);
+    ElfPet& pet = ctx->seerRobot[target].elfPets[slot];
     const int dmg = pet_max_hp(pet) / 4;   // 模板明写 1/4（无占位符）
     if (dmg > 0) {
         pet.hp = std::max(1, pet.hp - dmg);   // "致死时令其残留1点体力"
@@ -363,7 +364,7 @@ EffectResult effect_1302_all_up_maybe_double(BattleContext* ctx, const EffectArg
     if (self < 0 || self > 1 || target < 0 || target > 1 || boost == 0) {
         return EffectResult::kOk;
     }
-    const bool doubled = roll_percent(ctx->rng(), pct);
+    const bool doubled = roll_skill_percent(*ctx, 1302, 0, self, target, pct);
     all_stats_up(ctx, self, doubled ? boost * 2 : boost);
     if (!doubled && g_core && g_core->transfer_stat_boosts) {
         g_core->transfer_stat_boosts(ctx, /*from=*/target, /*to=*/self);   // "未触发则吸取"
@@ -597,7 +598,7 @@ EffectResult effect_1315_chance_crit(BattleContext* ctx, const EffectArgs& args)
     if (self < 0 || self > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), pct)) {
+    if (roll_skill_percent(*ctx, 1315, 0, self, args.int_args[1], pct)) {
         ctx->ws.must_crit[self] = true;   // SKILL_EFFECT 时点写 → 本次 ATTACK_DAMAGE 消费
     }
     return EffectResult::kOk;
@@ -624,7 +625,8 @@ EffectResult effect_1316_first_random_up(BattleContext* ctx, const EffectArgs& a
     }
     const int picks = std::min(count, BattleContext::kAbilityLevelSlotCount);
     for (int i = 0; i < picks; ++i) {
-        const int j = i + ctx->rng().next() % (BattleContext::kAbilityLevelSlotCount - i);
+        const int j = choose_skill_range(*ctx, 1316, 0, self, self,
+                                         i, BattleContext::kAbilityLevelSlotCount - 1);
         const int tmp = slots[i];
         slots[i] = slots[j];
         slots[j] = tmp;

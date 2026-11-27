@@ -166,7 +166,8 @@ EffectResult soulmark_622_round_start(BattleContext* ctx, const EffectArgs& args
                         /*source_effect_id=*/622);
     if (g_core && g_core->stat_change) {
         for (int i = 0; i < count; ++i) {
-            g_core->stat_change(ctx, owner, ctx->rng().next() % 6, 1);   // 随机属性 +1（0..5 槽）
+            const int slot = choose_soul_range(*ctx, 622, 0, owner, owner, 0, 5);
+            g_core->stat_change(ctx, owner, slot, 1);   // 随机属性 +1（0..5 槽）
         }
     }
     return EffectResult::kOk;

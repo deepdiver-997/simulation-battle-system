@@ -21,7 +21,7 @@
 //   1304 魂殒若梦「下N回合攻击忽略对手{1}%双防」——需伤害管线的"忽略双防%"阶段；
 //   1779 命诞如虚「对手下N次切换时吸取下只出场精灵1/{1}体力」——需 EVENT_SWAP 载荷；
 //   1702 命诞如虚「自身主动切换下场后令己方下只出战时恢复{0}体力」——需下场→下只登场回调。
-#include <effects/lingchao_layers.h>
+#include "../lingchao_layers.h"
 
 #include "common.h"
 
@@ -386,7 +386,8 @@ EffectResult effect_1952_ignore_boosts(BattleContext* ctx, const EffectArgs& arg
             }
         }
     }
-    if (g_core->apply_anomaly && is_valid_abnormal_status_id(anomaly) && roll_percent(ctx->rng(), pct)) {
+    if (g_core->apply_anomaly && is_valid_abnormal_status_id(anomaly)
+        && roll_skill_percent(*ctx, 1952, 0, owner, target, pct)) {
         g_core->apply_anomaly(ctx, target, anomaly, random_anomaly_duration(), owner);
     }
     return EffectResult::kOk;

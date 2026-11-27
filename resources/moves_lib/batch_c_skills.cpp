@@ -780,7 +780,7 @@ EffectResult effect_403_spatk_speed_up(BattleContext* ctx, const EffectArgs& arg
     if (owner < 0 || owner > 1 || up <= 0) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 403, 0, owner, owner, chance)) {
         return EffectResult::kOk;   // 非异常概率：本地掷点（概率闸门只管异常附加）
     }
     const int amount = (ctx->ws.view_elementalAttributes[owner][0]
@@ -1459,7 +1459,7 @@ EffectResult effect_406_hit_heal_window(BattleContext* ctx, const EffectArgs& ar
                 if (end2 < 0 || c->roundCount >= end2) {
                     return;   // 窗口外
                 }
-                if (roll_percent(c->rng(), chance)) {
+                if (roll_skill_percent(*c, 406, 0, owner, owner, chance)) {
                     (void)g_core->heal_amount(c, owner, amount);
                 }
             },

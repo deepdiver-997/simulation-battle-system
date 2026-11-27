@@ -76,7 +76,7 @@ void ensure_longhun_wiring(BattleContext* ctx) {
                 if (!c->rule_center_.has_carrier(bucket_owner, 1452, c->roundCount)) {
                     return;
                 }
-                const int pct = 50 + c->rng().next() % 51;   // 50~100
+                const int pct = choose_skill_range(*c, 1452, 0, owner, d.defenderId, 50, 100);   // 50~100
                 d.final += d.final * pct / 100;
             });
         // 御之龙魂：受到的固定伤害和百分比伤害减少 25%（粉伤 REDUCE_EXTRA 乘法免减区，
@@ -171,7 +171,8 @@ EffectResult effect_1453_pp_zero_tick(BattleContext* ctx, const EffectArgs& args
     if (candidates.empty()) {
         return EffectResult::kOk;
     }
-    const int pick = candidates[ctx->rng().next() % candidates.size()];
+    const int pick = candidates[choose_skill_range(*ctx, 1453, 0, self, target, 0,
+                                                   static_cast<int>(candidates.size()) - 1)];
     (void)g_core->pp_zero_slot(ctx, target, pick, /*actor=*/self);
     return EffectResult::kOk;
 }

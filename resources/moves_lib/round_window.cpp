@@ -79,7 +79,8 @@ EffectResult effect_525_attack_damage_immune(BattleContext* ctx, const EffectArg
             if (damage.defenderId != self || !damage.isRed || damage.final <= 0) {
                 return;   // 只免疫"对手的攻击伤害"（红伤）
             }
-            if (!roll_percent(c->rng(), pct)) {
+            // 归属护盾持有方，目标取本次来袭攻击的实际发起方。
+            if (!roll_skill_percent(*c, 525, 0, self, damage.attackerId, pct)) {
                 return;   // {1}% 未中
             }
             damage.base = damage.afterAdd = damage.afterMul = damage.final = 0;

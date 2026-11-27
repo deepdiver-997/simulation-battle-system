@@ -256,18 +256,18 @@ EffectResult soulmark_4872_after_action_miaoshi(BattleContext* ctx, const Effect
         return EffectResult::kOk;
     }
     // 随机挑一种弱化类异常（按 battle_effects 分组的 Efftype==1；0..35 内已实装的）
-    static const int kDebuffs[] = {
-        static_cast<int>(AbnormalStatusId::Poison),      // 中毒
-        static_cast<int>(AbnormalStatusId::Burn),        // 烧伤
-        static_cast<int>(AbnormalStatusId::Frostbite),   // 冻伤
-        static_cast<int>(AbnormalStatusId::Confusion),   // 混乱
-        static_cast<int>(AbnormalStatusId::Weakness),    // 衰弱
-        static_cast<int>(AbnormalStatusId::Blind),       // 失明
-        static_cast<int>(AbnormalStatusId::Bind),        // 束缚
-        static_cast<int>(AbnormalStatusId::Distraction), // 失神
-        static_cast<int>(AbnormalStatusId::Silence),     // 沉默
+    static constexpr ChanceOption kDebuffs[] = {
+        {static_cast<int>(AbnormalStatusId::Poison), 1},      // 中毒
+        {static_cast<int>(AbnormalStatusId::Burn), 1},        // 烧伤
+        {static_cast<int>(AbnormalStatusId::Frostbite), 1},   // 冻伤
+        {static_cast<int>(AbnormalStatusId::Confusion), 1},   // 混乱
+        {static_cast<int>(AbnormalStatusId::Weakness), 1},    // 衰弱
+        {static_cast<int>(AbnormalStatusId::Blind), 1},       // 失明
+        {static_cast<int>(AbnormalStatusId::Bind), 1},        // 束缚
+        {static_cast<int>(AbnormalStatusId::Distraction), 1}, // 失神
+        {static_cast<int>(AbnormalStatusId::Silence), 1},     // 沉默
     };
-    const int pick = kDebuffs[ctx->rng().next() % (sizeof(kDebuffs) / sizeof(kDebuffs[0]))];
+    const int pick = choose_soul_slot(*ctx, kMiaoShiMarkId, 0, owner, target, kDebuffs);
     ApplyAnomalyResult r = ApplyAnomalyResult::INVALID_PARAM;
     if (g_core && g_core->apply_anomaly) {
         r = g_core->apply_anomaly(ctx, target, pick, /*duration=*/2, owner);

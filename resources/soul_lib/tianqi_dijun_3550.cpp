@@ -183,9 +183,10 @@ EffectResult soulmark_1128_arm(BattleContext* ctx, const EffectArgs& args) {
                     return;
                 }
                 // 殒：帝君自己被击败 → 30% 随机带走对手一只不在场存活精灵
-                if (ev.target == owner && ev.slot == host_slot && roll_percent(wctx->rng(), 30)) {
+                if (ev.target == owner && ev.slot == host_slot
+                    && roll_soul_percent(*wctx, kDijunMarkId, 0, owner, 1 - owner, 30)) {
                     const int opp = 1 - owner;
-                    std::vector<int> candidates;
+                    std::vector<ChanceOption> candidates;
                     for (int slot = 0; slot < 6; ++slot) {
                         if (slot == wctx->on_stage[opp]) {
                             continue;   // 不在场限定
@@ -197,10 +198,10 @@ EffectResult soulmark_1128_arm(BattleContext* ctx, const EffectArgs& args) {
                         if (wctx->off_field_stats_protected(opp, slot)) {
                             continue;
                         }
-                        candidates.push_back(slot);
+                        candidates.push_back({slot, 1});
                     }
                     if (!candidates.empty()) {
-                        const int slot = candidates[wctx->rng().next() % candidates.size()];
+                        const int slot = choose_soul_slot(*wctx, kDijunMarkId, 1, owner, opp, candidates);
                         wctx->seerRobot[opp].elfPets[slot].hp = 0;
                         // 走死亡漏斗：场下真2命复活（圣光灵神族）照常响应
                         g_core->defeat_pet(wctx, opp, slot, owner, DefeatCause::EFFECT);

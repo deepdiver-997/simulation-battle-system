@@ -315,22 +315,25 @@ EffectResult soulmark_1038_life(BattleContext* ctx, const EffectArgs& args) {
         g_core->heal_amount(ctx, owner, max_hp / 4);  // 吃封回血/恢复修正
     }
     // 随机 2 个"PP 未满"的技能各 +1 PP（pp==-1 = 无限，不算未满）。
-    int candidates[kPuniSkillSlots];
+    ChanceOption candidates[kPuniSkillSlots];
     int n = 0;
     for (int i = 0; i < kPuniSkillSlots; ++i) {
         const Skills& sk = self.skills[i];
         if (sk.pp >= 0 && sk.pp < sk.maxPP) {
-            candidates[n++] = i;
+            candidates[n++] = {i, 1};
         }
     }
     for (int picked = 0; picked < 2 && n > 0; ++picked) {
-        const int pick = ctx->rng().next() % n;
-        Skills& sk = self.skills[candidates[pick]];
+        const int slot = choose_soul_slot(*ctx, kPuniMarkId, 0, owner, owner,
+            std::span<const ChanceOption>(candidates, static_cast<std::size_t>(n)));
+        Skills& sk = self.skills[slot];
         ++sk.pp;
         if (sk.pp > sk.maxPP) {
             sk.pp = sk.maxPP;
         }
-        candidates[pick] = candidates[--n];  // 不重复抽同一技能
+        auto* chosen = std::find_if(candidates, candidates + n,
+                                    [slot](const ChanceOption& option) { return option.id == slot; });
+        *chosen = candidates[--n];  // 不重复抽同一技能（保留交换末项的抽取顺序）
     }
     return EffectResult::kOk;
 }

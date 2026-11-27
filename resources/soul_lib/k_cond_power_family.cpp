@@ -118,13 +118,14 @@ EffectResult soulmark_293_arm(BattleContext* ctx, const EffectArgs& args) {
             if (!onstage_has_soul_mark(c, owner, 293)) {
                 return;
             }
-            if (!roll_percent(c->rng(), pct)) {
+            const int opp = c->opponent(owner);
+            if (!roll_soul_percent(*c, 293, 0, owner, opp, pct)) {
                 return;
             }
-            if (!g_core->has_active_anomaly(c, c->opponent(owner), anomaly)) {
+            if (!g_core->has_active_anomaly(c, opp, anomaly)) {
                 return;
             }
-            g_core->deal_pink_damage(c, c->opponent(owner), fixed, DamageKind::FIXED, owner);
+            g_core->deal_pink_damage(c, opp, fixed, DamageKind::FIXED, owner);
         });
     return EffectResult::kOk;
 }
@@ -186,7 +187,7 @@ EffectResult soulmark_733_skill_effect(BattleContext* ctx, const EffectArgs& arg
     const HostRow row = host_row(ctx, args, 733);
     const int pct = db_at(row, 0, row.monster_id == 3103 ? 50 : -1);
     const int mult = db_at(row, 1, 2);
-    if (pct <= 0 || !roll_percent(ctx->rng(), pct)) {
+    if (pct <= 0 || !roll_soul_percent(*ctx, 733, 0, owner, owner, pct)) {
         return EffectResult::kOk;
     }
     multiply_power_view(ctx, owner, mult, 1);

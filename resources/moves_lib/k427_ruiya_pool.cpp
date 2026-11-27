@@ -381,7 +381,7 @@ EffectResult k427_1625_probe(BattleContext* c, const EffectArgs& a) {
         set_storage_int_local(c, key1625(owner, 2), -1);
         return EffectResult::kOk;   // 门闭：未掷、无增益
     }
-    if (!roll_percent(c->rng(), chance)) {
+    if (!roll_skill_percent(*c, 1625, 0, owner, owner, chance)) {
         set_storage_int_local(c, key1625(owner, 2), 0);
         return EffectResult::kOk;   // 掷歪：无增益
     }

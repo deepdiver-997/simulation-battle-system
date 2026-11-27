@@ -207,21 +207,23 @@ EffectResult soulmark_1581_round_start(BattleContext* ctx, const EffectArgs& arg
             const int low = 1;
             const int high = alive >= 5 ? 3 : 2;
             const int upper = high < cap ? high : cap;
-            int n = low + ctx->rng().next() % (upper - low + 1);
+            int n = choose_soul_range(*ctx, 1581, 0, owner, foe, low, upper);
             // 候选 = 不在场且存活的槽位，随机不放回取 n 个
-            int candidates[6];
+            ChanceOption candidates[6];
             int candidate_count = 0;
             for (int slot = 0; slot < 6; ++slot) {
                 if (slot != ctx->on_stage[foe] && pets[slot].hp > 0) {
-                    candidates[candidate_count++] = slot;
+                    candidates[candidate_count++] = {slot, 1};
                 }
             }
             while (n > 0 && candidate_count > 0) {
-                const int pick = ctx->rng().next() % candidate_count;
-                const int slot = candidates[pick];
+                const int slot = choose_soul_slot(*ctx, 1581, 1, owner, foe,
+                    std::span<const ChanceOption>(candidates, static_cast<std::size_t>(candidate_count)));
                 pets[slot].is_locked = true;
                 mask |= (1 << slot);
-                candidates[pick] = candidates[--candidate_count];
+                auto* chosen = std::find_if(candidates, candidates + candidate_count,
+                                            [slot](const ChanceOption& option) { return option.id == slot; });
+                *chosen = candidates[--candidate_count];
                 --n;
             }
         }

@@ -91,7 +91,7 @@ int db_at(const HostRow& row, int idx, int fallback) {
 }
 
 // 随机 n 个互不相同的槽（0..5）——K267 645 同款去重取法。
-std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(SbsRng& rng, int n) {
+std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(BattleContext& ctx, int owner, int n) {
     std::array<int, BattleContext::kAbilityLevelSlotCount> picked{};
     const int total = BattleContext::kAbilityLevelSlotCount;
     const int count = (n < 0) ? 0 : ((n > total) ? total : n);
@@ -100,7 +100,7 @@ std::array<int, BattleContext::kAbilityLevelSlotCount> random_distinct_slots(Sbs
         int slot = 0;
         // 在未选中的槽里等概率抽（拒绝采样；6 槽规模下期望次数极小）。
         for (int attempt = 0; attempt < 64; ++attempt) {
-            slot = rng.next() % total;
+            slot = choose_soul_range(ctx, kMarkId, 0, owner, owner, 0, total - 1);
             if (!used[slot]) {
                 break;
             }
@@ -131,7 +131,7 @@ EffectResult k313_686_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     // ②随机互异槽 stat_change(+delta)（自身增益，不查免弱）。
     if (count > 0 && delta != 0) {
         const std::array<int, BattleContext::kAbilityLevelSlotCount> slots =
-            random_distinct_slots(ctx->rng(), count);
+            random_distinct_slots(*ctx, owner, count);
         for (int i = 0; i < count; ++i) {
             (void)g_core->stat_change(ctx, owner, slots[i], delta);
         }

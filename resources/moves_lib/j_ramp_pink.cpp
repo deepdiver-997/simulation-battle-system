@@ -133,7 +133,7 @@ EffectResult effect_1132_random_band_heal(BattleContext* ctx, const EffectArgs& 
     }
     const int lo = boosted ? lo1 : lo2;
     const int hi = boosted ? hi1 : hi2;
-    const int amount = lo + ctx->rng().next() % (hi - lo + 1);
+    const int amount = choose_skill_range(*ctx, 1132, 0, owner, owner, lo, hi);
     (void)g_core->heal_amount(ctx, owner, amount);
     return EffectResult::kOk;
 }

@@ -186,7 +186,7 @@ EffectResult effect_42_electric_power_window(BattleContext* ctx, const EffectArg
     EFFECT_ARG_GUARD(lo > 0 && hi >= lo, 42, args, "需要 回合下限>0 且 上限>=下限");
 
     // 区间掷时长（683 同款闭区间；sbs_rand = 引擎自有确定性 RNG，场景闭式可核）。
-    const int rounds = lo + (ctx->rng().next() % (hi - lo + 1));
+    const int rounds = choose_skill_range(*ctx, 42, 0, owner, owner, lo, hi);
     set_s432(ctx, key432(owner, 0), lo);
     set_s432(ctx, key432(owner, 1), hi);
     set_s432(ctx, key432(owner, 2), rounds);

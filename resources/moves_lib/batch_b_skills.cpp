@@ -134,14 +134,15 @@ int batch_b_selected_skill_index(const BattleContext* ctx, int side) {
 }
 
 // 从 6 个能力槽里随机挑 want 个不同槽（want > 6 时按 6）。返回选中槽列表。
-std::vector<int> batch_b_pick_random_stats(SbsRng& rng, int want) {
+std::vector<int> batch_b_pick_random_stats(BattleContext* ctx, int rule, int actor,
+                                               int target, int want) {
     std::vector<int> all{0, 1, 2, 3, 4, 5};
     if (want >= static_cast<int>(all.size())) {
         return all;
     }
     // Fisher-Yates 局部洗牌（场景断言按"总和"写、不依赖具体槽）。
     for (int i = 0; i < want; ++i) {
-        const int j = i + (rng.next() % (static_cast<int>(all.size()) - i));
+        const int j = choose_skill_range(*ctx, rule, 0, actor, target, i, static_cast<int>(all.size()) - 1);
         std::swap(all[static_cast<std::size_t>(i)], all[static_cast<std::size_t>(j)]);
     }
     all.resize(static_cast<std::size_t>(want));
@@ -149,14 +150,15 @@ std::vector<int> batch_b_pick_random_stats(SbsRng& rng, int want) {
 }
 
 // 随机挑 want 个不同技能槽做 PP 归零（want >= 5 → 全部；跳过无限 PP 槽由原语处理）。
-void batch_b_zero_random_pp_slots(BattleContext* ctx, int target, int want, int actor) {
+void batch_b_zero_random_pp_slots(BattleContext* ctx, int rule, int subsite, int target,
+                                  int want, int actor) {
     if (!ctx || !g_core || !g_core->pp_zero_slot || want <= 0) {
         return;
     }
     std::vector<int> slots{0, 1, 2, 3, 4};
     const int n = std::min(want, static_cast<int>(slots.size()));
     for (int i = 0; i < n; ++i) {
-        const int j = i + (ctx->rng().next() % (static_cast<int>(slots.size()) - i));
+        const int j = choose_skill_range(*ctx, rule, subsite, actor, target, i, static_cast<int>(slots.size()) - 1);
         std::swap(slots[static_cast<std::size_t>(i)], slots[static_cast<std::size_t>(j)]);
         (void)g_core->pp_zero_slot(ctx, target, slots[static_cast<std::size_t>(i)], actor);
     }
@@ -795,7 +797,7 @@ EffectResult effect_198_random_drops(BattleContext* ctx, const EffectArgs& args)
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || count <= 0 || amount <= 0) {
         return EffectResult::kOk;
     }
-    for (const int slot : batch_b_pick_random_stats(ctx->rng(), count)) {
+    for (const int slot : batch_b_pick_random_stats(ctx, 198, owner, opp, count)) {
         (void)g_core->stat_drop(ctx, opp, slot, amount, owner);
     }
     return EffectResult::kOk;
@@ -954,7 +956,7 @@ EffectResult effect_626_random_boosts(BattleContext* ctx, const EffectArgs& args
     if (owner < 0 || owner > 1 || count <= 0 || delta == 0) {
         return EffectResult::kOk;
     }
-    for (const int slot : batch_b_pick_random_stats(ctx->rng(), count)) {
+    for (const int slot : batch_b_pick_random_stats(ctx, 626, owner, owner, count)) {
         (void)g_core->stat_change(ctx, owner, slot, delta);
     }
     return EffectResult::kOk;
@@ -1011,7 +1013,7 @@ EffectResult effect_931_drain_then_pp_zero(BattleContext* ctx, const EffectArgs&
     if (g_core->transfer_stat_boosts(ctx, /*from=*/opp, /*to=*/owner) <= 0) {
         return EffectResult::kOk;   // 吸取失败（无提升/被免消除强化挡）→ 不归零
     }
-    batch_b_zero_random_pp_slots(ctx, opp, slots, owner);
+    batch_b_zero_random_pp_slots(ctx, 931, 0, opp, slots, owner);
     return EffectResult::kOk;
 }
 
@@ -1220,7 +1222,7 @@ EffectResult effect_1176_chance_multiply(BattleContext* ctx, const EffectArgs& a
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1176, 0, owner, opp, chance)) {
         if (multiplier > 1) {
             int(&slots)[2][4] = ctx->ws.damage_add_extra_mul;
             for (int i = 0; i < 4; ++i) {
@@ -1497,7 +1499,7 @@ EffectResult effect_438_chance_heal(BattleContext* ctx, const EffectArgs& args) 
     if (owner < 0 || owner > 1 || denom <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 438, 0, owner, owner, chance)) {
         (void)heal_max_hp_fraction(ctx, owner, denom);
     }
     return EffectResult::kOk;
@@ -1621,11 +1623,11 @@ EffectResult effect_1235_dodge_tick(BattleContext* ctx, const EffectArgs& args) 
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1235, 0, owner, opp, chance)) {
         ctx->ws.dodge_rate[owner] = 1.0f;   // 本回合闪避（ws reset 自清）
         return EffectResult::kOk;
     }
-    batch_b_zero_random_pp_slots(ctx, opp, slots, owner);
+    batch_b_zero_random_pp_slots(ctx, 1235, 1, opp, slots, owner);
     return EffectResult::kOk;
 }
 
@@ -1733,7 +1735,7 @@ EffectResult effect_148_second_drop(BattleContext* ctx, const EffectArgs& args) 
         || batch_b_is_first_side(ctx, owner)) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance) && delta != 0) {
+    if (roll_skill_percent(*ctx, 148, 0, owner, opp, chance) && delta != 0) {
         (void)g_core->stat_drop(ctx, opp, stat, std::abs(delta), owner);
     }
     return EffectResult::kOk;
@@ -2706,7 +2708,7 @@ EffectResult effect_1603_chance_pp_down(BattleContext* ctx, const EffectArgs& ar
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || amount <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1603, 0, owner, opp, chance)) {
         (void)g_core->pp_reduce(ctx, opp, amount);
     }
     return EffectResult::kOk;
@@ -2785,7 +2787,7 @@ EffectResult effect_2163_break_or_pp_zero(BattleContext* ctx, const EffectArgs& 
     if (g_core->break_round_effects(ctx, opp) == BreakResult::SUCCESS) {
         return EffectResult::kOk;
     }
-    batch_b_zero_random_pp_slots(ctx, opp, slots, owner);
+    batch_b_zero_random_pp_slots(ctx, 2163, 0, opp, slots, owner);
     return EffectResult::kOk;
 }
 

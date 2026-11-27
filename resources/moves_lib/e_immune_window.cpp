@@ -15,7 +15,7 @@
 //     44/50 按**对方本回合选技**的 SkillType 过滤（选择期在 MOVE_RIGHT 前已定 → 精确
 //     生效），首出手方立即写一次（本回合对方攻击的减伤要在其伤害管线前就位；后出手方
 //     本回合对方已打完，写了无消费点、ws 随下回合 reset 无害——599 原注释）；
-//     127 的 {0}% 概率门在技能使用时 roll_percent 一次（受管 RNG），命中开"全体减半"
+//     127 的 {0}% 概率门在技能使用时 roll_skill_percent 一次（受管 RNG），命中开"全体减半"
 //     窗（category=2 不过滤）。
 //   · 576/741 → batch_a 1011 同款：伤害管线 BLOCK 阶段插件条目（挡伤，可被"挡伤失效"
 //     抑制；ON_STAGE scope 携带者下场随 epoch 作废），窗口 round_effect_start_round
@@ -111,7 +111,7 @@ EffectResult effect_44_special_reduce_half(BattleContext* ctx, const EffectArgs&
 }
 
 // ── 127 {0}%概率，{1}回合受伤减半 ─────────────────────────────────────────────
-// 概率门在**使用时掷一次**（受管 roll_percent，场景 103 管辖）；命中开全体减半窗
+// 概率门在**使用时掷一次**（受管 roll_skill_percent）；命中开全体减半窗
 // （category=2 不过滤对方技能类别）。Args: [owner, 占位, prob, rounds]。
 EffectResult effect_127_prob_reduce_half(BattleContext* ctx, const EffectArgs& args) {
     EFFECT_ARG_GUARD(ctx != nullptr, 127, args, "需要 ctx");
@@ -121,7 +121,7 @@ EffectResult effect_127_prob_reduce_half(BattleContext* ctx, const EffectArgs& a
     const int rounds = args.int_args[3];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 127, args, "owner 越界");
     EFFECT_ARG_GUARD(rounds > 0, 127, args, "rounds 应为正");
-    if (!roll_percent(ctx->rng(), prob)) {
+    if (!roll_skill_percent(*ctx, 127, 0, owner, owner, prob)) {
         return EffectResult::kOk;   // 概率未命中：不开窗
     }
     if (!ctx->is_second_mover(owner)) {

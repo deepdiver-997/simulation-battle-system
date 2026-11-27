@@ -355,7 +355,8 @@ EffectResult effect_1908_split_percent_damage(BattleContext* ctx, const EffectAr
     } else if (p0 <= 0 && p2 >= 100) {
         branch = 2;
     } else {
-        roll = ctx->rng().next() % 100;
+        // 审计保留原始余数，不只记录分支。
+        roll = choose_skill_range(*ctx, 1908, 0, owner, opp, 0, 99);
         if (roll < p0) {
             branch = 1;
         } else if (roll < p0 + p2) {

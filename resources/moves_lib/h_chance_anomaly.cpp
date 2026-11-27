@@ -78,12 +78,17 @@ EffectResult effect_451_random_triple_anomaly(BattleContext* ctx, const EffectAr
         return EffectResult::kOk;
     }
     // 候选池 = 烧伤(2) / 冻伤(5) / 中毒(1)；不重复选 kinds 种（全库实载 kinds=1 主干）。
-    const std::vector<int> pool = {static_cast<int>(AbnormalStatusId::Burn),
-                                   static_cast<int>(AbnormalStatusId::Frostbite),
-                                   static_cast<int>(AbnormalStatusId::Poison)};
+    ChanceOption pool[] = {{static_cast<int>(AbnormalStatusId::Burn), 1},
+                           {static_cast<int>(AbnormalStatusId::Frostbite), 1},
+                           {static_cast<int>(AbnormalStatusId::Poison), 1}};
     std::set<int> picked;
     while (static_cast<int>(picked.size()) < kinds) {
-        picked.insert(pool[ctx->rng().next() % static_cast<int>(pool.size())]);
+        // 旧抽法仍对完整池取模并重掷重复项；搜索只能选尚未挑中的种类。
+        const int anomaly = choose_skill_rejection_slot(*ctx, 451, 0, owner, target, pool);
+        picked.insert(anomaly);
+        for (auto& option : pool) {
+            if (option.id == anomaly) option.weight = 0;
+        }
     }
     for (const int anomaly : picked) {
         // 概率判定归申报原语（闸门管道一致）；未中无副作用，种类 roll 白掷无害。

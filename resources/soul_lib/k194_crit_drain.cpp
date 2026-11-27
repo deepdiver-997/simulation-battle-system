@@ -125,7 +125,7 @@ EffectResult soulmark_619_action_start(BattleContext* ctx, const EffectArgs& arg
     }
     const HostRow row = host_row(ctx, args, 619);
     const int crit_pct = db_at(row, 0, 0);
-    if (crit_pct > 0 && roll_percent(ctx->rng(), crit_pct)) {
+    if (crit_pct > 0 && roll_soul_percent(*ctx, 619, 0, owner, owner, crit_pct)) {
         ctx->ws.must_crit[owner] = true;
     }
     return EffectResult::kOk;

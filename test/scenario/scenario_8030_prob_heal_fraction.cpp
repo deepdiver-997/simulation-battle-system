@@ -24,6 +24,7 @@
 #include <utils/sbs_rand.h>
 
 #include "scenario_harness.h"
+#include "chance_probe_mode.h"
 
 namespace {
 
@@ -249,6 +250,49 @@ int main() {
         CHECK(passes >= 1 && passes <= 8,
               "T9 固定 20 种子过闸计数在 15% 侧证带内（实测确定值，非随机断言）");
         std::cout << "  [T9] 种子扫描通过（过闸 " << passes << "/20）\n";
+    }
+
+    if (scenario::run_chance_probes()) {
+        struct ForceResidue final : ChanceResolver {
+            int residue;
+            unsigned calls = 0;
+            explicit ForceResidue(int r) : residue(r) {}
+            bool should_enumerate(const ChancePoint& p) const override {
+                return p.kind == ChanceSiteKind::NativeSkill && p.rule_id == 410;
+            }
+            int choose(const ChancePoint& p) override {
+                ++calls;
+                CHECK((p.range == ChanceRange{0, 99}) && p.options.empty(), "410 replay exposes the persisted ticket");
+                CHECK(p.subsite_id == 0 && p.actor == 0 && p.target == 0, "410 ticket identifies its self-heal rule");
+                return residue;
+            }
+        };
+        std::uint64_t ending_state = 0, draws = 0;
+        for (int residue : {14, 15}) {
+            ForceResidue force(residue);
+            ScenarioBattle b(scenario::make_party(wei({kXingguang, kZero, kZero, kZero, kZero})),
+                            scenario::make_party(foe({kAttr, kZero, kZero, kZero, kZero})));
+            b.start();
+            auto& ctx = b.ctx();
+            ctx.getPet(0).hp = 500;
+            ctx.seed_rng(1787802177); // The original first ticket is 15 in both paths.
+            const auto before = ctx.rng().draw_count();
+            ctx.binary_chance_replay.emplace().weighted_resolver = &force;
+            b.submit_operation(0, BattleFsm::ActionType::SELECT_SKILL, 0);
+            b.submit_operation(1, BattleFsm::ActionType::SELECT_SKILL, 0);
+            b.drive();
+            CHECK_EQ(force.calls, 1u, "410 exposes exactly one forced draw");
+            CHECK_EQ(aint(ctx, 0, 6, -1), residue, "the forced residue also reaches the diagnostic ledger");
+            CHECK_EQ(ctx.getPet(0).hp, residue == 14 ? 750 : 500, "forcing opposite sides changes real healing");
+            if (residue == 14) {
+                ending_state = ctx.rng().state();
+                draws = ctx.rng().draw_count() - before;
+            } else {
+                CHECK_EQ(ctx.rng().state(), ending_state, "either 410 outcome burns identical tickets");
+                CHECK_EQ(ctx.rng().draw_count() - before, draws, "forcing a ticket never adds another draw");
+            }
+            ctx.binary_chance_replay.reset();
+        }
     }
 
     std::cout << "scenario_8030 all passed" << std::endl;

@@ -87,7 +87,7 @@ EffectResult k259_345_arm(BattleContext* ctx, const SoulNodeArgs& a) {
                 c->plugin_storage[kRollAuditBase + owner] = 0;
                 return;
             }
-            const bool hit = roll_percent(c->rng(), chance);
+            const bool hit = roll_soul_percent(*c, kMarkId, 0, owner, owner, chance);
             // 审计槽：本次掷点结果（1=触发 / 0=未触发）。
             c->plugin_storage[kRollAuditBase + owner] = hit ? 1 : 0;
             if (!hit) {

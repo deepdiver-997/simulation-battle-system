@@ -71,15 +71,16 @@ EffectResult effect_1534_exile_pp_drain(BattleContext* ctx, const EffectArgs& ar
     const int mask = qiling::exile_mask(ctx->plugin_storage, target);
     int chosen = -1;
     if (mask != 0) {
-        int slots[6];
-        int n = 0;
+        ChanceOption slots[6];
+        std::size_t n = 0;
         for (int slot = 0; slot < 6; ++slot) {
             if (mask & (1 << slot)) {
-                slots[n++] = slot;
+                slots[n++] = {slot, 1};
             }
         }
         if (n > 0) {
-            chosen = slots[ctx->rng().next() % n];   // 随机 1 个被放逐的精灵
+            chosen = choose_skill_slot(*ctx, 1534, 0, owner, target,
+                                       std::span<const ChanceOption>{slots, n});
         }
     }
     if (chosen < 0) {
@@ -124,16 +125,17 @@ EffectResult effect_1532_pp_zero_tick(BattleContext* ctx, const EffectArgs& args
     }
     int stacks = qiling::shenyin_stacks(ctx->plugin_storage, target);
     ElfPet& opp = ctx->getPet(target);
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for (std::size_t i = 0; i < opp.skills.size(); ++i) {
         if (opp.skills[i].pp > 0) {
-            candidates.push_back(static_cast<int>(i));
+            candidates.push_back({static_cast<int>(i), 1});
         }
     }
     for (int n = 0; n < stacks && !candidates.empty(); ++n) {
-        const int pick = ctx->rng().next() % candidates.size();
-        opp.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
-        candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(pick));
+        const int slot = choose_skill_slot(*ctx, 1532, 0, self, target, candidates);
+        opp.skills[static_cast<std::size_t>(slot)].pp = 0;
+        candidates.erase(std::find_if(candidates.begin(), candidates.end(),
+                                      [slot](const ChanceOption& option) { return option.id == slot; }));
     }
     return EffectResult::kOk;
 }
@@ -212,7 +214,8 @@ EffectResult effect_600_gender_damage_or_fatigue(BattleContext* ctx, const Effec
         ctx->ws.damage_add_pct[self] += static_cast<float>(dmg_pct);
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly && is_valid_abnormal_status_id(status)) {
+    if (roll_skill_percent(*ctx, 600, 0, self, target, chance) && g_core->apply_anomaly &&
+        is_valid_abnormal_status_id(status)) {
         g_core->apply_anomaly(ctx, target, status, random_anomaly_duration(), self);
     }
     return EffectResult::kOk;
@@ -252,7 +255,7 @@ EffectResult effect_1346_tick(BattleContext* ctx, const EffectArgs& args) {
     if (self < 0 || self > 1 || target < 0 || target > 1) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 1346, 0, self, target, chance)) {
         all_stats_up(ctx, self, up);
     } else if (g_core->stat_drop && down > 0) {
         for (int i = 0; i < BattleContext::kAbilityLevelSlotCount; ++i) {

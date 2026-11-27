@@ -154,7 +154,7 @@ EffectResult k2536_2152_on_skill_hit(BattleContext* ctx, const SoulNodeArgs& a) 
         int guard = 0;
         while (done < slots && guard < 100) {
             ++guard;
-            const int slot = ctx->rng().next() % 6;
+            const int slot = choose_soul_range(*ctx, kMarkId, 0, owner, opp, 0, 5);
             if (picked[slot]) {
                 continue;   // 去重：同槽不重复选（**不是**跳过满级槽）
             }

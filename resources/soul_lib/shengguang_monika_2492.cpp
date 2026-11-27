@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 圣光莫妮卡（神谕 3711）魂印 2492 —— 宁界之律 / 琼华之庇 / 最优系别（精灵王线 2026-09-24）
 //
 // 官方全文（effect_icon 2072 / effect 2492，**boss 有效**）：
@@ -136,7 +135,7 @@ EffectResult monika_round_start(BattleContext* ctx, const EffectArgs& args) {
                             /*condition=*/nullptr, [owner](BattleContext* c, int) {
                                 const int n =
                                     moni_pub_get(c->plugin_storage, kMoniPubLv + owner);
-                                return n > 0 && (c->rng().next() % 100) < 25 * n;
+                                return n > 0 && roll_soul_gate(*c, kMark, 0, owner, owner, 25 * n, 100);
                             });
     }
     // 最优系别视图按到期回合重写 ws（ws 每回合 reset）

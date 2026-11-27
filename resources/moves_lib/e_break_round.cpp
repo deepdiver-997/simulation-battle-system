@@ -10,7 +10,7 @@
 //     apply_anomaly 现代通道（889 字面同款，免疫/抗性/弹控全继承）。
 // 915（args_num=3）"消除对手回合类效果，消除成功则自身下{0}回合攻击有{1}%使对手{2}"：
 //   - break_round_effects SUCCESS → NextRounds 双桶窗口（ON_SKILL_HIT × FIRST/SECOND，
-//     470 同款 tick：selected_skill_is_attack + roll_percent + apply_anomaly）。
+//     470 同款 tick：executed_skill_is_attack + roll_skill_percent + apply_anomaly）。
 //   - "下{0}回合"= NextRounds 起点（本回合不算）→ 不做 470 的"当次补掷"（470 是
 //     "{0}回合内"含当回合才双写）。
 // 979（args_num=2）"消除对手回合类效果，消除成功则自身下{0}回合所有技能先制+{1}"：
@@ -66,7 +66,7 @@ EffectResult effect_915_hit_anomaly_tick(BattleContext* ctx, const EffectArgs& a
         || !is_valid_abnormal_status_id(anomaly)) {
         return EffectResult::kOk;
     }
-    if (!executed_skill_is_attack(ctx, self) || !roll_percent(ctx->rng(), chance)) {
+    if (!executed_skill_is_attack(ctx, self) || !roll_skill_percent(*ctx, 915, 0, self, opp, chance)) {
         return EffectResult::kOk;
     }
     g_core->apply_anomaly(ctx, opp, anomaly, random_anomaly_duration(), self);

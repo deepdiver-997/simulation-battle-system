@@ -57,7 +57,7 @@ EffectResult j136_first_mover_chance_crit(BattleContext* ctx, const EffectArgs& 
     if (owner < 0 || owner > 1 || opp < 0 || opp > 1 || owner == opp || drop <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), 50)) {
+    if (roll_skill_percent(*ctx, 1465, 0, owner, opp, 50)) {
         ctx->ws.must_crit[owner] = true;
         return EffectResult::kOk;
     }

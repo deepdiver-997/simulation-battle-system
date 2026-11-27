@@ -63,7 +63,7 @@ inline bool anomaly_landed_shared(ApplyAnomalyResult r) {
 }
 
 // 163/1100 的随机池：官方模板字面六种（烧伤、冻伤、中毒、麻痹、害怕、睡眠）。
-const int kPool6[6] = {2, 5, 1, 0, 6, 8};
+constexpr ChanceOption kPool6[] = {{2, 1}, {5, 1}, {1, 1}, {0, 1}, {6, 1}, {8, 1}};
 
 // 共享：注册"对手使用属性技能"事件窗（469 同款：使用即触发、TEAM 跨回合）。
 // fn 回调约定：args=[self, ...]，回调内部自判 ev.target/used_attribute/actor。
@@ -108,7 +108,7 @@ EffectResult effect_163_attr_random_anomaly(BattleContext* ctx, const EffectArgs
     watch_attr_use(ctx, self, rounds, {}, [](BattleContext* c, const EffectArgs& a) {
         const int self2 = a.int_args[0];
         const int user = a.int_args[1];
-        const int pick = kPool6[c->rng().next() % 6];
+        const int pick = choose_skill_slot(*c, 163, 0, self2, user, kPool6);
         (void)g_core->apply_anomaly_checked(c, user, pick, random_anomaly_duration(), self2,
                                             100, ChanceSource::Skill);
     });
@@ -138,7 +138,7 @@ EffectResult effect_1100_attr_random_or_amp(BattleContext* ctx, const EffectArgs
         const int user = a.int_args[1];
         const int br = a.int_args[2];
         const int p = a.int_args[3];
-        const int pick = kPool6[c->rng().next() % 6];
+        const int pick = choose_skill_slot(*c, 1100, 0, self2, user, kPool6);
         const ApplyAnomalyResult r = g_core->apply_anomaly_checked(
             c, user, pick, random_anomaly_duration(), self2, 100, ChanceSource::Skill);
         if (anomaly_landed_shared(r)) {

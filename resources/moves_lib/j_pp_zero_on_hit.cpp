@@ -49,22 +49,22 @@ int j258_storage_int(BattleContext* ctx, int key, int fallback = -999) {
 }
 
 // 随机把 side 的 count 个正 PP 技能槽归零；返回实际归零数（不重复抽取，不足则归零全部）。
-int j258_zero_random_pp(BattleContext* ctx, int side, int count) {
+int j258_zero_random_pp(BattleContext* ctx, int actor, int side, int count, int subsite) {
     if (!ctx || side < 0 || side > 1 || count <= 0) {
         return 0;
     }
     ElfPet& pet = ctx->getPet(side);
-    std::vector<int> candidates;
+    std::vector<ChanceOption> candidates;
     for (int i = 0; i < static_cast<int>(pet.skills.size()); ++i) {
         if (pet.skills[static_cast<std::size_t>(i)].pp > 0) {
-            candidates.push_back(i);
+            candidates.push_back({i, 1});
         }
     }
     int zeroed = 0;
     for (int k = 0; k < count && !candidates.empty(); ++k) {
-        const int pick = ctx->rng().next() % static_cast<int>(candidates.size());
-        pet.skills[static_cast<std::size_t>(candidates[pick])].pp = 0;
-        candidates.erase(candidates.begin() + pick);
+        const int slot = choose_skill_slot(*ctx, 1126, subsite, actor, side, candidates);
+        pet.skills[static_cast<std::size_t>(slot)].pp = 0;
+        candidates.erase(std::find(candidates.begin(), candidates.end(), ChanceOption{slot, 1}));
         ++zeroed;
     }
     return zeroed;
@@ -85,7 +85,8 @@ EffectResult effect_1126_pp_zero_on_hit(BattleContext* ctx, const EffectArgs& ar
     EFFECT_ARG_GUARD(immediate >= 0 && extra >= 0, 1126, args, "需要 项数 >= 0");
 
     // 立即段（在位即消费：显式 0 也写入审计 0）。
-    ctx->plugin_storage[k1126AuditBase + owner] = j258_zero_random_pp(ctx, target, immediate);
+    ctx->plugin_storage[k1126AuditBase + owner] =
+        j258_zero_random_pp(ctx, owner, target, immediate, /*subsite=*/0);
     ctx->plugin_storage[k1126ExtraBase + owner] = 0;
     if (extra == 0) {
         return EffectResult::kOk;   // 无额外段：不武装 watcher
@@ -108,7 +109,7 @@ EffectResult effect_1126_pp_zero_on_hit(BattleContext* ctx, const EffectArgs& ar
             }
             c->plugin_storage[k1126GuardBase + owner] = -1;   // 单发消费
             c->plugin_storage[k1126ExtraBase + owner] =
-                j258_zero_random_pp(c, target, extra);
+                j258_zero_random_pp(c, owner, target, extra, /*subsite=*/1);
         },
         WatcherScope::TEAM);
     return EffectResult::kOk;

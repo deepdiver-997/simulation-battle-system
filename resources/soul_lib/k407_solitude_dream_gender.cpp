@@ -156,6 +156,11 @@ namespace {
 constexpr int kMark1646 = 1646;
 constexpr int kMark1565 = 1565;
 
+// 1646 的 A/B/C 三段用独立掷点身份，不随回合内执行顺序变化。
+constexpr int kDeathChanceSite = 0;
+constexpr int kMitigateChanceSite = 1;
+constexpr int kDoubleChanceSite = 2;
+
 constexpr int kSleep = static_cast<int>(AbnormalStatusId::Sleep);    // 8
 constexpr int kFear = static_cast<int>(AbnormalStatusId::Fear);      // 6
 constexpr int kCombatStatCount = 6;   // 六槽含命中（K402 ⑧ 口径）
@@ -328,7 +333,7 @@ EffectResult k407_1646_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                                 ? read_int(c, base + k1646BLedger)
                                 : b_base_pct;   // 0=未记→基础档
             write_int(c, base + k1646BAudit, pct);   // 审计槽：掷前写申报值
-            if (!roll_percent(c->rng(), pct)) {
+            if (!roll_soul_percent(*c, kMark1646, kMitigateChanceSite, owner, d.attackerId, pct)) {
                 // 掷败：当回合失败旗（ROUND_END 补偿）+ 爬坡（记档⑦）。
                 write_int(c, base + k1646BFail, 1);
                 write_int(c, base + k1646BLedger, pct + b_step);   // 爬坡（记档⑦）
@@ -359,7 +364,7 @@ EffectResult k407_1646_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                                 ? read_int(c, base + k1646CLedger)
                                 : c_base_pct;
             write_int(c, base + k1646CAudit, pct);   // 审计槽：掷前写申报值
-            if (!roll_percent(c->rng(), pct)) {
+            if (!roll_soul_percent(*c, kMark1646, kDoubleChanceSite, owner, d.defenderId, pct)) {
                 write_int(c, base + k1646CFail, 1);
                 write_int(c, base + k1646CLedger, pct + c_step);   // 爬坡（记档⑦）
                 return;
@@ -449,7 +454,7 @@ EffectResult k407_1646_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
                 pct = death_base * 2;
             }
             write_int(ctx, base + k1646DeathAudit, pct);   // 审计槽：掷前写申报值
-            if (roll_percent(ctx->rng(), pct)) {
+            if (roll_soul_percent(*ctx, kMark1646, kDeathChanceSite, owner, foe, pct)) {
                 (void)g_core->force_hp_to_zero(ctx, foe, owner);   // 秒杀通道（记档④）
                 write_int(ctx, base + k1646DeathLand,
                           read_int(ctx, base + k1646DeathLand) + 1);

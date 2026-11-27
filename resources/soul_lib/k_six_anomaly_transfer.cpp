@@ -405,7 +405,8 @@ EffectResult k408_1668_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                     int guard = 0;
                     while (done < pp_cnt && guard < 100) {
                         ++guard;
-                        const int slot = c->rng().next() % 5;   // 5 技能槽随机（无限/已零槽原语拒、重试）
+                        // 5 技能槽随机（无限/已零槽原语拒、重试）
+                        const int slot = choose_soul_range(*c, 1668, 0, owner, opp, 0, 4);
                         if (g_core->pp_zero_slot(c, opp, slot, owner)
                             == PpReduceResult::SUCCESS) {
                             ++done;

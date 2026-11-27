@@ -101,12 +101,12 @@ EffectResult k316_394_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
         return EffectResult::kOk;
     }
     // 门②：概率掷骰（本地掷——本单不经施加通道，无亮节闸门可申报）。
-    if (!roll_percent(ctx->rng(), pct)) {
+    const int opp = ctx->opponent(owner);
+    if (!roll_soul_percent(*ctx, kMarkId, 0, owner, opp, pct)) {
         return EffectResult::kOk;
     }
     // 效果：对手**所有**技能 pp 各减 cut（钳 0，不为负）——K239 直改手法，
     // K310 830 同款。
-    const int opp = ctx->opponent(owner);
     ElfPet& foe = ctx->getPet(opp);
     for (Skills& s : foe.skills) {
         s.pp = (s.pp > cut) ? (s.pp - cut) : 0;

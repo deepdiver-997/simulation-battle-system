@@ -316,23 +316,24 @@ EffectResult soulmark_1191_round_start(BattleContext* ctx, const EffectArgs& arg
         return EffectResult::kOk;
     }
     ElfPet& foe = ctx->getPet(opp);
-    std::vector<int> pp_slots;
+    std::vector<ChanceOption> pp_slots;
     for (int i = 0; i < static_cast<int>(foe.skills.size()); ++i) {
         if (foe.skills[static_cast<std::size_t>(i)].pp > 0) {
-            pp_slots.push_back(i);
+            pp_slots.push_back({i, 1});
         }
     }
     int done = 0;
     int guard = 0;
     while (done < zero_count && !pp_slots.empty() && guard < 100) {
         ++guard;
-        const int pick = static_cast<int>(ctx->rng().next() % pp_slots.size());
-        Skills& sk = foe.skills[static_cast<std::size_t>(pp_slots[static_cast<std::size_t>(pick)])];
+        const int slot = choose_soul_slot(*ctx, 1191, 0, owner, opp, pp_slots);
+        Skills& sk = foe.skills[static_cast<std::size_t>(slot)];
         if (sk.pp > 0) {
             sk.pp = 0;
             ++done;
         }
-        pp_slots.erase(pp_slots.begin() + pick);   // 去重抽取（同槽不重复归零）
+        pp_slots.erase(std::find_if(pp_slots.begin(), pp_slots.end(),
+                                   [slot](const ChanceOption& option) { return option.id == slot; }));
     }
     return EffectResult::kOk;
 }

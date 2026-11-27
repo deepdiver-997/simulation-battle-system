@@ -266,7 +266,7 @@ EffectResult effect_1436_defeat_fullheal_or_boost(BattleContext* ctx, const Effe
         }
 
         // 掷 {0}%（roll_percent：<=0 结构性 false = 关闸档在位消费；>=100 短路 true）
-        const int rolled = roll_percent(c->rng(), pct) ? 1 : 0;
+        const int rolled = roll_skill_percent(*c, 1436, 0, owner, owner, pct) ? 1 : 0;
         set_storage_int_local(c, audit_key_of(k1436AuditBase, owner, 1), rolled);
 
         // ① 恢复自身全部体力：掷中才尝试（{0}% 门闸恢复动作本身）——

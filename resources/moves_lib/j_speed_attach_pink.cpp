@@ -72,7 +72,7 @@ EffectResult effect_115_speed_attach_pink(BattleContext* ctx, const EffectArgs& 
     ctx->plugin_storage[k115ProbBase + owner] = prob;
     ctx->plugin_storage[k115PinkBase + owner] = pink;
 
-    if (pink > 0 && roll_percent(ctx->rng(), prob)) {
+    if (pink > 0 && roll_skill_percent(*ctx, 115, 0, owner, opp, prob)) {
         if (!g_core || !g_core->deal_pink_damage) {
             return EffectResult::kOk;
         }

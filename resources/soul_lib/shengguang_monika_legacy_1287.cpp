@@ -1,4 +1,3 @@
-#include <utils/sbs_rand.h>
 // 圣光莫妮卡（未神谕 3711）魂印 1287 —— 自然祝福（精灵王线 2026-09-25）
 //
 // 官方全文（effect_icon 963 / effect 1287，boss 有效）：
@@ -85,8 +84,8 @@ EffectResult monika_legacy_round_start(BattleContext* ctx, const EffectArgs& arg
                         /*anomaly_mask=*/0, /*duration_rounds=*/1, kLegacyImmuneSrcId,
                         /*soul_immunity=*/false, EffectScope::ON_STAGE,
                         /*counts=*/0, /*source_effect_id=*/1287, ImmunityTier::Modern,
-                        /*condition=*/nullptr, [](BattleContext* c, int) {
-                            return (c->rng().next() % 100) < 25;
+                        /*condition=*/nullptr, [owner](BattleContext* c, int) {
+                            return roll_soul_gate(*c, kMarkLegacy, 0, owner, owner, 25, 100);
                         });
     // ② 受到的攻击伤害减少 8%（MITIGATE 加算减伤槽；ws 每回合 reset → 此处重写；
     //    混沌魔君索伦森 1011 同款"受到的攻击伤害减少"通道）。

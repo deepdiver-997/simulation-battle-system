@@ -303,7 +303,7 @@ EffectResult effect_1011_window(BattleContext* ctx, const EffectArgs& args) {
             if (c->roundCount < start || c->roundCount >= expire) {
                 return;   // 窗口外
             }
-            if (!roll_percent(c->rng(), chance)) {
+            if (!roll_skill_percent(*c, 1011, 0, self, opp, chance)) {
                 return;   // 本回合没触发：照常受伤
             }
             const int taken = d.final;
@@ -386,7 +386,7 @@ EffectResult effect_495_kill_flush(BattleContext* ctx, const EffectArgs& args) {
     if (!g_core->has_active_anomaly(ctx, opp, anomaly)) {
         return EffectResult::kOk;   // 前提：对手处于{0}状态（结算后复判）
     }
-    if (roll_percent(ctx->rng(), chance)) {
+    if (roll_skill_percent(*ctx, 495, 0, owner, opp, chance)) {
         (void)g_core->force_hp_to_zero(ctx, opp, owner);
     }
     return EffectResult::kOk;

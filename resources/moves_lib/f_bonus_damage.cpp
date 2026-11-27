@@ -230,7 +230,7 @@ EffectResult effect_1244_random_fixed(BattleContext* ctx, const EffectArgs& args
     }
     const int lo_use = foe_dropped ? lo_drop : lo;
     const int hi_use = foe_dropped ? hi_drop : hi;
-    const int amount = lo_use + (hi_use > lo_use ? ctx->rng().next() % (hi_use - lo_use + 1) : 0);
+    const int amount = choose_skill_range(*ctx, 1244, 0, owner, opp, lo_use, hi_use, ChanceSingleton::SkipDraw);
     if (amount <= 0) {
         return EffectResult::kOk;
     }

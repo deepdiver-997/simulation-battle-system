@@ -24,14 +24,14 @@ namespace {
 constexpr int kMarkId = 690;
 
 // 随机 n 个互不相同槽（K267 同款去重取法）。
-int rand_distinct_slots(SbsRng& rng, int n, int* out) {
+int rand_distinct_slots(BattleContext& ctx, int owner, int n, int* out) {
     bool used[6] = {false, false, false, false, false, false};
     int done = 0;
     for (int i = 0; i < n && done < 6; ++i) {
-        int s = rng.next() % 6;
-        while (used[s]) {
-            s = rng.next() % 6;
-        }
+        int s;
+        do {
+            s = choose_soul_range(ctx, kMarkId, 0, owner, owner, 0, 5);
+        } while (used[s]);
         used[s] = true;
         out[done++] = s;
     }
@@ -70,7 +70,7 @@ EffectResult k336_690_round_end(BattleContext* ctx, const SoulNodeArgs& a) {
     }
     (void)g_core->deal_pink_damage(ctx, opp, fixed, DamageKind::FIXED, owner);
     int picked[6] = {};
-    const int done = rand_distinct_slots(ctx->rng(), count, picked);
+    const int done = rand_distinct_slots(*ctx, owner, count, picked);
     for (int i = 0; i < done; ++i) {
         (void)g_core->stat_change(ctx, owner, picked[i], gain);
     }

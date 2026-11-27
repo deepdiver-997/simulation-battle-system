@@ -40,7 +40,7 @@ EffectResult effect_61_random_power(BattleContext* ctx, const EffectArgs& args) 
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 61, args, "需要 owner ∈ {0,1}");
     auto& view = ctx->ws.skill_power_view[owner];
-    view = 50 + ctx->rng().next() % 101;   // [50,150] 闭区间（载体 power=0，带即威力）
+    view = choose_skill_range(*ctx, 61, 0, owner, args.int_args[1], 50, 150);   // [50,150] 闭区间（载体 power=0，带即威力）
     return EffectResult::kOk;
 }
 
@@ -52,7 +52,7 @@ EffectResult effect_70_random_power(BattleContext* ctx, const EffectArgs& args) 
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 70, args, "需要 owner ∈ {0,1}");
     auto& view = ctx->ws.skill_power_view[owner];
-    view = 150 + ctx->rng().next() % 71;   // [150,220] 闭区间（载体 power=0，带即威力）
+    view = choose_skill_range(*ctx, 70, 1, owner, args.int_args[1], 150, 220);   // [150,220] 闭区间（载体 power=0，带即威力）
     return EffectResult::kOk;
 }
 

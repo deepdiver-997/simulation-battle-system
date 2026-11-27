@@ -74,7 +74,7 @@ EffectResult effect_1466_miss_anomaly_window(BattleContext* ctx, const EffectArg
                 || skills[static_cast<std::size_t>(idx)].type == SkillType::Attribute) {
                 return;
             }
-            if (!roll_percent(c->rng(), chance)) {
+            if (!roll_skill_percent(*c, 1466, 0, self, opp, chance)) {
                 return;   // {1}% 未中（每次未命中独立掷）
             }
             const ApplyAnomalyResult r = g_core->apply_anomaly_checked(

@@ -130,7 +130,7 @@ EffectResult k209_326_round_completion(BattleContext* ctx, const SoulNodeArgs& a
     const int taken = rt.ledger;
     rt.ledger_round = -1;
     rt.ledger = 0;
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_soul_percent(*ctx, kMarkId, 0, owner, owner, chance)) {
         return EffectResult::kOk;   // 概率未触发（293 同款调用方自掷）
     }
     ElfPet& self = ctx->getPet(owner);

@@ -11,7 +11,7 @@
 // 1734 "消除对手回合类效果，消除成功则{0}%令对手{1}，若对手不处于回合类效果则
 //   造成的攻击伤害提升{2}%"：
 //   - "不处于回合类效果"以消除前快照判（has_round_type，1032/1959 同款）→ 两分支互斥：
-//     有回合类 → break_round_effects + roll_percent 掷{0}% 施加{1}（{1}=6 害怕，
+//     有回合类 → break_round_effects + roll_skill_percent 掷{0}% 施加{1}（{1}=6 害怕，
 //     apply_anomaly 申报 + random_anomaly_duration，1959 同款）；无回合类 → 增伤
 //     ws.damage_add_pct += {2}（通用加法通道，1178/776 同款）。
 // 840 "击败对手则对方下只精灵出战时己方在场精灵吸取其最大体力的1/{0}"（[3] → 1/3）：
@@ -74,7 +74,7 @@ EffectResult effect_1734_break_fear_amp(BattleContext* ctx, const EffectArgs& ar
     if (g_core->break_round_effects) {
         g_core->break_round_effects(ctx, target);
     }
-    if (roll_percent(ctx->rng(), chance) && g_core->apply_anomaly) {
+    if (roll_skill_percent(*ctx, 1734, 0, owner, target, chance) && g_core->apply_anomaly) {
         (void)anomaly_landed(g_core->apply_anomaly(ctx, target, status,
                                                    random_anomaly_duration(), owner));
     }

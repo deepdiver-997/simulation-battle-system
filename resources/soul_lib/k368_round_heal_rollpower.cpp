@@ -78,17 +78,6 @@ int db_at(const HostRow& row, int idx, int fallback) {
     return fallback;
 }
 
-// 千分比掷点（roll_percent 是百分制，166‰=1/6 需千分制）。
-inline bool roll_per_mille(SbsRng& rng, int per_mille) {
-    if (per_mille <= 0) {
-        return false;
-    }
-    if (per_mille >= 1000) {
-        return true;
-    }
-    return (rng.next() % 1000) < per_mille;
-}
-
 // ── ①ROUND_START：恢复 max×db[0]/1000（166‰=1/6；原语封顶钳 max）──────────────
 EffectResult k368_372_round_heal(BattleContext* ctx, const SoulNodeArgs& a) {
     if (!ctx || !g_core || !g_core->heal_amount) {
@@ -136,7 +125,7 @@ EffectResult k368_372_roll_power(BattleContext* ctx, const SoulNodeArgs& a) {
     if (per_mille <= 0) {
         return EffectResult::kOk;   // 显式 0 关闸
     }
-    if (!roll_per_mille(ctx->rng(), per_mille)) {
+    if (!roll_soul_gate(*ctx, kMarkId, 0, owner, owner, per_mille, 1000, ChanceSingleton::SkipDraw)) {
         return EffectResult::kOk;
     }
     auto& view = ctx->ws.skill_power_view[owner];

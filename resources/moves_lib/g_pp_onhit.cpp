@@ -72,7 +72,7 @@ EffectResult effect_780_onhit_pp_zero_window(BattleContext* ctx, const EffectArg
             if (attacker < 0 || attacker > 1 || attacker == owner) {
                 return;
             }
-            if (!roll_percent(c->rng(), chance)) {
+            if (!roll_skill_percent(*c, 780, 0, owner, attacker, chance)) {
                 return;   // {1}% 概率门（与 716 的唯一差异）
             }
             if (!g_core || !g_core->pp_zero_slot) {
@@ -86,7 +86,7 @@ EffectResult effect_780_onhit_pp_zero_window(BattleContext* ctx, const EffectArg
             std::iota(idx.begin(), idx.end(), 0);
             const int n = std::min(count, slots);
             for (int i = 0; i < n; ++i) {
-                const int j = i + (slots - i > 1 ? c->rng().next() % (slots - i) : 0);
+                const int j = choose_skill_range(*c, 780, 1, owner, attacker, i, slots - 1, ChanceSingleton::SkipDraw);
                 std::swap(idx[static_cast<std::size_t>(i)],
                           idx[static_cast<std::size_t>(j)]);
                 (void)g_core->pp_zero_slot(c, attacker, idx[static_cast<std::size_t>(i)],

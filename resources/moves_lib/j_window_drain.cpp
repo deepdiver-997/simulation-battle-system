@@ -47,7 +47,7 @@ EffectResult j155_max_hp_down_tick(BattleContext* ctx, const EffectArgs& args) {
         denom <= 0) {
         return EffectResult::kOk;
     }
-    if (!roll_percent(ctx->rng(), chance)) {
+    if (!roll_skill_percent(*ctx, 725, 1, owner, target, chance)) {
         return EffectResult::kOk;
     }
     (void)g_core->reduce_max_hp_pct(ctx, target, ctx->on_stage[target], 100 / denom,

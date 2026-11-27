@@ -92,13 +92,13 @@ EffectResult effect_1659_rand_fixed_or_drain(BattleContext* ctx, const EffectArg
     if (!g_core || !g_core->fixed_damage || !g_core->heal_amount) {
         return EffectResult::kOk;
     }
-    const int amount =
-        fix_lo + (fix_hi > fix_lo ? ctx->rng().next() % (fix_hi - fix_lo + 1) : 0);
+    const int amount = choose_skill_range(*ctx, 1659, 0, owner, opp, fix_lo, fix_hi,
+                                          ChanceSingleton::SkipDraw);
     if (ctx->crit_happened[owner]) {
         // "转变为吸取"：同法落点 + 按实际扣血回（沧岚 581 drain 形）。
         // 点数：吸低-吸高再掷一段（模板独立区间）。
-        const int drain =
-            drain_lo + (drain_hi > drain_lo ? ctx->rng().next() % (drain_hi - drain_lo + 1) : 0);
+        const int drain = choose_skill_range(*ctx, 1659, 1, owner, opp, drain_lo, drain_hi,
+                                             ChanceSingleton::SkipDraw);
         const int before = ctx->getPet(opp).hp;
         (void)g_core->fixed_damage(ctx, opp, drain);
         const int dealt = before - ctx->getPet(opp).hp;

@@ -89,7 +89,7 @@ EffectResult effect_1663_defeat_next_pp_zero(BattleContext* ctx, const EffectArg
             const int n = std::min(pending, slots);
             int landed = 0;
             for (int i = 0; i < n; ++i) {
-                const int j = i + (slots - i > 1 ? c->rng().next() % (slots - i) : 0);
+                const int j = choose_skill_range(*c, 1663, 0, self, opp, i, slots - 1, ChanceSingleton::SkipDraw);
                 std::swap(idx[static_cast<std::size_t>(i)],
                           idx[static_cast<std::size_t>(j)]);
                 if (g_core->pp_zero_slot(c, opp, idx[static_cast<std::size_t>(i)], self)

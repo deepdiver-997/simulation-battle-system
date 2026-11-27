@@ -47,8 +47,7 @@ EffectResult effect_1593_hp_combo_cap(BattleContext* ctx, const EffectArgs& args
         return EffectResult::kOk;   // 体力不低于对手：内核掷的 {0}~{1} 照常
     }
     // 绝境档：上限改为 cap → 有效区间 [lo,cap] 均匀重掷（消耗一次 rand，118 同款）
-    const int span = cap - lo + 1;
-    ctx->ws.combo_view[owner] = lo + ctx->rng().next() % span;   // 写=声明变威力（触发重算）
+    ctx->ws.combo_view[owner] = choose_skill_range(*ctx, 1593, 0, owner, opp, lo, cap);   // 写=声明变威力（触发重算）
     return EffectResult::kOk;
 }
 

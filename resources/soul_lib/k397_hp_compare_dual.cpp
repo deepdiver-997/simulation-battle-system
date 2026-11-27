@@ -204,7 +204,7 @@ EffectResult k397_1139_death(BattleContext* ctx, const SoulNodeArgs& a) {
         int guard = 0;
         while (done < count && guard < 100) {
             ++guard;
-            const int sk_slot = ctx->rng().next() % 5;   // 5 技能槽随机
+            const int sk_slot = choose_soul_range(*ctx, kMark1139, 0, a.owner, opp, 0, 4);
             if (picked[sk_slot]) {
                 continue;   // 已试过（含无限 PP 槽/已零槽）不重复计
             }

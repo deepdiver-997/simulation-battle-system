@@ -59,7 +59,8 @@ EffectResult effect_1895_drain_fixed_then_anomaly(BattleContext* ctx, const Effe
         }
     }
     // 兜底半：未受到固定伤害才申报；pct 在位即消费（0/100 档原语内处理）。
-    if (dealt <= 0 && g_core->apply_anomaly_checked && roll_percent(ctx->rng(), pct)) {
+    if (dealt <= 0 && g_core->apply_anomaly_checked
+        && roll_skill_percent(*ctx, 1895, 0, owner, target, pct)) {
         (void)g_core->apply_anomaly_checked(ctx, target, anomaly, random_anomaly_duration(),
                                             owner, /*chance=*/100, ChanceSource::Skill);
     }

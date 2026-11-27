@@ -16,6 +16,7 @@
 #include <any>
 #include <array>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 #include <abnormal-system/abnormal-types.h>
@@ -24,6 +25,7 @@
 #include <fsm/battleFsm.h>
 #include <primitives/battle_primitives.h>
 
+#include "chance_probe_mode.h"
 #include "scenario_harness.h"
 
 using namespace scenario;
@@ -119,6 +121,86 @@ void clear_foe_anomalies(ScenarioBattle& b) {
 
 bool in_band(int v, int lo, int hi) {
     return v >= lo && v <= hi;
+}
+
+void check_759_native_chance(unsigned seed, int pct, int forced_slot = -1) {
+    struct Samples final : ChanceResolver {
+        std::vector<ChancePick> picks;
+        int force;
+        explicit Samples(int slot) : force(slot) {}
+        bool should_enumerate(const ChancePoint& p) const override {
+            return force >= 0 && p.kind == ChanceSiteKind::SoulMark && p.rule_id == 759 && p.subsite_id == 1;
+        }
+        int choose(const ChancePoint& p) override {
+            picks.push_back({p, force});
+            return force;
+        }
+        void record_sample(const ChancePoint& p, int outcome) override {
+            picks.push_back({p, outcome});
+        }
+    } trace(forced_slot);
+
+    // Holder on side 1; unequal speed and NONE isolate the two 759 sites.
+    constexpr int kOwner = 1;
+    constexpr int kFoe = 0;
+    ScenarioBattle b(make_party(foe_pet(300, 300)),
+                     make_party(mark_pet(759, 3097, "雷暴·利斯塔", {pct, 2, 1}, 100, 300)));
+    b.start();
+    auto& ctx = b.ctx();
+    for (auto& skill : ctx.getPet(kFoe).skills) {
+        skill.pp = 5;
+    }
+    ctx.debug_step_mode = true;
+    b.submit_operation(kFoe, BattleFsm::ActionType::NONE, -1);
+    b.submit_operation(kOwner, BattleFsm::ActionType::NONE, -1);
+    ctx.debug_step_mode = false;
+    b.step_until(State::BATTLE_ROUND_START);
+    REQUIRE(b.state() == State::BATTLE_ROUND_START);
+
+    ctx.seed_rng(seed);
+    auto legacy = ctx.rng();
+    const int round = ctx.roundCount;
+    const bool variable = pct > 0 && pct < 100;
+    const bool hit = pct >= 100 || (variable && legacy.next() % 100 < pct);
+    ctx.binary_chance_replay.emplace().weighted_resolver = &trace;
+    b.step();
+    CHECK_EQ(trace.picks.size(), variable ? 1u : 0u, "only interior odds are sampled");
+    if (variable) {
+        const auto& [p, outcome] = trace.picks.front();
+        CHECK(p.kind == ChanceSiteKind::SoulMark && p.rule_id == 759 && p.subsite_id == 0 &&
+                  p.actor == kOwner && p.target == kOwner && p.round == round &&
+                  p.state == State::BATTLE_ROUND_START && p.percent == pct,
+              "759 identifies the holder's self-targeted round-start priority roll");
+        const std::vector<ChanceOption> weights{{1, static_cast<unsigned>(pct)},
+                                                {0, static_cast<unsigned>(100 - pct)}};
+        CHECK(p.draw == ChanceDraw::LegacyModulo && p.options == weights,
+              "759 uses the legacy modulo intervals, success first");
+        CHECK_EQ(outcome, hit, "sample matches the legacy ticket");
+    }
+    CHECK_EQ(ctx.rng().state(), legacy.state(), "round start consumes exactly the legacy draws");
+    CHECK_EQ(audit_of(b, kAudit759 + kOwner), hit, "audit records the sampled result");
+
+    b.step_until(State::BATTLE_ROUND_END);
+    REQUIRE(b.state() == State::BATTLE_ROUND_END);
+    CHECK_EQ(ctx.is_second_mover(kOwner), !hit, "the priority roll can overturn speed order");
+    const int natural_slot = hit ? legacy.next() % 5 : -1;
+    const int zero_slot = forced_slot >= 0 ? forced_slot : natural_slot;
+    b.step();
+    for (int slot = 0; slot < 5; ++slot) {
+        CHECK_EQ(ctx.getPet(kFoe).skills[slot].pp, slot == zero_slot ? 0 : 5,
+                 "first mover zeros the slot selected by the next draw");
+    }
+    CHECK_EQ(trace.picks.size(), (variable ? 1u : 0u) + (hit ? 1u : 0u), "the PP slot has its own semantic site");
+    if (hit) {
+        const auto& [point, outcome] = trace.picks.back();
+        CHECK(point.kind == ChanceSiteKind::SoulMark && point.rule_id == 759 && point.subsite_id == 1 &&
+              point.actor == kOwner && point.target == kFoe, "759 PP choice identifies the opponent's slot");
+        CHECK((point.range == ChanceRange{0, 4}) && point.options.empty(), "759 chooses from the five legacy slots");
+        CHECK_EQ(outcome, zero_slot, "record the slot picked by the engine or the resolver");
+        if (forced_slot >= 0) CHECK(outcome != natural_slot, "probe forces a non-natural slot");
+    }
+    CHECK_EQ(ctx.rng().state(), legacy.state(), "the PP draw retains its place in the stream");
+    ctx.binary_chance_replay.reset();
 }
 
 }  // namespace
@@ -621,6 +703,13 @@ int main() {
         std::cout << "  [T7529b] 1430 boss 子句归属 通过\n";
     }
 
+    if (scenario::run_chance_probes()) {
+        check_759_native_chance(1, 50);   // legacy success
+        check_759_native_chance(7528u, 100, 4);
+        check_759_native_chance(10, 50);  // legacy failure
+        check_759_native_chance(1, 0);
+        check_759_native_chance(1, 100);
+    }
     std::cout << "scenario_7520: all green" << std::endl;
     return 0;
 }

@@ -181,11 +181,17 @@ void on_opp_skill_use(BattleContext* ctx, int side) {
     // 随机 2 项能力等级-1（互不相同；走 stat_drop 查免弱，actor=米斯蒂克方——她不是被禁方，
     // 对手的 ATTACH_BAN 不影响本施加）。-6 再弱化还是 -6（AT_FLOOR）= 数值没变 = 未触发。
     int changed = 0;
-    int first = ctx->rng().next() % BattleContext::kAbilityLevelSlotCount;
-    int second = ctx->rng().next() % (BattleContext::kAbilityLevelSlotCount - 1);
-    if (second >= first) {
-        ++second;
+    constexpr int kStatSlots = BattleContext::kAbilityLevelSlotCount;
+    const int first = choose_soul_range(*ctx, kMarkId, 0, side, opp, 0, kStatSlots - 1);
+    // The former second roll indexed the ascending sequence with the first slot omitted.
+    ChanceOption remaining[kStatSlots - 1];
+    int count = 0;
+    for (int slot = 0; slot < kStatSlots; ++slot) {
+        if (slot != first) {
+            remaining[count++] = {slot, 1};
+        }
     }
+    const int second = choose_soul_slot(*ctx, kMarkId, 1, side, opp, remaining);
     const int slots[2] = {first, second};
     for (const int stat : slots) {
         if (g_core && g_core->stat_drop

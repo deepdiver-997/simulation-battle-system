@@ -148,7 +148,7 @@ EffectResult k192_1310_round_end(BattleContext* ctx, const EffectArgs& args) {
             // 落地按「已掷」申报（-1）——不预掷+申报 = 双重掷点（K191 勘误同源）
             const int effective = ctx->rewrite_anomaly_chance(
                 ctx->opponent(owner), owner, row.fear_pct, ChanceSource::SoulMark);
-            return roll_percent(ctx->rng(), effective);
+            return roll_soul_percent(*ctx, 1310, 0, owner, ctx->opponent(owner), effective);
         }();
     if (fear_fired) {
         (void)g_core->apply_anomaly_checked(ctx, ctx->opponent(owner),

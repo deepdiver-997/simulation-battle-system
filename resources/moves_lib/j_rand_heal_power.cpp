@@ -55,7 +55,7 @@ EffectResult effect_1132_rand_heal(BattleContext* ctx, const EffectArgs& args) {
     }
     const int lo = boosted ? lo1 : lo2;
     const int hi = boosted ? hi1 : hi2;
-    const int amount = lo + ctx->rng().next() % (hi - lo + 1);
+    const int amount = choose_skill_range(*ctx, 1132, 1, owner, owner, lo, hi);
     (void)g_core->heal_amount(ctx, owner, amount);
     return EffectResult::kOk;
 }
@@ -67,7 +67,7 @@ EffectResult effect_70_random_power(BattleContext* ctx, const EffectArgs& args) 
                      "70 布局=[owner,target]（on_selected 绑定）");
     const int owner = args.int_args[0];
     EFFECT_ARG_GUARD(owner >= 0 && owner <= 1, 70, args, "需要 owner ∈ {0,1}");
-    ctx->ws.skill_power_view[owner] = 150 + ctx->rng().next() % 71;   // 150..220 绝对置
+    ctx->ws.skill_power_view[owner] = choose_skill_range(*ctx, 70, 0, owner, args.int_args[1], 150, 220);   // 150..220 绝对置
     return EffectResult::kOk;
 }
 

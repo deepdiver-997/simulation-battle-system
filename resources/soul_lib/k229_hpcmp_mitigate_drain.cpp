@@ -43,6 +43,8 @@
 namespace {
 
 constexpr int kMark = 1422;
+constexpr int kDrainChanceSite = 0;
+constexpr int kDropSlotChanceSite = 1;
 constexpr int kWiredKeyBase = 991420000;   // +owner：减伤票已挂旗标（防 early 双触发）
 constexpr int kLedgerKeyBase = 991421000;  // +owner：本回合减伤%（ROUND_START 写，票读）
 constexpr int kDrainKeyBase = 991422000;   // +owner：本回合实吸量（审计槽，F9 口径，只读）
@@ -177,7 +179,7 @@ EffectResult soulmark_1422_round_end(BattleContext* ctx, const EffectArgs& args)
         return EffectResult::kOk;   // 阵亡不吸
     }
     const int hp_before = foe.hp;
-    const int roll = lo + static_cast<int>(ctx->rng().next() % static_cast<unsigned>(hi - lo + 1));
+    const int roll = choose_soul_range(*ctx, kMark, kDrainChanceSite, owner, opp, lo, hi);
     if (g_core && g_core->deal_pink_damage) {
         (void)g_core->deal_pink_damage(ctx, opp, roll, DamageKind::PERCENT_VALUE, owner);
     }
@@ -194,7 +196,7 @@ EffectResult soulmark_1422_round_end(BattleContext* ctx, const EffectArgs& args)
     int guard = 0;
     while (done < drop_cnt && guard < 100) {
         ++guard;
-        const int slot = ctx->rng().next() % 6;
+        const int slot = choose_soul_range(*ctx, kMark, kDropSlotChanceSite, owner, opp, 0, 5);
         if (picked[slot]) {
             continue;
         }

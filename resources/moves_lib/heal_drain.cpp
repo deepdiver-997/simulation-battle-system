@@ -96,7 +96,7 @@ EffectResult effect_683_random_fixed(BattleContext* ctx, const EffectArgs& args)
         return EffectResult::kOk;
     }
     if (g_core && g_core->fixed_damage) {
-        const int amt = low + (ctx->rng().next() % (high - low + 1));  // [low, high] 闭区间
+        const int amt = choose_skill_range(*ctx, 683, 0, owner, target, low, high);  // [low, high] 闭区间
         g_core->fixed_damage(ctx, target, amt);
     }
     return EffectResult::kOk;
@@ -307,7 +307,7 @@ EffectResult effect_93_chance_fixed(BattleContext* ctx, const EffectArgs& args) 
     if (owner < 0 || owner > 1 || target < 0 || target > 1 || amount <= 0) {
         return EffectResult::kOk;
     }
-    if (roll_percent(ctx->rng(), chance) && g_core && g_core->deal_pink_damage) {
+    if (roll_skill_percent(*ctx, 93, 0, owner, target, chance) && g_core && g_core->deal_pink_damage) {
         g_core->deal_pink_damage(ctx, target, amount, DamageKind::FIXED, owner);
     }
     return EffectResult::kOk;
@@ -382,7 +382,7 @@ EffectResult effect_450_random_heal(BattleContext* ctx, const EffectArgs& args) 
     if (self < 0 || self > 1 || lo <= 0 || hi < lo) {
         return EffectResult::kOk;
     }
-    const int amount = lo + (ctx->rng().next() % (hi - lo + 1));
+    const int amount = choose_skill_range(*ctx, 450, 0, self, self, lo, hi);
     g_core->heal_amount(ctx, self, amount);
     return EffectResult::kOk;
 }

@@ -14,9 +14,9 @@
 // 落法：
 //   触发源 = EVENT_SKILL_USED（「每次使用」=使用即发，E13 锚点；k_attack_prob
 //   109/116 同窗），enter(early) 常驻一条 watcher（plugin_storage 防重）：
-//   - ev.used_attribute==false（攻击技）→ 本地 roll_percent(db[0])：
+//   - ev.used_attribute==false（攻击技）→ 掷 db[0]%（目标：对手）：
 //     落地 → g_core->fixed_damage(对手, db[1])；未触发 → 烧伤补偿（见下）。
-//   - ev.used_attribute==true（属性技）→ 本地 roll_percent(db[2])：
+//   - ev.used_attribute==true（属性技）→ 掷 db[2]%（目标：自身）：
 //     落地 → shield_bank_.add(kSoulShieldPriority, db[3], source, duration=1)
 //     （「保留1回合」；k173 809/941 同通道）；未触发 → 烧伤补偿。
 //   - 烧伤补偿 = apply_anomaly_checked(对手, db[4], random_anomaly_duration(),
@@ -39,6 +39,8 @@
 namespace {
 
 constexpr int kMarkId = 752;
+constexpr int kAttackChanceSite = 0;
+constexpr int kAttributeChanceSite = 1;
 constexpr int kWiredBase = 990374000;       // +owner：watcher 已挂旗标
 constexpr int kShieldSource = 990374100;    // 本魂印盾 source_id
 constexpr int kShieldLifeBase = 990374200;  // +owner：盾存活账本（2=当回合+次回合）
@@ -128,8 +130,9 @@ EffectResult k374_752_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                 if (atk_pct <= 0 || !g_core->fixed_damage) {
                     return;
                 }
-                if (roll_percent(c->rng(), atk_pct)) {
-                    (void)g_core->fixed_damage(c, 1 - owner, fixed_amt);
+                const int foe = 1 - owner;
+                if (roll_soul_percent(*c, kMarkId, kAttackChanceSite, owner, foe, atk_pct)) {
+                    (void)g_core->fixed_damage(c, foe, fixed_amt);
                 } else {
                     compensate_burn();
                 }
@@ -139,7 +142,7 @@ EffectResult k374_752_enter(BattleContext* ctx, const SoulNodeArgs& a) {
             if (attr_pct <= 0) {
                 return;
             }
-            if (roll_percent(c->rng(), attr_pct)) {
+            if (roll_soul_percent(*c, kMarkId, kAttributeChanceSite, owner, owner, attr_pct)) {
                 ElfPet& self = c->getPet(owner);
                 // 同源刷新（ShieldBank 头注约定：同魂印盾不叠条）——重挂 300 满额
                 self.shield_bank_.add(ShieldBank::kSoulShieldPriority, shield_amt,

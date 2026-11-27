@@ -584,7 +584,7 @@ EffectResult k402_1630_enter(BattleContext* ctx, const SoulNodeArgs& a) {
                 pct = base_pct;   // 无账本 = 基础档
             }
             write_int(c, base + k1630WindAudit, pct);   // 审计槽：掷前写现行档
-            if (!roll_percent(c->rng(), pct)) {
+            if (!roll_soul_percent(*c, kMark1630, 0, owner, 1 - owner, pct)) {
                 return;   // 未触发无补偿子句（触发=成功语义，记档⑩）
             }
             write_int(c, base + k1630DblFlag, 200);     // "伤害翻倍"=×2

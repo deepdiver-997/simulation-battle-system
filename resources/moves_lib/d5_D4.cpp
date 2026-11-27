@@ -123,7 +123,7 @@ EffectResult effect_1098_trigger(BattleContext* ctx, const EffectArgs& args) {
     if (ctx->getPet(1 - owner).hp <= 0) {
         return EffectResult::kOk;   // "对手体力值高于0"
     }
-    if (!roll_percent(ctx->rng(), kTriggerPct)) {
+    if (!roll_skill_percent(*ctx, 1098, 0, owner, owner, kTriggerPct)) {
         return EffectResult::kOk;
     }
     ctx->declare_extra_action(owner);

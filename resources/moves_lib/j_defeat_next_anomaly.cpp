@@ -59,13 +59,13 @@ bool anomaly_landed(ApplyAnomalyResult r) {
 }
 
 // 两段式：①本回合击败（且倒地宠处于 state）→ 武装 pending；②对方下只登场 → 挂异常。
-void register_defeat_next_anomaly(BattleContext* ctx, int self, int opp, int state, int chance,
-                                  int anomaly, int pending_base, int audit_base) {
+void register_defeat_next_anomaly(BattleContext* ctx, int effect_id, int self, int opp, int state,
+                                  int chance, int anomaly, int pending_base, int audit_base) {
     // ① 当回合击败探针：actor=最后一刀来源；状态门在死亡回调里查。
     ctx->event_center_.register_watcher(
         EventType::EVENT_DEATH, self, ctx->roundCount, /*rounds=*/1, /*once=*/false,
-        [self, opp, state, chance, anomaly, pending_base](BattleContext* c,
-                                                          const BattleEvent& ev) {
+        [effect_id, self, opp, state, chance, anomaly, pending_base](BattleContext* c,
+                                                                  const BattleEvent& ev) {
             if (!c || ev.target != opp || ev.actor != self) {
                 return;   // 只认自身最后一刀击败对手在场宠
             }
@@ -75,7 +75,7 @@ void register_defeat_next_anomaly(BattleContext* ctx, int self, int opp, int sta
             if (!g_core->has_active_anomaly(c, opp, state)) {
                 return;   // 状态门：倒地宠不处于{0}状态
             }
-            if (!roll_percent(c->rng(), chance)) {
+            if (!roll_skill_percent(*c, effect_id, 0, self, opp, chance)) {
                 return;   // {1}% 未中
             }
             c->plugin_storage[pending_base + opp] = anomaly;
@@ -121,8 +121,8 @@ EffectResult effect_1464_defeat_next_anomaly(BattleContext* ctx, const EffectArg
                      args, "需要 owner/target ∈ {0,1}");
     EFFECT_ARG_GUARD(is_valid_abnormal_status_id(state), 1464, args, "状态码越界（≤43）");
     EFFECT_ARG_GUARD(is_valid_abnormal_status_id(anomaly), 1464, args, "异常码越界（≤43）");
-    register_defeat_next_anomaly(ctx, self, opp, state, chance, anomaly, k1464PendingBase,
-                                 k1464AuditBase);
+    register_defeat_next_anomaly(ctx, 1464, self, opp, state, chance, anomaly,
+                                 k1464PendingBase, k1464AuditBase);
     return EffectResult::kOk;
 }
 
@@ -141,8 +141,8 @@ EffectResult effect_757_defeat_next_anomaly(BattleContext* ctx, const EffectArgs
                      args, "需要 owner/target ∈ {0,1}");
     EFFECT_ARG_GUARD(is_valid_abnormal_status_id(state), 757, args, "状态码越界（≤43）");
     EFFECT_ARG_GUARD(is_valid_abnormal_status_id(anomaly), 757, args, "异常码越界（≤43）");
-    register_defeat_next_anomaly(ctx, self, opp, state, chance, anomaly, k757PendingBase,
-                                 k757AuditBase);
+    register_defeat_next_anomaly(ctx, 757, self, opp, state, chance, anomaly,
+                                 k757PendingBase, k757AuditBase);
     return EffectResult::kOk;
 }
 
