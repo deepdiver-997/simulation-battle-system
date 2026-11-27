@@ -15,6 +15,7 @@
 #include <mutex>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <utils/sbs_rand.h>
 
 #include <abnormal-system/abnormal-types.h>
@@ -32,6 +33,7 @@
 #include <effects/state_tape.h>
 #include <entities/soul_mark.h>
 #include <fsm/state.h>
+#include <fsm/binary_chance.h>
 
 // ── #7 追捕审计环（仅 SBS_FUZZ_AUDIT 构建启用；2026-11-06）──────────────────
 // attack_boost_grants 的 grant/consume/stage 三类操作落进程级环形缓冲
@@ -94,13 +96,43 @@ enum class EffectContainer {
 
 
 class BattleContext {
-public:
+private:
     // 单对局拥有独立序列；同一 context 的访问仍须由调用方串行化。
     SbsRng rng_;
+
+public:
+    // Read-only diagnostics and test oracle snapshots; live draws go through chance APIs.
+    // Source compatibility while native callers migrate; old binaries still need rebuilding.
     SbsRng& rng() noexcept { return rng_; }
     const SbsRng& rng() const noexcept { return rng_; }
+    // Registering a site does not grant clone admission.
+    int choose_weighted(std::span<const ChanceOption> options, ChancePoint& site,
+                        ChanceSingleton singleton = ChanceSingleton::SkipDraw,
+                        ChanceDraw draw = ChanceDraw::Uniform);
+    bool roll_binary_percent(int percent, BinaryChancePoint& site,
+                             ChanceSiteKind kind = ChanceSiteKind::ParsedPercent);
+    bool roll_legacy_gate(int pass, int total, ChancePoint site, ChanceSingleton singleton);
+    int choose_legacy_range(int low, int high, ChancePoint site, ChanceSingleton singleton);
+    int choose_legacy_slot(std::span<const ChanceOption> options, ChancePoint site, ChanceSingleton singleton);
+    int choose_legacy_rejection_slot(std::span<const ChanceOption> options, ChancePoint site);
+    // Sample-only draws are counted but do not enter the replay trace or tree.
+    int sample_weighted(std::span<const ChanceOption> options,
+                        ChanceSingleton singleton = ChanceSingleton::SkipDraw,
+                        ChanceDraw draw = ChanceDraw::Uniform);
+    bool sample_percent(int percent);
+    int sample_legacy_range(int low, int high, ChanceSingleton singleton);
+    int sample_red_damage_variance() noexcept;
+    // Setup only; reseeding during replay invalidates the branch.
     void seed_rng(unsigned int seed) noexcept { rng_.seed(seed); }
 
+private:
+    enum class ChanceTicket { Semantic, SampleOnly };
+    std::uint32_t draw_chance_ticket(ChanceTicket ticket) noexcept;
+    int choose_weighted_impl(std::span<const ChanceOption> options, ChancePoint* site,
+                             ChanceSingleton singleton, ChanceDraw draw);
+    void latch_chance_error() noexcept;
+
+public:
     //--- 持久化核心数据 ---
     SeerRobot seerRobot[2];
     int on_stage[2];
@@ -1880,6 +1912,9 @@ public:
     //--- 状态同步 ---
     std::string getStateJson() const;
     std::string getFullStateJson() const;
+
+    // Tail-only, core-owned training state. Never inherited by a decision clone.
+    std::optional<BinaryChanceReplay> binary_chance_replay;
 
 private:
     friend class BattleClone;

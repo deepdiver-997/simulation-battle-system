@@ -1,7 +1,7 @@
-#include <utils/sbs_rand.h>
 #ifndef CALCULATION_H
 #define CALCULATION_H
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
@@ -30,18 +30,23 @@ inline int checked_pct_mul(int value, int pct_delta, const char* site) {
 
 class Calculation {
     public:
-    static int calculateDamage(int attacker, const BattleWorkspace& ws, const Skills& skill, SbsRng& rng) {
+    struct DamageRolls {
+        int sampled = 0;
+        int low = -1;
+        int high = -1;
+    };
+
+    template <typename SampleVariance>
+    static DamageRolls calculateDamage(int attacker, const BattleWorkspace& ws,
+                                       const Skills& skill, SampleVariance sample_variance) {
         int defender = 1 - attacker;
         // 技能类别**视图**（ws.skill_type_view，resolve_skill_execution 每次使用物化
         // skill.type）——"转化"类效果（28810 魂·天忤太虚 2210：星赐→物理/星哲→特殊）
         // 在 SKILL_EFFECT 时点改写视图，ATTACK_DAMAGE 阶段这里按**视图**选攻防项与
         // 属性门。未转化的技能视图 == skill.type，行为与旧实现逐字节一致。
         const int eff_type = ws.skill_type_view[attacker];
-        if (eff_type == static_cast<int>(SkillType::Attribute)) return 0; // Status skills do not deal damage
-        // if(skill.element[1] == 0 && defender.elementalAttributes[1] == 0 && ElementalAttributes::elementalAttributesRestraints[skill.element[0]][defender.elementalAttributes[0]] == 0) {
-        //     return 0; // No elemental attributes to calculate damage
-        // }
-        double damage = 0.0;
+        // Status skills do not roll for red damage.
+        if (eff_type == static_cast<int>(SkillType::Attribute)) return {};
         double Attack = ws.getTempAbilityValue(attacker, static_cast<NumericalPropertyIndex>(eff_type));
         // 套装线（2026-09-19 腐蚀者 387）："所有攻击技能忽略对手防御值和特防值的15%"——
         // 防御在进公式前按 ws.defense_ignore_pct[defender] 折减（物理走防御、特殊走特防，
@@ -83,15 +88,24 @@ class Calculation {
         if (ws.no_weakness[attacker] && restraint < 1.0) {
             restraint = 1.0;
         }
-        damage = (0.84 * Attack / Defense * power + 2) * restraint
-                * (217 + rng.next() % 39) / 255;
+        const double unvaried = (0.84 * Attack / Defense * power + 2) * restraint;
+        const int variance = sample_variance(); // Only the live formula consumes one draw.
         // 本系加成（×1.5）：判据是**技能真实系别** vs 攻击方精灵系别。
         // ⚠️ "改系别只改克制、不改本系"是刻意的（改的是 `skill_element_view`，本系读 `skill.element`）；
         //    要"获得本系加成"的（effect 2490）走 `ws.force_involve` 这个显式开关，别去动 involve 的入参。
-        if (ws.force_involve[attacker] || involve(ws.view_elementalAttributes[attacker], skill.element)) {
-            damage *= 1.5; // Elemental advantage
-        }
-        return damage;
+        const bool stab = ws.force_involve[attacker] || involve(ws.view_elementalAttributes[attacker], skill.element);
+        const auto with_variance = [=](int roll, bool endpoint) {
+            double damage = unvaried * roll / 255;
+            if (stab) damage *= 1.5;
+            // An unrepresentable hypothetical result must not affect the live battle.
+            // Bounds include fractional values that truncate to a representable int.
+            if (endpoint && !(damage > static_cast<double>(std::numeric_limits<int>::min()) - 1.0 &&
+                              damage < static_cast<double>(std::numeric_limits<int>::max()) + 1.0)) {
+                return -1;
+            }
+            return std::max(0, static_cast<int>(damage));
+        };
+        return {with_variance(variance, false), with_variance(217, true), with_variance(255, true)};
     }
 
     static int applyDamageReduction(int base_damage, const int add_reduce[4], const int mul_reduce[4]) {

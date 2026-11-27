@@ -23,10 +23,29 @@ EffectWindowKind effect_window_kind_impl(int effect_id) {
     return meta ? meta->window : EffectWindowKind::InRounds;
 }
 
+bool roll_native_percent(BattleContext* ctx, ChanceSiteKind source, int rule_id, int subsite_id,
+                         int actor, int target, int percent) {
+    if (source != ChanceSiteKind::NativeSkill && source != ChanceSiteKind::SoulMark)
+        throw std::invalid_argument("native percent requires a skill or soul mark source");
+    if (!ctx) return false;
+    ChancePoint site;
+    site.rule_id = rule_id;
+    site.subsite_id = subsite_id;
+    site.actor = actor;
+    site.target = target;
+    return ctx->roll_binary_percent(percent, site, source);
+}
+
 // 完整性检查：返回第一个未填充的槽名（全满返回 nullptr）。
 // ⚠️ 新增槽必须在这里补一行——检查列表与赋值列表共同构成"所有槽已显式接线"的证据。
 const char* first_empty_slot(const CoreApi& api) {
     if (!api.version) return "version";
+    if (!api.roll_native_percent) return "roll_native_percent";
+    if (!api.roll_legacy_gate) return "roll_legacy_gate";
+    if (!api.choose_legacy_range) return "choose_legacy_range";
+    if (!api.choose_legacy_slot) return "choose_legacy_slot";
+    if (!api.choose_legacy_rejection_slot) return "choose_legacy_rejection_slot";
+    if (!api.sample_legacy_range) return "sample_legacy_range";
     if (!api.apply_anomaly) return "apply_anomaly";
     if (!api.apply_anomaly_checked) return "apply_anomaly_checked";
     if (!api.apply_anomaly_ancient_checked) return "apply_anomaly_ancient_checked";
@@ -96,6 +115,24 @@ const CoreApi& core_api() {
         a.version = "1.0";
         a.abi_version = kPluginAbiVersion;  // ABI 身份戳：插件装载即核对（verify_plugin_abi）
         a.api_size = sizeof(CoreApi);
+        a.roll_native_percent = &roll_native_percent;
+        a.roll_legacy_gate = [](BattleContext* ctx, int pass, int total, ChancePoint site, ChanceSingleton singleton) {
+            return ctx->roll_legacy_gate(pass, total, std::move(site), singleton);
+        };
+        a.choose_legacy_range = [](BattleContext* ctx, int low, int high, ChancePoint site, ChanceSingleton singleton) {
+            return ctx->choose_legacy_range(low, high, std::move(site), singleton);
+        };
+        a.choose_legacy_slot = [](BattleContext* ctx, std::span<const ChanceOption> options,
+                                  ChancePoint site, ChanceSingleton singleton) {
+            return ctx->choose_legacy_slot(options, std::move(site), singleton);
+        };
+        a.choose_legacy_rejection_slot = [](BattleContext* ctx, std::span<const ChanceOption> options,
+                                            ChancePoint site) {
+            return ctx->choose_legacy_rejection_slot(options, std::move(site));
+        };
+        a.sample_legacy_range = [](BattleContext* ctx, int low, int high, ChanceSingleton singleton) {
+            return ctx->sample_legacy_range(low, high, singleton);
+        };
         // 旧槽 = **未申报概率**的适配器（chance_pct=-1 → 闸门不介入，行为与改造前一致）。
         // 插件迁到 *_checked 即受闸门管辖；不迁也不会错，只是漏管。
         a.apply_anomaly = [](BattleContext* ctx, int target, int anomaly_id, int duration_rounds,

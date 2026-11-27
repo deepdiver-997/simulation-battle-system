@@ -21,11 +21,25 @@ thread_local SbsRng compatibility_rng;
 
 } // namespace
 
-SbsRng::SbsRng(unsigned int value) noexcept { seed(value); }
-void SbsRng::seed(unsigned int value) noexcept { state_ = value ? value : kZeroFix; }
+SbsRng::SbsRng(unsigned int value) noexcept : state_(value ? value : kZeroFix) {}
+
+SbsRng& SbsRng::operator=(const SbsRng& other) noexcept {
+    if (this != &other) {
+        state_ = other.state_;
+        ++revision_;
+    }
+    return *this;
+}
+
+void SbsRng::seed(unsigned int value) noexcept {
+    state_ = value ? value : kZeroFix;
+    ++revision_;
+}
+
 int SbsRng::next() noexcept {
     const std::uint64_t r = (16807ULL * state_) % kMod;
     state_ = r ? r : kZeroFix;
+    ++draw_count_;
     return static_cast<int>(r);
 }
 

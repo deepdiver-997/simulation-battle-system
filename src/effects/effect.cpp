@@ -273,12 +273,6 @@ bool EffectFactory::no_confilict(int id1, int id2) {
     return true;
 }
 
-bool EffectFactory::roll_percent(int percent, SbsRng& rng) {
-    if (percent <= 0) return false;
-    if (percent >= 100) return true;
-    return (rng.next() % 100) < percent;
-}
-
 void EffectFactory::registerEffect(int effectId, EffectFn effect,
                                    const std::string& source) {
     register_effect(effectId, effect, source, BattleCallbackCopy::Unverified);

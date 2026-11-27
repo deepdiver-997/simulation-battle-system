@@ -103,6 +103,10 @@ BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args,
 BranchKey execute_effect_unit_unconditional(BattleContext* ctx, const EffectArgs& args,
                                             const ParsedEffectProgram& program, int root_index);
 
+// Core entry for the two audited DB skill callbacks. Unlike the generic executors
+// above, this may yield a binary chance when the owning context is replaying.
+void execute_parsed_skill_unit(BattleContext* ctx, const EffectArgs& args, bool skip_root_condition);
+
 // ── 单元准入门（core 侧存储，插件经 IEffectRegistry::registerUnitAdmission 写入）──
 // core 的注册路径（Skills::register_branch）逐单元询问；任一钩子返回 true → 该单元跳过
 // 条件求值。见 plugin_interface.h 的 UnitAdmissionFn 注释（为什么要有这个东西）。

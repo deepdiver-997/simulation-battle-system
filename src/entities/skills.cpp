@@ -354,20 +354,14 @@ void materialize_attack_credential(BattleContext* ctx, int owner, const Skills& 
 // 通用执行器：从 EffectArgs 持有的不可变程序按根索引运行条件效果单元。
 // 离线 JSON 程序与未注册函数时的文本解析兜底共用此执行器。
 EffectResult effect_run_parsed_unit(BattleContext* ctx, const EffectArgs& args) {
-    const auto& parsed = args.parsed_unit;
-    if (ctx && parsed.program && !args.extra) {
-        execute_effect_unit(ctx, args, *parsed.program, parsed.root_index);
-    }
+    execute_parsed_skill_unit(ctx, args, /*skip_root_condition=*/false);
     return EffectResult::kOk;
 }
 
 // 同上，但**跳过本单元的条件**（单元准入门放行时 register_branch 换用本执行器）。
 // 语义 = "该条已永久无条件"；概率 roll 与分支递归照常。
 EffectResult effect_run_parsed_unit_unconditional(BattleContext* ctx, const EffectArgs& args) {
-    const auto& parsed = args.parsed_unit;
-    if (ctx && parsed.program && !args.extra) {
-        execute_effect_unit_unconditional(ctx, args, *parsed.program, parsed.root_index);
-    }
+    execute_parsed_skill_unit(ctx, args, /*skip_root_condition=*/true);
     return EffectResult::kOk;
 }
 
@@ -810,6 +804,12 @@ SkillSelectionResult Skills::query_selectable(const BattleContext* ctx, int owne
     return SkillSelectionResult::SELECTABLE;
 }
 
+int Skills::roll_combo_count(BattleContext& ctx, int owner) const {
+    if (combo_max <= combo_min) return std::max(1, combo_min);
+    return ctx.choose_legacy_range(combo_min, combo_max,
+        engine_chance(EngineChanceRule::ComboCount, id, owner, 1 - owner), ChanceSingleton::SkipDraw);
+}
+
 void Skills::on_selected(BattleContext* ctx, int owner) {
     if (!ctx || owner < 0 || owner > 1) {
         return;
@@ -865,7 +865,8 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             // 失明：见 abnormal-types.h AbnormalStatusId::Blind。
             if (cred.must_hit) {
                 // 必中技能：50% 正常命中 / 50% 命中效果失效（官方口径，用户 2026-09-13 确认）。
-                blind_hit_invalid = (ctx->rng().next() % 2) != 0;
+                blind_hit_invalid = !ctx->roll_legacy_gate(1, 2,
+                    engine_chance(EngineChanceRule::Blinded, 0, owner, owner), ChanceSingleton::ConsumeDraw);
             } else {
                 // 非必中技能：必定 miss。走到这里就是 miss（不再掷命中率）。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -951,10 +952,11 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             if (!is_attribute) {
                 if (const std::optional<EffectiveTrait> v =
                         ctx->effective_common_trait(1 - owner, TraitKind::VoidDodge)) {
-                    void_miss = trait_proc_roll(*v, ctx->rng());   // ⚠️ rand 只在带虚无时消耗
+                    void_miss = trait_proc_roll(*v, *ctx, 1 - owner, owner);   // ⚠️ rand 只在带虚无时消耗
                 }
             }
-            if (attr_must_miss || void_miss || (ctx->rng().next() % 100) >= hit_chance) {
+            if (attr_must_miss || void_miss || !ctx->roll_legacy_gate(hit_chance, 100,
+                    engine_chance(EngineChanceRule::Accuracy, 0, owner, 1 - owner), ChanceSingleton::ConsumeDraw)) {
                 // miss 也照常 notify 中心：文档 §2.3「一旦本次技能命中失败（miss 类），
                 // 会消耗所有可响应的次数类效果」——狮盔会被响应并消耗，尽管技能是 miss 的。
                 ctx->rule_center_.notify(ctx, owner, is_attribute, this->power,
@@ -991,12 +993,14 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
             if (h->args[0] <= 1) {
                 rate += 6.25f;   // 0 星：加法（1/16）
             } else {
-                crit_second_roll = (ctx->rng().next() % 10000) < h->args[0] * 10;   // 独立二次
+                crit_second_roll = ctx->roll_legacy_gate(h->args[0] * 10, 10000,
+                    engine_chance(EngineChanceRule::CriticalHit, 1, owner, 1 - owner), ChanceSingleton::ConsumeDraw);
             }
         }
         ctx->crit_happened[owner] = ctx->ws.must_crit[owner] || crit_second_roll
             || rate >= 100.0f
-            || (rate > 0.0f && (ctx->rng().next() % 10000) < static_cast<int>(rate * 100.0f));
+            || (rate > 0.0f && ctx->roll_legacy_gate(static_cast<int>(rate * 100.0f), 10000,
+                engine_chance(EngineChanceRule::CriticalHit, 0, owner, 1 - owner), ChanceSingleton::ConsumeDraw));
         // 2380 「自身下{0}次致命一击视为命中并强制执行命中效果」（圣光莫妮卡·繁嚣此寂
         // 29299；技能组 2026-09-25）：暴击落地即消费 1 层计数（plugin_storage 990238000+owner，
         // 技能效果侧武装）→ cred.force_execute——"视为命中"与"强制执行"都由它承载
@@ -1076,7 +1080,8 @@ SkillUsageResult Skills::query_usage(BattleContext* ctx, int owner) {
         // 语料 idx=473「失神：50 概率属性无效」。
         if (is_attribute
             && ctx->has_active_abnormal_status(owner, static_cast<int>(AbnormalStatusId::Distraction))
-            && (ctx->rng().next() % 100) < 50) {
+            && ctx->roll_legacy_gate(50, 100,
+                engine_chance(EngineChanceRule::Distraction, 0, owner, owner), ChanceSingleton::ConsumeDraw)) {
             return SkillUsageResult::SEALED;
         }
         // ②.1' **非同系攻击免疫门**（圣光莫妮卡 2492 神谕口径，2026-09-25 待落①落地）：

@@ -31,6 +31,19 @@
 
 namespace {
 
+// These IDs distinguish independent trials of the same TraitKind, not casts or traits' DB rows.
+enum class TraitChanceSubsite {
+    Proc = 1,
+    PoisonDuration = 2,
+    CopiedPoisonProc = 3,
+    CopiedPoisonDuration = 4,
+};
+
+ChancePoint trait_chance(TraitKind kind, TraitChanceSubsite subsite, int actor, int target) {
+    return chance_site(ChanceSiteKind::Trait, static_cast<int>(kind),
+                       static_cast<int>(subsite), actor, target);
+}
+
 // 本次管线是否对应"攻击技能命中"的结算（瞬杀两变体的公共门）：
 // 命中（HIT）才触发；miss/被封/命中失效都到不了管线（SKILL_INVALID 早退）或在此拦下。
 bool instant_kill_gate(const BattleContext* ctx, int attacker_id) {
@@ -168,7 +181,7 @@ void install_crit_immunity(BattleContext* ctx, int owner) {
             if (!trait) {
                 return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
             }
-            if (!trait_proc_roll(*trait, c->rng())) {
+            if (!trait_proc_roll(*trait, *c, bucket_owner, bucket_owner)) {
                 return;
             }
             damage.final = 0;   // 挡下本次暴击伤害
@@ -196,7 +209,7 @@ void install_absorb(BattleContext* ctx, int owner) {
             if (!trait || trait->args[1] <= 0) {
                 return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
             }
-            if (!trait_proc_roll(*trait, c->rng())) {
+            if (!trait_proc_roll(*trait, *c, bucket_owner, bucket_owner)) {
                 return;
             }
             damage.final = std::max(0, damage.final - trait->args[1]);
@@ -204,6 +217,23 @@ void install_absorb(BattleContext* ctx, int owner) {
 }
 
 }  // namespace
+
+bool trait_proc_roll(const EffectiveTrait& t, BattleContext& ctx, int actor, int target) {
+    // 虚无不吃必发（必修6 ③），但仍保留概率覆写（开工文档 §三.11）。必发先于亮节降零。
+    if (t.proc_forced && t.kind != TraitKind::VoidDodge) {
+        return true;
+    }
+    const int permille = trait_proc_permille(t);
+    if (t.proc_zeroed_le50 && permille > 0 && permille <= 500) {
+        return false;
+    }
+    if (permille <= 0 || permille >= 1000) {
+        return permille >= 1000;   // 两个端点均不消耗随机数
+    }
+    return ctx.roll_legacy_gate(permille, 1000,
+                                trait_chance(t.kind, TraitChanceSubsite::Proc, actor, target),
+                                ChanceSingleton::SkipDraw);
+}
 
 //---- 被动属性降低 5 个（反抗/反驳/忽略/草率/慌张，Eid 34）----
 // "受到**特殊攻击**时有 n% 使对方 m 降低 1 个等级"。钩位：ON_SKILL_HIT（同上，需命中）。
@@ -228,7 +258,7 @@ void trait_passive_stat_drop_hook(BattleContext* ctx, int attacker_id) {
         return;
     }
     const int stat = trait_stat_index_from_code(def_own.args[0]);
-    if (stat < 0 || !trait_proc_roll(def_own, ctx->rng())) {
+    if (stat < 0 || !trait_proc_roll(def_own, *ctx, defender_id, attacker_id)) {
         return;   // ⚠️ rand 只在特性确在时消耗
     }
     (void)stat_drop(ctx, attacker_id, stat, 1, defender_id);   // 使**对方**降 1 级（施加方=特性持有方）
@@ -252,7 +282,7 @@ void trait_pre_hit_stat_boost_hook(BattleContext* ctx, int actor_id) {
         return;
     }
     const int stat = trait_stat_index_from_code(def_own.args[0]);
-    if (stat < 0 || !trait_proc_roll(def_own, ctx->rng())) {
+    if (stat < 0 || !trait_proc_roll(def_own, *ctx, defender_id, defender_id)) {
         return;   // ⚠️ rand 只在特性确在时消耗
     }
     (void)stat_change(ctx, defender_id, stat, 1);   // 使**自身**升 1 级
@@ -283,7 +313,7 @@ void trait_survive_lethal_hook(BattleContext* ctx, int defender_id) {
     }
     if (own.kind == TraitKind::Tenacious) {
         // "受到**致死**攻击时"：本次伤害后体力已 ≤0 才判定
-        if (defender.hp > 0 || !trait_proc_roll(own, ctx->rng())) {
+        if (defender.hp > 0 || !trait_proc_roll(own, *ctx, defender_id, defender_id)) {
             return;   // ⚠️ rand 只在致死时消耗
         }
         defender.hp = own.args[1] > 0 ? own.args[1] : 1;   // 余下 m 点（1/1/1/1/2/2）
@@ -295,7 +325,7 @@ void trait_survive_lethal_hook(BattleContext* ctx, int defender_id) {
     if (max_hp <= 0 || defender.hp > max_hp / denom) {
         return;
     }
-    if (!trait_proc_roll(own, ctx->rng())) {
+    if (!trait_proc_roll(own, *ctx, defender_id, defender_id)) {
         return;
     }
     defender.hp = max_hp;
@@ -323,8 +353,8 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
     }
     // 归零收口：目标已倒地就不重复归零；犀牛式回血挂 EVENT_TAKE_DAMAGE、事件 drain 在
     // 状态桶之后 → 回血晚于归零，高伤+瞬杀同时触发时犀牛最后仍满血（2026-09-15/16 口径）。
+    const int defender_id = 1 - attacker_id;
     const auto try_force_zero = [&]() {
-        const int defender_id = 1 - attacker_id;
         ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
         if (defender.hp <= 0) {
             return;
@@ -363,7 +393,10 @@ void trait_instant_kill_zero_hook(BattleContext* ctx, int attacker_id) {
         if (permille <= 0) {
             return;
         }
-        if (permille < 1000 && (ctx->rng().next() % 1000) >= permille) {
+        if (permille < 1000 && !ctx->roll_legacy_gate(
+                permille, 1000,
+                trait_chance(TraitKind::InstantKill, TraitChanceSubsite::Proc, attacker_id, defender_id),
+                ChanceSingleton::SkipDraw)) {
             return;
         }
     }
@@ -410,10 +443,10 @@ void trait_extra_damage_hook(BattleContext* ctx, int attacker_id) {
     if (!trait || trait->args[1] <= 0) {
         return;   // 先查特性（早退）——⚠️ rand 只在此后消耗
     }
-    if (!trait_proc_roll(*trait, ctx->rng())) {
+    const int defender_id = 1 - attacker_id;
+    if (!trait_proc_roll(*trait, *ctx, attacker_id, defender_id)) {
         return;
     }
-    const int defender_id = 1 - attacker_id;
     if (ctx->getPet(defender_id).hp <= 0) {
         return;
     }
@@ -484,14 +517,18 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         const int declared_pct = t.proc_forced ? 100 : trait_proc_permille(t) / 10;
         const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
                                                           ChanceSource::Trait);
-        if (gated_pct <= 0
-            || (gated_pct < 100 && static_cast<int>(ctx->rng().next() % 100) >= gated_pct)) {
+        if (!ctx->roll_legacy_gate(
+                gated_pct, 100,
+                trait_chance(t.kind, TraitChanceSubsite::CopiedPoisonProc, attacker_id, defender_id),
+                ChanceSingleton::SkipDraw)) {
             continue;
         }
         if (ctx->getPet(defender_id).hp <= 0) {
             continue;
         }
-        const int duration = 2 + ctx->rng().next() % 2;
+        const int duration = ctx->choose_legacy_range(
+            2, 3, trait_chance(t.kind, TraitChanceSubsite::CopiedPoisonDuration, attacker_id, defender_id),
+            ChanceSingleton::ConsumeDraw);
         (void)apply_anomaly(ctx, defender_id, t.args[1], duration, attacker_id);   // **现代**通道
     }
 
@@ -508,11 +545,15 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
         const int declared_pct = atk_own.proc_forced ? 100 : trait_proc_permille(atk_own) / 10;
         const int gated_pct = ctx->rewrite_anomaly_chance(defender_id, attacker_id, declared_pct,
                                                           ChanceSource::Trait);
-        if (gated_pct > 0
-            && (gated_pct >= 100 || static_cast<int>(ctx->rng().next() % 100) < gated_pct)) {
+        if (ctx->roll_legacy_gate(
+                gated_pct, 100,
+                trait_chance(atk_own.kind, TraitChanceSubsite::Proc, attacker_id, defender_id),
+                ChanceSingleton::SkipDraw)) {
             const ElfPet& defender = ctx->seerRobot[defender_id].elfPets[ctx->on_stage[defender_id]];
             if (defender.hp > 0) {
-                const int duration = 2 + ctx->rng().next() % 2;   // 必修6：赋予回合随机 2~3
+                const int duration = ctx->choose_legacy_range(
+                    2, 3, trait_chance(atk_own.kind, TraitChanceSubsite::PoisonDuration, attacker_id, defender_id),
+                    ChanceSingleton::ConsumeDraw);
                 (void)apply_anomaly_ancient(ctx, defender_id, atk_own.args[1], duration,
                                             attacker_id);
             }
@@ -533,11 +574,15 @@ void trait_contact_poison_hook(BattleContext* ctx, int attacker_id) {
                                                          : trait_proc_permille(def_own) / 10;
             const int gated_pct = ctx->rewrite_anomaly_chance(attacker_id, defender_id,
                                                               declared_pct, ChanceSource::Trait);
-            if (gated_pct > 0
-                && (gated_pct >= 100 || static_cast<int>(ctx->rng().next() % 100) < gated_pct)) {
+            if (ctx->roll_legacy_gate(
+                    gated_pct, 100,
+                    trait_chance(def_own.kind, TraitChanceSubsite::Proc, defender_id, attacker_id),
+                    ChanceSingleton::SkipDraw)) {
                 const ElfPet& attacker = ctx->seerRobot[attacker_id].elfPets[ctx->on_stage[attacker_id]];
                 if (attacker.hp > 0) {
-                    const int duration = 2 + ctx->rng().next() % 2;   // 必修6：赋予回合随机 2~3
+                    const int duration = ctx->choose_legacy_range(
+                        2, 3, trait_chance(def_own.kind, TraitChanceSubsite::PoisonDuration, defender_id, attacker_id),
+                        ChanceSingleton::ConsumeDraw);
                     (void)apply_anomaly_raw(ctx, attacker_id, def_own.args[1], duration,
                                             defender_id);
                 }

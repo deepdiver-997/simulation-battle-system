@@ -526,7 +526,7 @@ void resolve_skill_execution(BattleContext* ctx, int robot_id, State trigger_sta
     }
     // 连击次数视图层：**每次技能使用掷一次**（"1回合做 x~y 次攻击"的 x~y 是随机区间），
     // 第一次/第二次结算与多段共用同一个 N。无连击模板的技能是 1~1，掷点短路不消耗随机数。
-    ctx->ws.combo_view[robot_id].materialize(skill.roll_combo_count(ctx->rng()));
+    ctx->ws.combo_view[robot_id].materialize(skill.roll_combo_count(*ctx, robot_id));
     // 技能元素视图层：克制计算用的系别打底物化 skill.element，效果可改（"以XX系别算克制"）。
     // ★ 若**选择期**（MOVE_RIGHT）授予了"以指定系别进行伤害结算"（effect 2490），用授予值打底——
     //   否则这一行会把授予的系别冲掉（MOVE_RIGHT 早于 ON_SKILL_HIT）。同 `must_hit_grant` 的教训。
@@ -701,18 +701,19 @@ void apply_forced_expels(BattleContext* ctx) {
             continue;   // 守卫：对象体力为 0 → 无法被驱逐（死切流程已接管）
         }
         // 候选 = 存活 + 不在场 + 未被放逐锁
-        int candidates[6];
+        ChanceOption candidates[6];
         int candidate_count = 0;
         for (int slot = 0; slot < 6; ++slot) {
             const ElfPet& p = ctx->seerRobot[side].elfPets[slot];
             if (slot != victim_slot && p.hp > 0 && !p.is_locked) {
-                candidates[candidate_count++] = slot;
+                candidates[candidate_count++] = {slot, 1};
             }
         }
         if (candidate_count == 0) {
             continue;   // 守卫：背包中不存在其他存活（未被锁）精灵 → 无法被驱逐
         }
-        const int pick = candidates[ctx->rng().next() % candidate_count];
+        const int pick = ctx->choose_legacy_slot({candidates, static_cast<std::size_t>(candidate_count)},
+            chance_site(ChanceSiteKind::ForcedExpel, 0, 0, side, victim_slot), ChanceSingleton::ConsumeDraw);
         ctx->rewrite_round_choice(side, static_cast<int>(BattleFsm::ActionType::EXPEL), pick);
         log_battle_line("INFO", "forced expel: side=" + std::to_string(side)
                                     + " victim_slot=" + std::to_string(victim_slot)
@@ -728,11 +729,39 @@ void apply_forced_expels(BattleContext* ctx) {
     }
 }
 
+void clear_red_damage_roll(BattleWorkspace& ws, int attacker_id) {
+    ws.red_damage_roll_min[attacker_id] = ws.red_damage_roll_max[attacker_id] = -1;
+}
+
+void scale_red_damage(Calculation::DamageRolls& rolls, int64_t factor, int divisor,
+                      int checked_boost_pct = 0) {
+    const auto scale = [=](int value, bool endpoint) {
+        const int64_t product = static_cast<int64_t>(value) * factor;
+        if (product >= std::numeric_limits<int>::min() && product <= std::numeric_limits<int>::max()) {
+            return static_cast<int>(product) / divisor;
+        }
+        if (endpoint) {
+            return -1; // Hypothetical overflow invalidates only the reported interval.
+        }
+        if (checked_boost_pct > 0) {
+            return checked_pct_mul(value, checked_boost_pct, "battleFsm 增益重算");
+        }
+        // Live crit/combo keep their original int operation; do not impose the endpoint check.
+        return value * static_cast<int>(factor) / divisor;
+    };
+    rolls.sampled = scale(rolls.sampled, false);
+    if (rolls.low >= 0 && rolls.high >= 0) {
+        rolls.low = scale(rolls.low, true);
+        rolls.high = scale(rolls.high, true);
+    }
+}
+
 void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
     if (!ctx || attacker_id < 0 || attacker_id > 1) {
         return;
     }
 
+    clear_red_damage_roll(ctx->ws, attacker_id);
     clear_damage_snapshot(ctx->pendingDamage);
     clear_damage_snapshot(ctx->resolvedDamage);
 
@@ -771,7 +800,9 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
         ctx->ws.restraint_view[attacker_id] = cur > prev ? cur : prev;
         optimal_armed = true;
     }
-    snapshot.base = std::max(0, Calculation::calculateDamage(attacker_id, ctx->ws, skill, ctx->rng()));
+    auto rolls = Calculation::calculateDamage(attacker_id, ctx->ws, skill, [ctx] {
+        return ctx->sample_red_damage_variance();
+    });
     if (optimal_armed) {
         ctx->ws.restraint_view[attacker_id] = saved_restraint_view;
     }
@@ -785,7 +816,7 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
             boost_sum += g.pct;
         }
         if (boost_sum > 0) {
-            snapshot.base = checked_pct_mul(snapshot.base, boost_sum, "battleFsm 增益重算");
+            scale_red_damage(rolls, 100LL + boost_sum, 100, boost_sum);
         }
     }
     // 暴击：**只消费** query_usage 已掷好的结果（`ctx->crit_happened`），这里不再重掷。
@@ -802,7 +833,7 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
     //   两步各自取整（L99 的取整顺序："暴击系数计算后取整、抗性计算后取整"）。
     if (ctx->crit_happened[attacker_id]) {
         const int crit_mult = ctx->ws.cached_crit_damage[attacker_id];  // 默认 200（2 倍）
-        snapshot.base = snapshot.base * crit_mult / 100;               // ① 暴击系数（整段放大）
+        scale_red_damage(rolls, crit_mult, 100);                       // ① 暴击系数（整段放大）
         // ② 暴击抗性：读 ws **有效视图**（临时 buff 可修改；基线由 sync_damage_resist_view 重基）
         // ★ ATTACH_PIERCE（2026-11-22 SP④抗性提升无视）：施加方持凭证 → 读 base 基线。
         const bool crit_resist_pierced =
@@ -811,7 +842,7 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
         const int crit_resist = crit_resist_pierced
             ? ctx->ws.base_resist_pct[defender_id][0]
             : ctx->ws.eff_crit_resist_pct[defender_id];
-        snapshot.base = snapshot.base * (100 - crit_resist) / 100;     // 乘整段
+        scale_red_damage(rolls, 100 - crit_resist, 100);              // 乘整段
         snapshot.isCrit = true;
     }
     // ★ 连击（"1回合做 x~y 次攻击"）：官方是**一次伤害公式 ×N**，不是 N 次独立结算
@@ -834,8 +865,13 @@ void stage_simple_attack_damage(BattleContext* ctx, int attacker_id) {
     }
     const int combo_count = std::max(1, static_cast<int>(ctx->ws.combo_view[attacker_id]));
     if (combo_count > 1) {
-        snapshot.base = snapshot.base * combo_count;
+        scale_red_damage(rolls, combo_count, 1);
     }
+    if (rolls.low >= 0 && rolls.high >= 0) {
+        ctx->ws.red_damage_roll_min[attacker_id] = std::min(rolls.low, rolls.high);
+        ctx->ws.red_damage_roll_max[attacker_id] = std::max(rolls.low, rolls.high);
+    }
+    snapshot.base = rolls.sampled;
     snapshot.hitCount = combo_count;
     snapshot.afterAdd = snapshot.base;
     snapshot.afterMul = snapshot.base;
@@ -1201,7 +1237,9 @@ void stage_action_start_abnormal_damage(BattleContext* ctx, int robot_id) {
             continue;
         }
         // 概率档（官方 10 混乱只有 5%）：掷点放在 stage 期，快照里只留"这一回合确实要扣的段"。
-        if (profile.chance_pct < 100 && (ctx->rng().next() % 100) >= profile.chance_pct) {
+        if (profile.chance_pct < 100 && !ctx->roll_legacy_gate(profile.chance_pct, 100,
+                engine_chance(EngineChanceRule::PeriodicAnomaly, status_id, robot_id, robot_id),
+                ChanceSingleton::ConsumeDraw)) {
             continue;
         }
         int amount = profile.numerator;
@@ -1967,7 +2005,10 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
         return;
     }
     if (battleContext->roundChoice[0][0] == battleContext->roundChoice[1][0] && battleContext->roundChoice[0][0] == static_cast<int>(ActionType::USE_MEDICINE)) {
-        pr = battleContext->rng().next() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
+        const ChanceOption seats[] = {{1, 1}, {0, 1}};
+        const int first = battleContext->choose_legacy_slot(seats,
+            engine_chance(EngineChanceRule::MedicineTie, 0, -1, -1), ChanceSingleton::ConsumeDraw);
+        pr = first == 0 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
         log("Use medicine tie-break: " + std::string(pr == PreemptiveRight::SEER_ROBOT_1 ? "player0 wins." : "player1 wins."));
         battleContext->generateState();
         return;
@@ -2027,7 +2068,10 @@ void BattleFsm::handle_BattleFirstMoveRight(BattleContext* battleContext) {
             // pr = PreemptiveRight::SEER_ROBOT_1;
             // log("Preemptive right determined by default: Host Robot 1 wins.");
             // 现在改为随机决定先手权，增加不确定性
-            pr = battleContext->rng().next() % 2 == 1 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
+            const ChanceOption seats[] = {{1, 1}, {0, 1}};
+            const int first = battleContext->choose_legacy_slot(seats,
+                engine_chance(EngineChanceRule::SpeedTie, 0, -1, -1), ChanceSingleton::ConsumeDraw);
+            pr = first == 0 ? PreemptiveRight::SEER_ROBOT_1 : PreemptiveRight::SEER_ROBOT_2;
             log("Preemptive right determined by tie-break: " + std::string(pr == PreemptiveRight::SEER_ROBOT_1 ? "player0 wins." : "player1 wins."));
         }
     }
@@ -2113,6 +2157,7 @@ void BattleFsm::handle_BattleFirstAttackDamage(BattleContext* battleContext) {
     const int first_mover_id = resolve_first_mover_id(battleContext);
     // 裸伤台账：每次攻击尝试从 0 开始（被盔/被威的无效出口不会写入 → 读方拿到 0 而不是上一击的残留）
     battleContext->ws.raw_attack_damage[first_mover_id] = 0;
+    clear_red_damage_roll(battleContext->ws, first_mover_id);
     if (!battleContext->ws.skill_resolution_flags[first_mover_id].allowAttackDamagePipeline) {
         clear_damage_snapshot(battleContext->pendingDamage);
         clear_damage_snapshot(battleContext->resolvedDamage);
@@ -2257,6 +2302,7 @@ void BattleFsm::handle_BattleSecondAttackDamage(BattleContext* battleContext) {
     const int second_mover_id = resolve_second_mover_id(battleContext);
     // 裸伤台账：每次攻击尝试从 0 开始（同先手方）
     battleContext->ws.raw_attack_damage[second_mover_id] = 0;
+    clear_red_damage_roll(battleContext->ws, second_mover_id);
     if (!battleContext->ws.skill_resolution_flags[second_mover_id].allowAttackDamagePipeline) {
         log("Second mover's skill does not allow attack damage pipeline, skipping damage stage.");
         clear_damage_snapshot(battleContext->pendingDamage);

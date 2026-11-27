@@ -8,6 +8,7 @@
 #include <numerical-calculation/calculation.h>
 #include <iostream>
 #include <sstream>
+#include <utility>
 
 namespace {
 
@@ -82,7 +83,216 @@ const TimedBucket& bucket_for(const BattleContext* ctx, EffectContainer containe
 
 // 时点桶的执行逻辑已移入 TimedBucket::execute_at（src/effects/timed_bucket.cpp）。
 
+constexpr std::uint32_t kMaxChanceWeight = 2147483646u; // Size of the nonzero MINSTD cycle.
+// Legacy modulo includes the zero ticket emitted by some seeds and may use the full domain.
+constexpr std::uint32_t kMaxLegacyRangeWidth = kMaxChanceWeight + 1;
+
+std::uint32_t range_width(int low, int high) {
+    const auto width = static_cast<std::int64_t>(high) - low + 1;
+    if (width < 1 || width > kMaxLegacyRangeWidth)
+        throw std::invalid_argument("chance range does not fit a single RNG ticket");
+    return static_cast<std::uint32_t>(width);
+}
+
+std::array<ChanceOption, 2> percent_options(int percent) {
+    return {ChanceOption{1, static_cast<std::uint32_t>(percent)},
+            ChanceOption{0, static_cast<std::uint32_t>(100 - percent)}};
+}
+
 } // namespace
+
+std::uint32_t BattleContext::draw_chance_ticket(ChanceTicket ticket) noexcept {
+    if (auto& replay = binary_chance_replay) {
+        auto& count = ticket == ChanceTicket::Semantic ? replay->classified_draws : replay->sampled_draws;
+        ++count;
+    }
+    return rng_.next();
+}
+
+void BattleContext::latch_chance_error() noexcept {
+    if (auto& replay = binary_chance_replay; replay && !replay->control_error)
+        replay->control_error = std::current_exception();
+}
+
+int BattleContext::sample_red_damage_variance() noexcept {
+    return 217 + static_cast<int>(draw_chance_ticket(ChanceTicket::SampleOnly) % 39);
+}
+
+int BattleContext::sample_legacy_range(int low, int high, ChanceSingleton singleton) {
+    const auto width = range_width(low, high);
+    if (width == 1 && singleton == ChanceSingleton::SkipDraw) return low;
+    return low + static_cast<int>(draw_chance_ticket(ChanceTicket::SampleOnly) % width);
+}
+
+int BattleContext::choose_legacy_range(int low, int high, ChancePoint site, ChanceSingleton singleton) try {
+    const auto width = range_width(low, high);
+    if (width == 1 && singleton == ChanceSingleton::SkipDraw) return low;
+    const auto sample = [&] { return low + static_cast<int>(draw_chance_ticket(ChanceTicket::Semantic) % width); };
+    auto* resolver = binary_chance_replay ? binary_chance_replay->weighted_resolver : nullptr;
+    if (!resolver || width == 1) return sample();
+    site.round = roundCount;
+    site.state = currentState;
+    site.draw = ChanceDraw::LegacyModulo;
+    site.options.clear();
+    site.range = ChanceRange{low, high};
+    if (!resolver->should_enumerate(site)) {
+        const int sampled = sample();
+        resolver->record_sample(site, sampled);
+        return sampled;
+    }
+    const int forced = resolver->choose(site);
+    if (forced < low || forced > high)
+        throw BinaryChanceMismatch("forced outcome is outside the chance range");
+    (void)sample();
+    return forced;
+} catch (const BinaryChanceNeeded&) {
+    latch_chance_error();
+    throw;
+} catch (const BinaryChanceMismatch&) {
+    latch_chance_error();
+    throw;
+}
+
+bool BattleContext::roll_legacy_gate(int pass, int total, ChancePoint site, ChanceSingleton singleton) {
+    if (total <= 0) throw std::invalid_argument("chance gate requires a positive denominator");
+    pass = std::clamp(pass, 0, total);
+    const ChanceOption options[] = {{1, static_cast<std::uint32_t>(pass)},
+                                    {0, static_cast<std::uint32_t>(total - pass)}};
+    return choose_legacy_slot(options, std::move(site), singleton) == 1;
+}
+
+int BattleContext::choose_legacy_slot(std::span<const ChanceOption> options, ChancePoint site,
+                                     ChanceSingleton singleton) {
+    return choose_weighted(options, site, singleton, ChanceDraw::LegacyModulo);
+}
+
+int BattleContext::choose_legacy_rejection_slot(std::span<const ChanceOption> options, ChancePoint site) {
+    return choose_weighted(options, site, ChanceSingleton::ConsumeDraw, ChanceDraw::LegacySlotRejection);
+}
+
+int BattleContext::choose_weighted(std::span<const ChanceOption> options, ChancePoint& site,
+                                   ChanceSingleton singleton, ChanceDraw draw) {
+    return choose_weighted_impl(options, &site, singleton, draw);
+}
+
+int BattleContext::sample_weighted(std::span<const ChanceOption> options,
+                                   ChanceSingleton singleton, ChanceDraw draw) {
+    return choose_weighted_impl(options, nullptr, singleton, draw);
+}
+
+int BattleContext::choose_weighted_impl(std::span<const ChanceOption> options, ChancePoint* site,
+                                        ChanceSingleton singleton, ChanceDraw draw) try {
+    constexpr auto max_total = kMaxChanceWeight;
+    const bool reject_disabled = draw == ChanceDraw::LegacySlotRejection;
+    if (reject_disabled && options.size() > kMaxLegacyRangeWidth)
+        throw std::invalid_argument("chance pool does not fit a single RNG ticket");
+    std::uint32_t total = 0;
+    std::size_t positive = 0;
+    int sole_id = 0;
+    for (std::size_t i = 0; i < options.size(); ++i) {
+        const auto [id, weight] = options[i];
+        if (reject_disabled && weight > 1)
+            throw std::invalid_argument("rejection slots must be enabled or disabled");
+        // Sites have small candidate lists; no hash set/allocation on the ordinary path.
+        for (std::size_t j = 0; j < i; ++j)
+            if (options[j].id == id) throw std::invalid_argument("duplicate chance option ID");
+        if (weight > max_total - total) throw std::invalid_argument("chance weight total exceeds RNG range");
+        total += weight;
+        if (weight != 0) {
+            ++positive;
+            sole_id = id;
+        }
+    }
+    if (positive == 0) throw std::invalid_argument("chance site needs a positive-weight option");
+    auto* replay = site && binary_chance_replay ? &*binary_chance_replay : nullptr;
+    // Count only draws performed here, not draws a resolver or effect makes separately.
+    const auto ticket_kind = site ? ChanceTicket::Semantic : ChanceTicket::SampleOnly;
+    const auto next_ticket = [&]() noexcept { return draw_chance_ticket(ticket_kind); };
+    const auto sample_ticket = [&](std::span<const ChanceOption> candidates) -> std::uint32_t {
+        if (reject_disabled) {
+            std::size_t index;
+            do { index = next_ticket() % candidates.size(); } while (!candidates[index].weight);
+            return static_cast<std::uint32_t>(index);
+        }
+        auto r = next_ticket();
+        if (draw == ChanceDraw::Uniform) {
+            const auto limit = max_total - max_total % total;
+            while (r == 0 || r > limit) r = next_ticket();
+        }
+        return r % total;
+    };
+    if (positive == 1) {
+        if (reject_disabled) (void)sample_ticket(options); // The old full pool can still reject a ticket.
+        else if (singleton == ChanceSingleton::ConsumeDraw) (void)next_ticket();
+        return sole_id;
+    }
+
+    const auto sample_id = [&](std::span<const ChanceOption> candidates) {
+        auto ticket = sample_ticket(candidates);
+        if (reject_disabled) return candidates[ticket].id;
+        for (auto option : candidates) {
+            if (ticket < option.weight) return option.id;
+            ticket -= option.weight;
+        }
+        throw std::logic_error("validated chance intervals do not cover the draw");
+    };
+    // A native two-slot choice is not a bool, even if its IDs happen to be 0 and 1.
+    const bool legacy_binary = replay && site->kind == ChanceSiteKind::ParsedPercent &&
+                               options.size() == 2 && options[0].id == 1 && options[1].id == 0 &&
+                               total == 100 && static_cast<int>(options[0].weight) == site->percent;
+    if (replay && (replay->weighted_resolver || legacy_binary)) {
+        site->round = roundCount;
+        site->state = currentState;
+        site->draw = draw;
+        site->range.reset();
+        // Snapshot only on replay. The input span may itself refer to site->options.
+        site->options = std::vector<ChanceOption>(options.begin(), options.end());
+
+        int forced;
+        if (auto* resolver = replay->weighted_resolver) {
+            if (!resolver->should_enumerate(*site)) {
+                const int sampled = sample_id(site->options);
+                resolver->record_sample(*site, sampled);
+                return sampled;
+            }
+            forced = resolver->choose(*site);
+        } else if (replay->resolver) {
+            forced = replay->resolver->choose(*site);
+        } else {
+            if (replay->cursor == replay->prefix.size()) throw BinaryChanceNeeded{*site};
+            if (replay->cursor > replay->prefix.size() || replay->prefix[replay->cursor].point != *site)
+                throw BinaryChanceMismatch("binary chance prefix does not match the parsed roll site");
+            forced = replay->prefix[replay->cursor++].outcome;
+        }
+        for (auto option : site->options) {
+            if (option.id == forced && option.weight != 0) {
+                (void)sample_ticket(site->options);  // Match even the natural path's rejected tickets.
+                return forced;
+            }
+        }
+        throw BinaryChanceMismatch("forced outcome is not a positive-weight option at this site");
+    }
+
+    return sample_id(options);
+} catch (const BinaryChanceNeeded&) {
+    if (site) latch_chance_error();
+    throw;
+} catch (const BinaryChanceMismatch&) {
+    if (site) latch_chance_error();
+    throw;
+}
+
+bool BattleContext::roll_binary_percent(int percent, BinaryChancePoint& site, ChanceSiteKind kind) {
+    site.kind = kind;
+    site.percent = std::clamp(percent, 0, 100);
+    return choose_weighted(percent_options(site.percent), site, ChanceSingleton::SkipDraw,
+                           ChanceDraw::LegacyModulo) == 1;
+}
+
+bool BattleContext::sample_percent(int percent) {
+    return sample_weighted(percent_options(std::clamp(percent, 0, 100)), ChanceSingleton::SkipDraw,
+                           ChanceDraw::LegacyModulo) == 1;
+}
 
 BattleContext::BattleContext(IControlBlock* control_block, const SeerRobot robots[], SbsRng rng)
     : rng_(rng)

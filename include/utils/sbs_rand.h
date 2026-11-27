@@ -17,11 +17,22 @@
 class SbsRng {
 public:
     explicit SbsRng(unsigned int seed = 1) noexcept;
+    // Copy construction snapshots both counters and the stream. Assignment
+    // replaces the stream, preserving the destination's draw history.
+    SbsRng(const SbsRng&) noexcept = default;
+    SbsRng& operator=(const SbsRng&) noexcept;
     void seed(unsigned int seed) noexcept;
     int next() noexcept;
     std::uint64_t state() const noexcept { return state_; }
+    // One increment per next(); reseeding never resets the draw count.
+    std::uint64_t draw_count() const noexcept { return draw_count_; }
+    // New instances start at zero. Explicit seed() and non-self assignment
+    // advance this marker even if they replace the stream with the same state.
+    std::uint64_t revision() const noexcept { return revision_; }
 private:
-    std::uint64_t state_ = 1;
+    std::uint64_t state_;
+    std::uint64_t draw_count_ = 0;
+    std::uint64_t revision_ = 0;
 };
 
 // 非对局兼容序列（旧场景预播种及纯探针）。每线程独立，永不绑定对局。

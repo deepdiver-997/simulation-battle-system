@@ -1,10 +1,8 @@
-#include <utils/sbs_rand.h>
 #ifndef RESISTANCE_SYSTEM_H
 #define RESISTANCE_SYSTEM_H
 
+#include <utility>
 #include <vector>
-#include <cstdlib>
-#include <ctime>
 #include <abnormal-system/abnormal-types.h>
 
 /**
@@ -101,10 +99,12 @@ public:
 
     // --- 抗性判定 ---
 
+    enum class Trial { CompleteImmunity, SpecificResistance };
+
     /**
      * 检查是否抵抗指定异常状态
      * @param anomaly_id 异常状态 ID
-     * @param rng 当前对局的随机数流
+     * @param roll 判定回调：(anomaly_id, Trial, percent) → 是否掷中；正概率（含 100%）均调用
      * @param low_pct_penalty 低段抗性惩罚（百分点数）。只作用于 **>0 且 ≤50%** 的抗性段
      *   （全免% 与各抗性槽同规则）：0 < percent ≤ 50 时有效值 = percent - penalty，
      *   扣到 ≤0 即该段不掷（0% = 无抗性）。>50% 的抗性与未配置抗性不受影响。
@@ -117,17 +117,16 @@ public:
      *   2. 该异常属于控制类 → 查控制类抗性槽位
      *   3. 该异常属于非控制类 → 查非控制类抗性槽位
      */
-    bool isResistantTo(int anomaly_id, SbsRng& rng, int low_pct_penalty = 0) const {
+    template <typename Roll>
+    bool isResistantTo(int anomaly_id, Roll&& roll, int low_pct_penalty = 0) const {
         if (!is_valid_abnormal_status_id(anomaly_id)) return false;
         const int complete_eff = low_pct_penalty > 0 && complete_immunity > 0
                                      && complete_immunity <= 50
                                      ? complete_immunity - low_pct_penalty
                                      : complete_immunity;
         // 全异常免疫
-        if (complete_eff > 0) {
-            if (rng.next() % 100 < complete_eff) {
-                return true;
-            }
+        if (complete_eff > 0 && roll(anomaly_id, Trial::CompleteImmunity, complete_eff)) {
+            return true;
         }
 
         AbnormalStatusId id = static_cast<AbnormalStatusId>(anomaly_id);
@@ -142,7 +141,7 @@ public:
                 if (eff <= 0) {
                     return false;   // 低段被扣到 0：这一段不再构成抗性
                 }
-                return rng.next() % 100 < eff;
+                return roll(anomaly_id, Trial::SpecificResistance, eff);
             }
         }
 
@@ -152,13 +151,15 @@ public:
     /**
      * 批量检查：对当前活跃的异常状态列表进行抗性判定
      * @param active_anomaly_ids 当前活跃的异常状态 ID 列表
+     * @param roll 与 isResistantTo 相同的判定回调
      * @return 被抵抗的异常 ID 列表
      */
+    template <typename Roll>
     std::vector<int> checkResistedAnomalies(const std::vector<int>& active_anomaly_ids,
-                                           SbsRng& rng) const {
+                                           Roll&& roll) const {
         std::vector<int> resisted;
         for (int aid : active_anomaly_ids) {
-            if (isResistantTo(aid, rng)) {
+            if (isResistantTo(aid, roll)) {
                 resisted.push_back(aid);
             }
         }

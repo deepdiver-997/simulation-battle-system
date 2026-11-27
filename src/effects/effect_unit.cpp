@@ -22,12 +22,12 @@ namespace {
 
 // 概率 roll：chance_value（字面）优先；否则 chance_arg 指向 EffectArgs.int_args 下标。
 // -1 或参数缺失视为必定执行。
-// ⚠️ **只有异常附加这一类概率才过闸门**（亮节族，2026-09-22）：`gate_target >= 0` 表示
-//    本单元是 PrimitiveTag::Anomaly，按 ChanceSource::Skill 裁定（解析器生成的都是技能效果）；
+// ⚠️ **只有异常附加这一类概率才过闸门**（亮节族，2026-09-22）：
+//    PrimitiveTag::Anomaly 按 ChanceSource::Skill 裁定（解析器生成的都是技能效果）；
 //    其余概率（强化/弱化/回血/伤害…）**不走闸门**——亮节原文只管"附加异常效果"，
 //    概率挡伤/概率强化等不在它的管辖面内。这就是 ChanceTag 按类切分的落点。
 bool roll_chance(BattleContext* ctx, const EffectArgs& args, int chance_value, int chance_arg,
-                 int gate_actor, int gate_target) {
+                 int actor, int target, bool is_anomaly, BinaryChancePoint* site) {
     int percent = -1;
     if (chance_value >= 0) {
         percent = chance_value;
@@ -37,17 +37,14 @@ bool roll_chance(BattleContext* ctx, const EffectArgs& args, int chance_value, i
     if (percent < 0) {
         return true;  // 无概率 → 必定
     }
-    if (gate_target >= 0) {
-        percent = ctx->rewrite_anomaly_chance(gate_target, gate_actor, percent,
+    if (is_anomaly && target >= 0) {
+        percent = ctx->rewrite_anomaly_chance(target, actor, percent,
                                               ChanceSource::Skill);
     }
-    if (percent <= 0) {
-        return false;
-    }
-    if (percent >= 100) {
-        return true;
-    }
-    return (ctx->rng().next() % 100) < percent;
+    if (!site) return ctx->sample_percent(percent);
+    site->actor = actor;
+    site->target = target;
+    return ctx->roll_binary_percent(percent, *site);
 }
 
 // 解析真实 owner：优先 args.int_args[0]（bind_participants 绑定），缺省回退 unit.actor。
@@ -236,49 +233,42 @@ BranchKey run_primitive(BattleContext* ctx, const EffectArgs& args, const Effect
 // 的条件求值，其余（概率 roll、原语、分支递归）不变；递归进分支子单元时各自按条件判。
 BranchKey execute_effect_unit_impl(BattleContext* ctx, const EffectArgs& args,
                                    const ParsedEffectProgram& program, int index,
-                                   bool skip_condition) {
+                                   bool skip_condition, BinaryChancePoint* site = nullptr) {
     const EffectUnit* node = program.unit_at(index);
     if (!ctx || !node) {
         return BranchKey::Invalid;
     }
     const EffectUnit& unit = *node;
+    const auto descend = [&](int child, BinaryChanceEdge edge) {
+        if (site) site->path.push_back(edge);
+        return execute_effect_unit_impl(ctx, args, program, child, /*skip_condition=*/false, site);
+    };
     // 前置条件（第二刀）：不满足 → 效果不触发（走 on_other/无动作），先于概率 roll。
     if (!skip_condition && !condition_holds(ctx, args, unit)) {
-        return unit.on_other != -1 ? execute_effect_unit(ctx, args, program, unit.on_other)
+        return unit.on_other != -1 ? descend(unit.on_other, BinaryChanceEdge::ConditionFailed)
                                    : BranchKey::Never;
     }
-    // 概率前置：未触发 → on_other 兜底（或返回 Never）
-    // ⚠️ 只有异常附加类单元把 actor/target 交给闸门（见 roll_chance 注）；其余传 -1。
-    {
-        const bool is_anomaly = (unit.primary_tag == PrimitiveTag::Anomaly);
-        const int gate_actor = is_anomaly ? resolve_actor(args, unit) : -1;
-        if (!roll_chance(ctx, args, unit.chance_value, unit.chance_arg, gate_actor,
-                         is_anomaly ? resolve_target(gate_actor, unit) : -1)) {
-            return unit.on_other != -1 ? execute_effect_unit(ctx, args, program, unit.on_other)
-                                       : BranchKey::Never;
-        }
+    // 概率前置：未触发 → on_other 兜底（或返回 Never）。只有异常附加受闸门改写。
+    const bool is_anomaly = unit.primary_tag == PrimitiveTag::Anomaly;
+    const int actor = (is_anomaly || site) ? resolve_actor(args, unit) : -1;
+    const int target = (is_anomaly || site) ? resolve_target(actor, unit) : -1;
+    if (site) site->unit_index = index;
+    if (!roll_chance(ctx, args, unit.chance_value, unit.chance_arg, actor, target, is_anomaly, site)) {
+        return unit.on_other != -1 ? descend(unit.on_other, BinaryChanceEdge::RollFailed)
+                                   : BranchKey::Never;
     }
     // 主动作 → 归一化细码 → 选分支
     const BranchKey key = run_primitive(ctx, args, unit);
-    int branch = -1;
     switch (key) {
         case BranchKey::Success:
-            branch = unit.on_success;
-            break;
+            return unit.on_success != -1 ? descend(unit.on_success, BinaryChanceEdge::Success) : key;
         case BranchKey::Immune:
-            branch = unit.on_immune;  // Type B：被免疫 → 补偿
-            break;
+            return unit.on_immune != -1 ? descend(unit.on_immune, BinaryChanceEdge::Immune) : key;
         case BranchKey::Blocked:
-            branch = unit.on_blocked;
-            break;
+            return unit.on_blocked != -1 ? descend(unit.on_blocked, BinaryChanceEdge::Blocked) : key;
         default:
-            branch = unit.on_other;
-            break;
+            return unit.on_other != -1 ? descend(unit.on_other, BinaryChanceEdge::Other) : key;
     }
-    if (branch != -1) {
-        return execute_effect_unit(ctx, args, program, branch);
-    }
-    return key;
 }
 
 }  // namespace
@@ -291,6 +281,21 @@ BranchKey execute_effect_unit(BattleContext* ctx, const EffectArgs& args,
 BranchKey execute_effect_unit_unconditional(BattleContext* ctx, const EffectArgs& args,
                                             const ParsedEffectProgram& program, int root_index) {
     return execute_effect_unit_impl(ctx, args, program, root_index, /*skip_condition=*/true);
+}
+
+void execute_parsed_skill_unit(BattleContext* ctx, const EffectArgs& args, bool skip_root_condition) {
+    const auto& ref = args.parsed_unit;
+    if (!ctx || args.extra || !ref.program) return;
+    if (!ctx->binary_chance_replay) {
+        execute_effect_unit_impl(ctx, args, *ref.program, ref.root_index, skip_root_condition);
+        return;
+    }
+    BinaryChancePoint site;
+    site.program = ref.program;
+    site.arguments = args.owned_int_args;
+    site.root_index = ref.root_index;
+    site.skip_root_condition = skip_root_condition;
+    execute_effect_unit_impl(ctx, args, *ref.program, ref.root_index, skip_root_condition, &site);
 }
 
 // ── 单元准入门存储（进程全局）──

@@ -7,13 +7,10 @@
 // 以及线协议结构（MessageHeader / Command / build_message）。结果"FSM 的 IO 抽象"被
 // asio 类型和线格式同时绑死：想换传输层就得连 FSM 的头一起改。
 //
-// 现在这里只留下 FSM 真正调用的三个方法。线协议在 include/server/protocol.h，
-// 具体实现在 server 层（Room）。
-//
-// 三个就是全部：全仓 `control_block_->` 的调用点只有 wait_for_input / async_write
-// （on_fsm_paused 是本轮新增的输出时点）。原先接口上的 broadcast / broadcast_to /
-// duplicate_context / log_operation / is_training_mode 全仓零调用，已删除。
+// FSM 调用下面的三个 I/O 方法，线协议在 include/server/protocol.h，具体实现在
+// server 层（Room）。私有同步控制器另可提供不经过 I/O 的单步结果存储。
 
+#include <memory>
 #include <string>
 
 class BattleContext;
@@ -40,6 +37,22 @@ public:
     // 逐状态往外发既没意义又会让客户端半路渲染。让客户端拿到"这一段的完整过程 +
     // 结束时的权威状态"，再自己决定怎么播 —— 播哪些、怎么过渡是渲染层的事。
     virtual void on_fsm_paused(BattleContext* ctx) = 0;
+
+    // Opaque, privately owned step data. Synchronous controls may keep one
+    // latest payload; nullptr clears it, and taking it empties the slot.
+    // The slot is not battle state and must not be copied into clones.
+    class StepPayload {
+    public:
+        virtual ~StepPayload() = default;
+        StepPayload(const StepPayload&) = delete;
+        StepPayload& operator=(const StepPayload&) = delete;
+    protected:
+        StepPayload() = default;
+        StepPayload(StepPayload&&) noexcept = default;
+        StepPayload& operator=(StepPayload&&) noexcept = default;
+    };
+    virtual void store_step_payload(std::unique_ptr<StepPayload>) noexcept {}
+    virtual std::unique_ptr<StepPayload> take_step_payload() noexcept { return {}; }
 };
 
 #endif  // ICONTROLBLOCK_H

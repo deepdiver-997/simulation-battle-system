@@ -464,6 +464,7 @@ public:
     // （type/owner/register_round/duration/once/scope/valid_id），与桶条目
     // "数据面只出原始维度、名字客户端解析"同纪律。
     const std::unordered_map<int, EventWatcher>& watchers() const { return watchers_; }
+    bool quiescent() const noexcept { return !draining_ && pending_.empty(); }
 
 private:
     friend class BattleClone;

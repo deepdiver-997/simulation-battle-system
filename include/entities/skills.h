@@ -245,12 +245,7 @@ public:
     // 连击次数掷点：**每次技能使用掷一次**，第一次/第二次结算共用同一个 N。
     // 区间退化（min==max，绝大多数技能是 1~1）时**不消耗随机数** —— 与"暴击率 0 短路"同理，
     // 保证没有连击的既有场景 rand 序列逐字节不变。
-    int roll_combo_count(SbsRng& rng) const {
-        if (combo_max <= combo_min) {
-            return std::max(1, combo_min);
-        }
-        return combo_min + (rng.next() % (combo_max - combo_min + 1));
-    }
+    int roll_combo_count(BattleContext& ctx, int owner) const;
     // 技能请求凭证（697"无视伤害限制"/699"无视攻击免疫"/强制执行等效果模板经 effect_meta 识别后合并）。
     // 攻击时由 materialize_attack_credential 并入 ws.attack_credential，作为"请求携带的凭证"，
     // 在 query_usage 门判定（先于效果注册）消费。force_execute 非穿透但同族（凭证位）。

@@ -258,7 +258,11 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
         if (final_pct <= 0) {
             return ApplyAnomalyResult::ROLL_FAILED;
         }
-        if (final_pct < 100 && static_cast<int>(ctx->rng().next() % 100) >= final_pct) {
+        if (final_pct < 100
+            && !ctx->roll_legacy_gate(final_pct, 100,
+                                      engine_chance(EngineChanceRule::AnomalyApplication,
+                                                    anomaly_id, actor, target),
+                                      ChanceSingleton::SkipDraw)) {
             return ApplyAnomalyResult::ROLL_FAILED;
         }
     }
@@ -340,7 +344,14 @@ static ApplyAnomalyResult apply_anomaly_impl(BattleContext* ctx,
     // 维护（挂曝/消逝时刷新），kernel 不认识任何具体印记。
     if (channel == AnomalyChannel::Modern && reflect_depth == 0
         && pet.resistance.isResistantTo(
-               anomaly_id, ctx->rng(),
+               anomaly_id,
+               [&](int id, ResistanceSystem::Trial trial, int percent) {
+                   const int subsite = id * 2 + static_cast<int>(trial);
+                   return ctx->roll_legacy_gate(percent, 100,
+                                                engine_chance(EngineChanceRule::AnomalyResistance,
+                                                              subsite, actor, target),
+                                                ChanceSingleton::ConsumeDraw);
+               },
                ctx->on_stage[target] >= 0 && ctx->on_stage[target] < 6
                    ? ctx->anomaly_resist_low_penalty[target][ctx->on_stage[target]]
                    : 0)) {
@@ -520,15 +531,27 @@ RandomAnomalyResult attach_random_anomalies(BattleContext* ctx,
         ctx->event_center_.emit(low);
     }
     if (gated_pct < 100
-        && (gated_pct <= 0 || static_cast<int>(ctx->rng().next() % 100) >= gated_pct)) {
+        && (gated_pct <= 0
+            || !ctx->roll_legacy_gate(gated_pct, 100,
+                                      engine_chance(EngineChanceRule::RandomAnomaly, 0, actor, target),
+                                      ChanceSingleton::SkipDraw))) {
         return out;
     }
     out.rolled = 1;
-    // ③ 不重复挑选（部分 Fisher-Yates：使用当前对局的随机数流）。
+    // ③ 不重复挑选（部分 Fisher-Yates）。候选池已去重，按当前后缀顺序用异常 ID 掷骰。
     std::vector<int> bag = pool;
+    std::vector<ChanceOption> options;
+    options.reserve(bag.size());
     for (int pick = 0; pick < out.requested; ++pick) {
-        const int idx = pick + static_cast<int>(ctx->rng().next() % static_cast<unsigned>(bag.size() - pick));
-        std::swap(bag[pick], bag[idx]);
+        const auto first = bag.begin() + pick;
+        options.clear();
+        for (auto it = first; it != bag.end(); ++it) {
+            options.push_back({*it, 1});
+        }
+        const int selected = ctx->choose_legacy_slot(options,
+            engine_chance(EngineChanceRule::RandomAnomaly, 1, actor, target),
+            ChanceSingleton::ConsumeDraw);
+        std::iter_swap(first, std::find(first, bag.end(), selected));
         const ApplyAnomalyResult r = apply_anomaly(ctx, target, bag[pick],
                                                    /*duration_rounds=*/-1, actor);
         if (r == ApplyAnomalyResult::SUCCESS || r == ApplyAnomalyResult::REPLACED_EXISTING
@@ -610,12 +633,14 @@ void derive_anomaly(BattleContext* ctx, int target, const ElfPet& /*pet*/,
     int derived_id = d.derived_id;
     if (d.group == AbnormalDerivationGroup::CurseRoll) {
         // 官方 23：诅咒结束后随机转化为 烈焰诅咒 24 / 致命诅咒 25 / 虚弱诅咒 26 之一。
-        static constexpr int kCurseRoll[] = {
-            static_cast<int>(AbnormalStatusId::FlameCurse),
-            static_cast<int>(AbnormalStatusId::DeathCurse),
-            static_cast<int>(AbnormalStatusId::WeaknessCurse),
+        static constexpr ChanceOption kCurseRoll[] = {
+            {static_cast<int>(AbnormalStatusId::FlameCurse), 1},
+            {static_cast<int>(AbnormalStatusId::DeathCurse), 1},
+            {static_cast<int>(AbnormalStatusId::WeaknessCurse), 1},
         };
-        derived_id = kCurseRoll[ctx->rng().next() % 3];
+        derived_id = ctx->choose_legacy_slot(kCurseRoll,
+            engine_chance(EngineChanceRule::DerivedAnomaly, source_id * 2, actor, target),
+            ChanceSingleton::ConsumeDraw);
     }
     if (!is_valid_abnormal_status_id(derived_id)) {
         return;
@@ -624,7 +649,9 @@ void derive_anomaly(BattleContext* ctx, int target, const ElfPet& /*pet*/,
     int rounds = random_anomaly_duration();
     if (d.derived_rounds_min > 0) {
         const int hi = std::max(d.derived_rounds_min, d.derived_rounds_max);
-        rounds = d.derived_rounds_min + (ctx->rng().next() % (hi - d.derived_rounds_min + 1));
+        rounds = ctx->choose_legacy_range(d.derived_rounds_min, hi,
+            engine_chance(EngineChanceRule::DerivedAnomaly, source_id * 2 + 1, actor, target),
+            ChanceSingleton::ConsumeDraw);
     }
     // ⚠️ **+1 是必须的**：衍化发生在**回合扣减点**，而该回合的行动阶段（ACTION_START 等）
     //    早已跑完 —— 转出异常的"第一个生效回合"是**下一回合**。而 `has_active` 是
@@ -679,7 +706,11 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         if (p.timing != AbnormalDamageTiming::RoundReduction) {
             continue;
         }
-        if (p.chance_pct < 100 && (ctx->rng().next() % 100) >= p.chance_pct) {
+        if (p.chance_pct < 100
+            && !ctx->roll_legacy_gate(p.chance_pct, 100,
+                                      engine_chance(EngineChanceRule::PeriodicAnomaly,
+                                                    id, 1 - target, target),
+                                      ChanceSingleton::ConsumeDraw)) {
             continue;
         }
         if (pet.hp <= 0) {
@@ -725,7 +756,11 @@ int tick_abnormal_statuses(BattleContext* ctx, int target) {
         if (p.timing != AbnormalDamageTiming::OnExpire || pet.hp <= 0) {
             continue;
         }
-        if (p.chance_pct < 100 && (ctx->rng().next() % 100) >= p.chance_pct) {
+        if (p.chance_pct < 100
+            && !ctx->roll_legacy_gate(p.chance_pct, 100,
+                                      engine_chance(EngineChanceRule::PeriodicAnomaly,
+                                                    id, 1 - target, target),
+                                      ChanceSingleton::ConsumeDraw)) {
             continue;
         }
         deal_anomaly_damage(ctx, target, pet, p, /*actor=*/1 - target);
@@ -1372,11 +1407,13 @@ int seal_skill(BattleContext* ctx, int source, int target, int effect_id, bool a
     std::function<bool(BattleContext*, int, int, bool)> condition = nullptr;
     if (chance_pct < 100) {
         const int chance = chance_pct <= 0 ? 0 : chance_pct;
-        condition = [chance](BattleContext* c, int, int, bool) {
+        condition = [chance, effect_id, source](BattleContext* c, int user, int, bool) {
             if (chance <= 0) {
                 return false;
             }
-            return (c->rng().next() % 100) < chance;
+            return c->roll_legacy_gate(chance, 100,
+                                       engine_chance(EngineChanceRule::SkillSeal, effect_id, source, user),
+                                       ChanceSingleton::SkipDraw);
         };
     }
     // 回合型 / 次数型**二选一**（文档 §5.1）：有 duration 走回合型（remaining_counts 不设，

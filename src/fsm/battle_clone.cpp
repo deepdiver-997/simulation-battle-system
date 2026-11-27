@@ -28,11 +28,18 @@ public:
         if (error.empty()) error = message;
     }
     void on_fsm_paused(BattleContext*) override {}
+    void store_step_payload(std::unique_ptr<StepPayload> payload) noexcept override {
+        step_payload_ = std::move(payload);
+    }
+    std::unique_ptr<StepPayload> take_step_payload() noexcept override {
+        return std::move(step_payload_);
+    }
 
     std::string error;
 private:
     const BattleFsm& fsm_;
     const std::unique_ptr<BattleContext>& context_;
+    std::unique_ptr<StepPayload> step_payload_;
 };
 
 bool valid_roster_slots(const BattleContext& ctx) {
@@ -238,6 +245,7 @@ std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
         error = message;
         return nullptr;
     };
+    if (source.binary_chance_replay) return fail("source has an active binary chance replay");
     const auto* controller = dynamic_cast<const BattleCloneControl*>(source.control_block_);
     const auto* fsm = source.m_fsm;
     if (!fsm || !controller || !controller->clone_source_certified(source, *fsm))

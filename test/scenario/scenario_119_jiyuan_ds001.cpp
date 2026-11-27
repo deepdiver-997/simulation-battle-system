@@ -82,12 +82,13 @@ int main() {
 
     //========== T3 虚无豁免（unit，无需开局）==========
     {
-        SbsRng rng;
+        ScenarioBattle b(scenario::make_party(plain_pet(0)), scenario::make_party(plain_pet(1)));
+        BattleContext& ctx = b.ctx();
         EffectiveTrait void_dodge;
         void_dodge.kind = TraitKind::VoidDodge;
         void_dodge.proc_forced = true;
         void_dodge.args[0] = 0;   // 0‰：不吃必发 → 按自身概率（0）恒不触发
-        CHECK(trait_proc_roll(void_dodge, rng) == false,
+        CHECK(trait_proc_roll(void_dodge, ctx, 1, 0) == false,
               "T3 虚无不吃必发（必修6 ③）：proc_forced 不得把闪避推成 100%");
 
         EffectiveTrait poison;
@@ -95,11 +96,11 @@ int main() {
         poison.proc_forced = true;
         poison.args[0] = 0;       // 0% 概率 + proc_forced → 必发
         poison.args[1] = static_cast<int>(AbnormalStatusId::Paralysis);
-        CHECK(trait_proc_roll(poison, rng) == true, "T3 毒特性吃必发（乱流的正当消费者）");
+        CHECK(trait_proc_roll(poison, ctx, 0, 1) == true, "T3 毒特性吃必发（乱流的正当消费者）");
 
         EffectiveTrait poison_plain = poison;
         poison_plain.proc_forced = false;
-        CHECK(trait_proc_roll(poison_plain, rng) == false, "T3 对照：无必发时 0% 就是 0%");
+        CHECK(trait_proc_roll(poison_plain, ctx, 0, 1) == false, "T3 对照：无必发时 0% 就是 0%");
         std::cout << "  [T3] 虚无豁免 / 毒必发 对照 通过\n";
     }
 

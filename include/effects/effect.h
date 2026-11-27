@@ -263,7 +263,6 @@ private:
     // 初始化单例（只执行一次）
     void ensureInitialized(const std::string& lib_dir);
 
-    static bool roll_percent(int percent, SbsRng& rng);
     void register_effect(int effect_id, EffectFn fn, const std::string& source,
                          BattleCallbackCopy copy);
 

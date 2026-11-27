@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <span>
 
+#include <fsm/binary_chance.h>
 #include <primitives/battle_primitives.h>
 #include <plugin/plugin_interface.h>
 
@@ -33,7 +35,11 @@
 //   v6：EventWatcher 增加克隆准入标记。
 //   v7：DB 效果参数持有不可变程序，技能与效果单元布局随之调整。
 //   v8：IEffectRegistry 新增原生技能克隆审计登记入口。
-constexpr uint32_t kPluginAbiVersion = 8;
+//   v9：原生技能/魂印可通过 roll_native_percent 申报可回放的概率点。
+//   v10：对局 RNG 与概率重放新增计数、控制流记录（BattleContext 布局变化）。
+//   v11：语义概率闸、区间和有序加权选择；红伤区间落 BattleWorkspace。
+//   v12：不放回的槽位选择可保留旧拒绝重掷，同时只向回放暴露合法结果。
+constexpr uint32_t kPluginAbiVersion = 11; // Transitional source access; v12 seals the stream.
 
 // Core 原语函数指针集合。由 sim_core 填充（见 src/effects/core_api.cpp 的 core_api()）。
 struct CoreApi {
@@ -277,6 +283,15 @@ struct CoreApi {
     // 层数被消耗归零 → has_active_anomaly 查询自然解除遮蔽，无需主动撤销。
     void (*set_anomaly_view_layers)(BattleContext*, int effect_id, int side, int layers) = nullptr;
     int (*get_anomaly_view_layers)(const BattleContext*, int effect_id, int side) = nullptr;
+    // NativeSkill/SoulMark only. The target is the recipient (actor for a self buff).
+    // Use a distinct, stable subsite per roll in a rule, starting at 0. No anomaly gate.
+    bool (*roll_native_percent)(BattleContext*, ChanceSiteKind source, int rule_id, int subsite_id,
+                                int actor, int target, int percent) = nullptr;
+    bool (*roll_legacy_gate)(BattleContext*, int pass, int total, ChancePoint, ChanceSingleton) = nullptr;
+    int (*choose_legacy_range)(BattleContext*, int low, int high, ChancePoint, ChanceSingleton) = nullptr;
+    int (*choose_legacy_slot)(BattleContext*, std::span<const ChanceOption>, ChancePoint, ChanceSingleton) = nullptr;
+    int (*choose_legacy_rejection_slot)(BattleContext*, std::span<const ChanceOption>, ChancePoint) = nullptr;
+    int (*sample_legacy_range)(BattleContext*, int low, int high, ChanceSingleton) = nullptr;
 };
 
 // sim_core 暴露的 CoreApi 单例（具名填充 + 完整性检查，见 src/effects/core_api.cpp）。

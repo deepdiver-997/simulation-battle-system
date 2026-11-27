@@ -228,18 +228,24 @@ int main() {
         carrier.resistance.setUncontrolSlot(0, 2, 10);     // 烧伤抗性 10%（≤50% 段）
         carrier.resistance.setUncontrolSlot(1, 3, 60);     // 异常3 抗性 60%（>50% 段）
         preset_bao(b, 1);
+        // 独立探针继续使用原来的种子，不消耗下方端到端对局的随机流。
+        const auto roll_with = [](SbsRng& rng) {
+            return [&rng](int, ResistanceSystem::Trial, int percent) {
+                return rng.next() % 100 < percent;
+            };
+        };
         // ① 带曝：两段 ≤50% 全部扣穿 → 无论种子永不抵抗（确定性断言）。
         SbsRng low_rng(80325);
         for (int i = 0; i < 50; ++i) {
             const bool resisted = carrier.resistance.isResistantTo(
-                2, low_rng, meiheweite_bao::kBaoResistLowPenalty);
+                2, roll_with(low_rng), meiheweite_bao::kBaoResistLowPenalty);
             CHECK_EQ(resisted, false, "T8032d 5%全免+10%烧伤抗性被 10 点扣穿 → 永不抵抗");
         }
         // ② 同种子双跑：>50% 段不受惩罚影响（两次消费同一随机序列 → 结果一致）。
         SbsRng no_penalty_rng(80326), with_penalty_rng(80326);
-        const bool no_penalty = carrier.resistance.isResistantTo(3, no_penalty_rng);
+        const bool no_penalty = carrier.resistance.isResistantTo(3, roll_with(no_penalty_rng));
         const bool with_penalty = carrier.resistance.isResistantTo(
-            3, with_penalty_rng, meiheweite_bao::kBaoResistLowPenalty);
+            3, roll_with(with_penalty_rng), meiheweite_bao::kBaoResistLowPenalty);
         CHECK_EQ(no_penalty, with_penalty, "T8032d 60%（>50%）抗性不受惩罚影响");
         // ③ 端到端：带曝载体吃烧伤 → 抗性段已扣穿，永不 RESISTED（无随机项）。
         for (int i = 0; i < 3; ++i) {

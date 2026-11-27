@@ -1,9 +1,8 @@
-#include <utils/sbs_rand.h>
 #ifndef TRAIT_STATE_H
 #define TRAIT_STATE_H
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TraitState —— 通用特性（new_se stat=1）运行时层（header-only，插件可直调）
+// TraitState —— 通用特性（new_se stat=1）运行时层
 //
 // 通用特性的静态数据在 `ElfPet::commonTrait`（PetFactory 从 new_se 装配，见
 // entities/common_trait.h），本层负责**战斗内的生效视图**与**可查询/可变更**：
@@ -16,8 +15,8 @@
 // 概率触发类特性的行为函数掷点前统一查 `proc_forced`，真则必发 —— 复制时置位即可。
 // 需要更细的"按 kind 覆写参数"时，给 EffectiveTrait 加字段，仍不碰文本。
 //
-// ⚠️ header-only 是为了插件能调（CLAUDE.md 3.9：插件 dylib 不链接 sim_core）——
-//    仿 RuleCenter 先例，本头不建 .cpp；依赖 BattleContext 的入口内联在 battleContext.h。
+// ⚠️ 查询/解码保持 header-only，供不链接 sim_core 的插件调用（CLAUDE.md 3.9）。
+//    BattleContext 的查询/变更入口内联在 battleContext.h；战斗掷点由 common_trait.cpp 实现。
 // ═══════════════════════════════════════════════════════════════════════════
 
 #include <cstdlib>
@@ -28,27 +27,27 @@
 #include <entities/common_trait.h>
 
 // 特性机制身份。按需扩充（一种机制一个值，与官方 effect_id 无关——同一机制不同星级
-// 在 new_se 里是多行不同 idx/effect_id，行为一致只差参数）。
+// 在 new_se 里是多行不同 idx/effect_id，行为一致只差参数）。数值也是 Trait chance rule ID，勿重编号。
 // 名字 → kind 的映射见 trait_kind_from_name；映射外的名字一律 None（数据可查、行为 no-op）。
 enum class TraitKind {
     None = 0,
-    InstantKill,  // 瞬杀（官方 effect_id 32/151——咤克斯式检测查的就是这两个 id）：
+    InstantKill = 1,  // 瞬杀（官方 effect_id 32/151——咤克斯式检测查的就是这两个 id）：
                   //      0-5星统一 = 红伤落地后 force_hp_to_zero 归零秒杀（**不是粉伤**、
                   //      无红伤修正，星级只差触发概率 args[0] 千分点）；
                   //      可被"秒杀转化/免疫"短路（原语查标记，见 battle_primitives.h）
-    Hardness,     // 坚硬：受伤减 n%（红伤管线 REDUCE_TRAIT 阶段，非通用减伤、乘法、早于保底）
-    Spirit,       // **精神 / 强袭**（同一个 Eid 65，靠 args[0] 分类别）：
+    Hardness = 2,     // 坚硬：受伤减 n%（红伤管线 REDUCE_TRAIT 阶段，非通用减伤、乘法、早于保底）
+    Spirit = 3,       // **精神 / 强袭**（同一个 Eid 65，靠 args[0] 分类别）：
                   //   "物理攻击或者特殊攻击伤害增加 n%"——必修6：**不属于通用增伤、乘法计算**
                   //   → AMP_EXTRA 阶段；args[0]=官方类别码（**1=物理=强袭 / 2=特殊=精神**，
                   //   与 map_skill_type 的 1物理/2特殊 一致）、args[1]=增伤百分点。
                   //   ⚠️ 门控必须读 args[0]（早年硬编码"只认特殊"会把强袭做死）。
-    ExtraDamagePhysical,  // 强攻（Eid 62）："物理攻击有 n% 几率使伤害提高 m 点"（DB desc）；
+    ExtraDamagePhysical = 4,  // 强攻（Eid 62）："物理攻击有 n% 几率使伤害提高 m 点"（DB desc）；
                           //   args[0]=概率百分点、args[1]=点数。
                           //   ★ 必修6 ①"属于**追加伤害，与红伤一并结算**" → AMP_EXTRA 点数加成；
                           //   ★ 必修6 ②"**攻击技能 miss 了也可以扣除对手体力**" → miss 出口单列
                           //   （trait_extra_damage_on_miss_hook）。
-    ExtraDamageSpecial,   // 强念（Eid 63）：同上，"特殊攻击有 n% 几率使伤害提高 m 点"。
-    Dancer,               // 乱舞（Eid 503/504）：**已被官方废除**（必修6："乱舞依旧被废除，
+    ExtraDamageSpecial = 5,   // 强念（Eid 63）：同上，"特殊攻击有 n% 几率使伤害提高 m 点"。
+    Dancer = 6,               // 乱舞（Eid 503/504）：**已被官方废除**（必修6："乱舞依旧被废除，
                           //   因此可以说是最没用的特性。0 星乱舞跟白板一样"；库里 增伤 args 0/6/7/8/9/10、
                           //   "增加攻击目标数" args 全 0）→ 登记 kind 但行为 **no-op**，
                           //   将来若官方复活再按 args 补多目标与增伤。
@@ -68,14 +67,14 @@ enum class TraitKind {
     //    ON_SKILL_HIT 时点、直接调 apply_anomaly（现代原语）。故本族钩子只认**本体槽**。
     //    ⚠️ 别给 Eid 6/66/67 写 custom_effect_overrides 行——这些 effect_info id 与
     //    moves 用的同 id 不同义（effect_info 6=反弹伤害文本）。
-    ActivePoisonPhysical,  // 静电 / 颤栗（主动毒·物理）
-    ActivePoisonSpecial,   // 火热 / 极寒（主动毒·特殊）
-    PassivePoison,         // 带电 / 高热 / 冰冷 / 阴森（被动毒·受物攻弹给攻方，裸施加）
+    ActivePoisonPhysical = 7,  // 静电 / 颤栗（主动毒·物理）
+    ActivePoisonSpecial = 8,   // 火热 / 极寒（主动毒·特殊）
+    PassivePoison = 9,         // 带电 / 高热 / 冰冷 / 阴森（被动毒·受物攻弹给攻方，裸施加）
     // ── 批次 A（2026-09-16，必修6《精灵特性》口径）──
     // ⚠️ 全族的**官方描述数值都是错的**（必修6 逐族给了实际内置值）；好在本项目用的
     //    `new_se.args` 里存的**就是修正后的实际值**（逐星级一行），故本层直读 args，
     //    只有"坚硬"一处 DB 也错（用 trait_hardness_pct 语料修正表）。
-    SingleElementAmp,      // 单属性增伤 15 个（叶绿/流水/炎火/飞空/蓄电/机能/碎裂/平衡/冰霜/
+    SingleElementAmp = 10,      // 单属性增伤 15 个（叶绿/流水/炎火/飞空/蓄电/机能/碎裂/平衡/冰霜/
                            //      魔幻/战意/光环/黑夜/奇异/威严）：
                            //      args[0]=官方属性 id（1 草=叶绿 … 15 龙=威严，同 skill_types.id
                            //      与 `Skills::element` 命名空间）；args[1]=增伤百分点（DB 5~10）。
@@ -85,15 +84,15 @@ enum class TraitKind {
                            //      ⚠️ 未建模的官方怪癖：该增伤"时点过于靠前"，
                            //        **会被变威力效果覆盖重写**（必修6 ①，经典威严王之哈莫）——
                            //        变威力重算会丢弃本增伤，待有需求时按"重算时不再施加"实现。
-    Absorb,                // 吸收（Eid 60）：args[0]=触发概率**百分点**（5~14）、args[1]=**点数**（35~70）；
+    Absorb = 11,                // 吸收（Eid 60）：args[0]=触发概率**百分点**（5~14）、args[1]=**点数**（35~70）；
                            //      落地 REDUCE_FLAT（"减伤属于减少裸伤效果"=点数减伤，官方减伤区第一位），
                            //      受击时掷点 → final -= 点数。
-    PassiveStatDrop,       // 被动属性降低 5 个（反抗/反驳/忽略/草率/慌张，Eid 34）：
+    PassiveStatDrop = 12,       // 被动属性降低 5 个（反抗/反驳/忽略/草率/慌张，Eid 34）：
                            //      "受到**特殊攻击**时有 n% 使对方 m 降低 1 个等级"。
                            //      args[0]=能力码、args[1]=概率百分点（5~14）。
                            //      ⚠️ **args[0] 与引擎 stat 索引不同序**（见 trait_stat_index_from_code）；
                            //      ⚠️ 走 `stat_drop`（对手施予的弱化 → 查免弱 STAT_DROP）。
-    PassiveStatBoost,      // 被动属性提升 5 个（反击/抵抗/反攻/坚韧/借风，Eid 35）：
+    PassiveStatBoost = 13,      // 被动属性提升 5 个（反击/抵抗/反攻/坚韧/借风，Eid 35）：
                            //      "受到**任何攻击**时有 n% 使**自身** m 提升 1 个等级"。
                            //      args[0]=能力码、args[1]=概率百分点。
                            //      ★ 时点（必修6 ①）："在技能**命中时之前**赋予能力提升，因此会被
@@ -102,7 +101,7 @@ enum class TraitKind {
                            //      ⚠️ 走 `stat_change`（**自身增益**，不查免弱——与 PassiveStatDrop 相对）。
     // 已被官方废除、按"存在但无行为"处理（必修6：乱舞"依旧被废除"、0 星与白板无异；
     // 增伤 args 0/6/7/8/9/10 与"增加攻击目标数"args 全 0）→ 只登记 kind，行为 no-op。
-    Unimplemented,
+    Unimplemented = 14,
     // ── 批次 C（2026-09-16）：致死/存活族 ──
     // ★ 与 `force_hp_to_zero` 的关系（用户 2026-09-16 拍板）：**不加短路条件**——
     //   归零与"强制残留/回满"并不冲突，**由先后顺序决定实际效果**：本族的钩位在
@@ -110,28 +109,28 @@ enum class TraitKind {
     //   于是顽强把 0 体力抬回 m 点、回神抬回满血。将来若发现口径要改，只需挪这一个调用点。
     //   （刻意不为它往归零原语里塞第三个短路分支——原语已有的两条短路是"转化/免疫"这类
     //     语义性豁免，不是"后手补救"。）
-    Tenacious,  // 顽强（Eid 31/147）："受到致死攻击时有 n% 几率余下 m 点体力（0 体力也可以触发）"；
+    Tenacious = 15,  // 顽强（Eid 31/147）："受到致死攻击时有 n% 几率余下 m 点体力（0 体力也可以触发）"；
                 //   args[0]=概率（见 trait_survive_prob_permille 的混编说明）、args[1]=残留点数（1/1/1/1/2/2）。
                 //   ★ 仅**战斗阶段**触发（必修6 ①：回合结束后的致死伤害直接击杀，不触发）；
                 //   ★ "强制残留体力，**不受削续航影响**"→ 直写 hp、不过 heal（不被封回血挡）。
-    Revival,    // 回神（Eid 33/148）："体力降低到 1/{args[0]} 时有 n% 几率体力回满（0 体力也可以触发）"；
+    Revival = 16,    // 回神（Eid 33/148）："体力降低到 1/{args[0]} 时有 n% 几率体力回满（0 体力也可以触发）"；
                 //   args[0]=阈值分母（DB 全为 8 → 1/8）、args[1]=概率。同样仅战斗阶段、同样直写 hp。
     // ── 批次 B（2026-09-16）：命中/暴击族（必修6 的机制修正已并入注释）──
     // ⚠️ 这一族**修正了三处望文生义**：免爆不是降暴击率而是**对暴击挡伤**；
     //    虚无不是挡伤而是**概率闪避**；会心 0 星是**与初始暴击率加法**、1-5 星才是独立二次结算。
-    Precision,     // 精准（Eid 29）："所有技能命中率提升 n%"；args[0]=百分点（DB 5~10）。
+    Precision = 17,     // 精准（Eid 29）："所有技能命中率提升 n%"；args[0]=百分点（DB 5~10）。
                    //   ★ 与技能初始命中率**乘法**（必修6：90×1.1=99）；**可作用于属性技能**。
                    //   无概率掷点（是命中率修正，不是概率效果）。
-    Evasion,       // 回避（Eid 7）："被技能命中的几率减少 n%"；args[0]=百分点（DB 5~10）。
+    Evasion = 18,       // 回避（Eid 7）："被技能命中的几率减少 n%"；args[0]=百分点（DB 5~10）。
                    //   ★ 与精准同款乘法（90×0.9=81）；★ 本质是**降低对手命中率**、不是概率效果
                    //   （故不会被"概率提升"类效果推到 100%，必修6 ③）；也作用于属性技能。
-    CritBoost,     // 会心（Eid 30/146）："所有技能的致命一击率增加"；args[0]：**0 星=1（=1/16=6.25%）**、
+    CritBoost = 19,     // 会心（Eid 30/146）："所有技能的致命一击率增加"；args[0]：**0 星=1（=1/16=6.25%）**、
                    //   1-5 星 = 75/88/100/120/140（= 7.5/8.8/10/12/14%，×10 即万分数）。
                    //   ★ 0 星与技能**初始暴击率加法**；1-5 星**独立二次结算**（必修6 ①②）。
-    CritImmunity,  // 免爆（Eid 64/150）："受到致命一击的概率降低"——⚠️ **实际是对暴击的挡伤**：
+    CritImmunity = 20,  // 免爆（Eid 64/150）："受到致命一击的概率降低"——⚠️ **实际是对暴击的挡伤**：
                    //   "当回合免疫受到的暴击伤害"，**不是**降低暴击率（必修6）。args[0] 同会心编码。
                    //   落点：BLOCK 阶段读 `DamageSnapshot::isCrit` → 掷点 → 本次伤害归 0。
-    VoidDodge,     // 虚无（Eid 61/149）：描述"n%几率完全抵挡一次伤害"，⚠️ **实际是有概率闪避
+    VoidDodge = 21,     // 虚无（Eid 61/149）：描述"n%几率完全抵挡一次伤害"，⚠️ **实际是有概率闪避
                    //   对手攻击技能**（必修6：本质是闪避、不是挡伤）。args[0] 概率（见下混编说明）；
                    //   只对**攻击技能**生效（"闪避对手攻击技能"）。
 };
@@ -367,35 +366,11 @@ inline int trait_proc_permille(const EffectiveTrait& t) {
     return 0;
 }
 
-// 触发掷点：被取消触发条件（proc_forced）→ 必发；概率 ≥1000‰（=100%）→ 必发**且不消耗
-// 随机数**；否则 rng.next()%1000 < 千分点。
-// 与暴击掷点、连击掷点、伤害浮动共用同一对局随机数流。
-// ⚠️ 100% 档**短路不消耗**是刻意为之，与本仓库既有的"不调用=不消耗"契约一致
-//    （参见 skills.h 连击区间退化 / battleFsm.cpp 无连击模板 / 暴击率 0 短路）——
-//    否则一次"必发"掷点会推动对局随机序列，使无关的伤害浮动/闪避判定整体错位
-//    （2026-09-16 已因此发生过 4 个场景的回归）。
-inline bool trait_proc_roll(const EffectiveTrait& t, SbsRng& rng) {
-    // 虚无**不吃必发**（proc_forced 的首个真实消费者是极渊DS-001"算力乱流：特性概率
-    // 提升至100%"）：必修6 ③——虚无本质是命中率修正、不是概率触发，被 proc_forced
-    // 推成 100% 闪避是错的。豁免后落到下方按自身概率掷（rand 契约不变）。
-    // ⚠️ proc_override（妙时 990‰）对虚无是否同样该豁免存疑，未动（开工文档 §三.11）。
-    if (t.proc_forced && t.kind != TraitKind::VoidDodge) {
-        return true;
-    }
-    const int permille = trait_proc_permille(t);
-    // 亮节降零（无极圣武）：实际概率（含 override 抬满）≤50% → 不触发；
-    // 必发（DS-001 乱流）在上方已先行返回 → 100% 不受降零（§2.6 联动口径）。
-    if (t.proc_zeroed_le50 && permille > 0 && permille <= 500) {
-        return false;
-    }
-    if (permille <= 0) {
-        return false;
-    }
-    if (permille >= 1000) {
-        return true;   // 100%：不消耗随机数
-    }
-    return (rng.next() % 1000) < permille;
-}
+class BattleContext;
+
+// 非确定性触发才对该对局消耗一次千分点掷点（必发、0%、100% 均不消耗）。
+// actor 是生效特性持有方；target 是本次特性作用方。
+bool trait_proc_roll(const EffectiveTrait& t, BattleContext& ctx, int actor, int target);
 
 // 复制来的特性条目（天女式）。生命周期锚**来源方**（仿 RuleCenter 的 source 锚）：
 // 查询时惰性判活 —— 来源方换宠（登场槽不匹配）或来源效果被断回合作废（epoch 不匹配）即失效。
