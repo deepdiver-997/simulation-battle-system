@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <string_view>
 #include <typeinfo>
 #include <utility>
@@ -139,8 +140,25 @@ struct BattleCloneBranch::Impl {
     BattleFsm fsm{false};
     std::unique_ptr<BattleContext> battle;
     BranchControl control{fsm, battle};
+    // currentState alone cannot distinguish entry from a handler that threw halfway through.
+    bool at_move_right_entry = false;
 
     ~Impl() { battle.reset(); }  // Keep control alive through context destruction.
+
+    BattleCloneResult run_and_capture(bool one_state = false) {
+        at_move_right_entry = false;
+        control.error.clear();
+        const auto before = battle->currentState;
+        const bool dispatched = fsm.run_loop(battle.get(), one_state);
+        const auto& error = control.error;
+        const auto& replay = battle->binary_chance_replay;
+        // A clean replay can reach the entry, but its resolver must be detached
+        // before clone() can copy the battle.
+        at_move_right_entry = one_state && dispatched && error.empty() &&
+                              (!replay || !replay->control_error) && before != battle->currentState &&
+                              battle->currentState == State::BATTLE_FIRST_MOVE_RIGHT;
+        return {error.empty(), error};
+    }
 };
 
 BattleCloneBranch::BattleCloneBranch(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -165,7 +183,17 @@ BattleContext& BattleCloneBranch::context() noexcept { return *impl_->battle; }
 const BattleContext& BattleCloneBranch::context() const noexcept { return *impl_->battle; }
 const BattleFsm& BattleCloneBranch::fsm() const noexcept { return impl_->fsm; }
 
-BattleCloneResult BattleCloneBranch::run() {
+std::unique_ptr<BattleCloneBranch> BattleCloneBranch::clone(std::string& error) const {
+    auto& ctx = *impl_->battle;
+    std::lock_guard lock(ctx.run_mutex);
+    return BattleClone::owned_from_pause(ctx, impl_->at_move_right_entry, error);
+}
+
+BattleCloneResult BattleCloneBranch::run() { return advance(false); }
+BattleCloneResult BattleCloneBranch::step() { return advance(true); }
+
+BattleCloneResult BattleCloneBranch::advance(bool one_state) {
+    impl_->at_move_right_entry = false;
     auto& ctx = context();
     if (!valid_roster_slots(ctx)) return {false, "invalid active pet slot"};
     if (!ctx.is_empty) {
@@ -188,13 +216,19 @@ BattleCloneResult BattleCloneBranch::run() {
             return {false, std::move(error)};
         }
     }
-    impl_->control.error.clear();
-    impl_->fsm.run(&ctx);
-    const auto& error = impl_->control.error;
-    return {error.empty(), error};
+    return impl_->run_and_capture(one_state);
 }
 
 BattleCloneResult BattleCloneBranch::submit(int player, BattleCloneAction action, int index) {
+    return submit_action(player, action, index, false);
+}
+
+BattleCloneResult BattleCloneBranch::step(int player, BattleCloneAction action, int index) {
+    return submit_action(player, action, index, true);
+}
+
+BattleCloneResult BattleCloneBranch::submit_action(
+    int player, BattleCloneAction action, int index, bool one_state) {
     auto& ctx = context();
     if (player < 0 || player > 1) return {false, "invalid player id"};
     if (!valid_roster_slots(ctx) || ctx.finish_flag || !ctx.need_input())
@@ -236,11 +270,16 @@ BattleCloneResult BattleCloneBranch::submit(int player, BattleCloneAction action
     const char* bytes = reinterpret_cast<const char*>(packet);
     ctx.m_buffer.assign(bytes, bytes + sizeof(packet));
     ctx.is_empty = false;
-    return run();
+    return advance(one_state);
 }
 
 std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
     const BattleContext& source, std::string& error) {
+    return owned_from_pause(source, false, error);
+}
+
+std::unique_ptr<BattleCloneBranch> BattleClone::owned_from_pause(
+    const BattleContext& source, bool at_move_right_entry, std::string& error) {
     const auto fail = [&](const char* message) -> std::unique_ptr<BattleCloneBranch> {
         error = message;
         return nullptr;
@@ -250,11 +289,21 @@ std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
     const auto* fsm = source.m_fsm;
     if (!fsm || !controller || !controller->clone_source_certified(source, *fsm))
         return fail("source controller cannot certify a paused battle");
+    // An entry certificate is private to a synchronous branch. Room and training
+    // roots still use the original input-only contract.
+    const bool at_handler_entry = at_move_right_entry &&
+        source.currentState == State::BATTLE_FIRST_MOVE_RIGHT && source.is_empty && source.m_buffer.empty();
     if (!valid_roster_slots(source) || source.finish_flag || source.debug_step_mode ||
-        !source.breakpoints.empty() || !source.need_input() ||
-        (source.currentState == State::OPERATION_CHOOSE_SKILL_MEDICAMENT &&
-         source.operation_collected[0] && source.operation_collected[1]))
+        !source.breakpoints.empty())
         return fail("source is not at a stable input decision");
+    const bool at_input = source.need_input() &&
+        !(source.currentState == State::OPERATION_CHOOSE_SKILL_MEDICAMENT &&
+          source.operation_collected[0] && source.operation_collected[1]);
+    if (!at_input && !at_handler_entry)
+        return fail("source is not at a stable input decision or supported handler entry");
+
+    // Value-copying a callback or std::any does not prove independence: it
+    // may contain a pointer or a capture into the original battle.
     if (source.on_finish || !source.death_interceptors.empty() || !source.invalid_skill_damage_hooks.empty() ||
         source.ws.combo_count_resolver[0] || source.ws.combo_count_resolver[1] ||
         source.ws.combo_hit_hook[0] || source.ws.combo_hit_hook[1])
@@ -279,6 +328,8 @@ std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
             return fail("source contains an unverified rule callback");
     }
 
+    // Assemble a new owner rather than rerunning battle initialization. Copy
+    // the RNG cursor, not the original seed, and bind to the branch's own FSM.
     auto branch = std::make_unique<BattleCloneBranch::Impl>();
     if (fsm->stateHandlerMap != branch->fsm.stateHandlerMap)
         return fail("source FSM uses a non-default handler table");
@@ -287,7 +338,10 @@ std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
     branch->battle.reset(new BattleContext(&branch->control, source.seerRobot, source.rng()));
     auto& dst = *branch->battle;
     dst.m_fsm = &branch->fsm;
+    branch->at_move_right_entry = at_handler_entry;
 
+    // Keep effect lifetimes and bucket keys, but deep-copy each audited node.
+    // Other buckets may be empty; their live node types are not audited here.
     const auto copy_bucket = [&](const TimedBucket& in, TimedBucket& out, bool skill_bucket) {
         for (const auto& [state, sides] : in.buckets_) {
             auto& buckets = out.buckets_[state];
@@ -311,15 +365,20 @@ std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
         !copy_bucket(source.passive_effects, dst.passive_effects, false) ||
         !copy_bucket(source.updater_effects, dst.updater_effects, false))
         return fail("source contains an unverified timed effect or effect arguments");
+    // Pipeline copy helpers enforce their own callback allowlists.
     if (!source.damage_pipeline_.clone_into(dst.damage_pipeline_))
         return fail("source contains an unverified red-damage callback");
     if (!source.pink_damage_pipeline_.clone_into(dst.pink_damage_pipeline_))
         return fail("source contains an unverified pink-damage callback");
 
+    // Preserve ticket/watcher IDs and their allocation cursors: other battle
+    // state may already refer to them. Do not replay registration side effects.
     dst.rule_center_.all_ = rules.all_;
     dst.rule_center_.next_source_id_ = rules.next_source_id_;
     assign(dst.rule_center_.round_count_, rules.round_count_);
     dst.tape_ = source.tape_;
+    // The copied tape keeps sequence/history; future delivery must target it,
+    // not the source tape's sink. No pending event crosses the checkpoint.
     dst.event_center_.sink_ = dst.tape_.event_sink();
     dst.event_center_.watchers_ = events.watchers_;
     dst.event_center_.by_type_ = events.by_type_;
@@ -330,11 +389,13 @@ std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
     // source controller, mutex or external callbacks into the branch.
 #define COPY(field) assign(dst.field, source.field)
     COPY(on_stage); COPY(roundCount); COPY(uuid); COPY(currentState); COPY(ws);
+    // Persistent state, invalidation epochs and effect diagnostics.
     COPY(plugin_storage); COPY(abnormal_status_end_round); COPY(anomaly_duration_cap);
     COPY(anomaly_resist_low_penalty); COPY(round_effect_valid_id); COPY(watcher_valid_id);
     COPY(pipeline_valid_id); COPY(trait_state_); COPY(anomaly_view_layers); COPY(prev_round_preemptive_right);
     COPY(effect_arg_faults); COPY(effect_arg_faulted); COPY(effect_arg_fail_fast);
     COPY(effect_arg_reported_); COPY(effect_arg_faults_suppressed);
+    // Resolution state and roster views needed by subsequent handlers.
     COPY(hp_zero_converted); COPY(skill_use_seq); COPY(attack_boost_grants);
     COPY(crit_happened); COPY(force_execute_on_pp0); COPY(ignore_pp); COPY(pp_reverse);
     COPY(pp_retain_pet); COPY(cannot_act_round); COPY(hp_consume_marks);
@@ -345,6 +406,7 @@ std::unique_ptr<BattleCloneBranch> BattleClone::owned_at_decision(
     COPY(standby_pet_ids); COPY(standby_is_spirit_king); COPY(standby_hp_consume_kit);
     COPY(prev_on_stage_slot); COPY(prev_on_stage_elem); COPY(last_damage_actor); COPY(last_landed_hit);
     COPY(worn_equipment); COPY(active_suits); COPY(equip_stat_flat); COPY(equip_stat_pct);
+    // Input bookkeeping, outcome and deferred switches are part of the state.
     COPY(m_buffer); COPY(is_empty); COPY(debug_step_mode); COPY(breakpoints);
     COPY(current_player_id_); COPY(operation_log_); COPY(moves_log_); COPY(operation_collected);
     COPY(failed_attempts); COPY(max_rounds); COPY(finish_flag); COPY(finish_alive_snapshot);

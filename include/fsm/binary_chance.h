@@ -119,6 +119,9 @@ struct BinaryChanceReplay {
     BinaryPathResolver* resolver = nullptr;
     // Takes precedence over binary-only replay and sees native weighted sites too.
     ChanceResolver* weighted_resolver = nullptr;
+    // Native runs own the recorder here. The raw pointer above also supports
+    // callers of the legacy synchronous probe that borrow their resolver.
+    std::unique_ptr<ChanceResolver> owned_resolver;
     // Every low-level draw belongs to one of these categories, including
     // singleton legacy consumption and rejection retries.
     std::uint64_t classified_draws = 0; // Sites with semantic identities.

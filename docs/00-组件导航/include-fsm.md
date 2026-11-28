@@ -8,7 +8,10 @@
 | `battleContext.h` | **Fsm 状态收纳盒**：所有长期战斗状态 + 时点桶 | `BattleContext`：`skills_effects`/`soul_mark_effects`（TimedBucket）/`skill_seals`/`roundChoice`/`seerRobot`/`ws`、内联 `register_skill_effect`/`register_soulmark_effect`/`invalidate_all_round_effects`/`grant_skill_invalid`/`grant_penetration`/`find_pet_with_soulmark`（插件调的就是这些） | CLAUDE.md §3.2/3.6/3.9 |
 | `battleWorkspace.h` | **每回合重置的临时层**（凭证朝生暮灭） | `BattleWorkspace ws`：`skill_power_view`/`skill_element_view`/`eff_*_resist_pct`/`attack_credential`/`skill_effect_source`（kExecOnly 替换）/`dodge_rate`/`heal_mod_pct`… **每回合 `handle_BattleRoundStart` 开头 reset()** | CLAUDE.md §3.3/3.7/3.8 坑7 |
 | `state.h` | **State 枚举**（-1..39）+ 中文名 + 免疫覆盖位 | `State`、`state_name_cn`、`state_coverage_*`/`coverage_all` | CLAUDE.md §3.2 坑2（想引用 State 的**必须显式 include 本头**） |
-| `iControlBlock.h` | **控制块抽象**（输入等待/输出/日志/上下文管理） | `IControlBlock`、`BattleControlBlock`、`TrainingControlBlock`（training_cli 用） | CLAUDE.md §3、docs/01 |
+| `iControlBlock.h` | **FSM 与控制器的契约**（输入等待、报错、暂停时交付） | `IControlBlock` 的 `wait_for_input` / `async_write` / `on_fsm_paused` | CLAUDE.md §3、docs/01 |
+| `local_battle_control.h` | **公开的进程内对局控制** | `set_auto_branching` / `run` / `inspect` / `close`，用 ID 推进和清理分支 | [公开自动分支示例](../../examples/public/README.md#自动分支只用公开控制器) |
+| `battle_clone.h` | **受审计的独立副本** | `BattleCloneBranch::clone` / `step`、底层 `BattleClone::owned_at_decision` | [对局克隆与随机回放](../01-架构与设计/对局克隆与随机回放.md) |
+| `binary_chance.h` | **随机点身份、候选和回放契约** | `ChancePoint`、`ChanceOption`、`ChanceResolver` | [对局克隆与随机回放](../01-架构与设计/对局克隆与随机回放.md) |
 | （内含）`SkillReplaceSource` | 技能替换**执行期重定向描述符**（kExecOnly/kFull） | 去 `battleContext.h` 的 `pending_skill_replacement`、`battleWorkspace` 的 `skill_effect_source` | CLAUDE.md §3.4 |
 | （内含）`DamageSnapshot` | 单次攻击的伤害快照 | 去 `battleContext.h` / `damage_pipeline.h` | CLAUDE.md §3.7 |
 

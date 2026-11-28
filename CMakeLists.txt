@@ -69,6 +69,7 @@ set(SIM_CORE_SOURCES
     src/fsm/battleContext.cpp
     src/fsm/battleFsm.cpp
     src/fsm/battle_clone.cpp
+    src/fsm/chance_dispatch.cpp
     src/fsm/local_battle_control.cpp
     src/fsm/battle_mutate.cpp
     src/fsm/state_snapshot.cpp

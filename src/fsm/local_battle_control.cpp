@@ -1,13 +1,21 @@
 #include <fsm/local_battle_control.h>
 
 #include <fsm/battleContext.h>
+#include <fsm/chance_dispatch.h>
 
 #include <algorithm>
 #include <exception>
-#include <mutex>
+#include <limits>
 #include <utility>
 
 namespace {
+LocalBattleControl::RunResult failed_run(std::string error) {
+    LocalBattleControl::RunResult result;
+    result.report.stop = BattleChanceStop::Failed;
+    result.report.failed_mass = 1;
+    result.report.diagnostic = std::move(error);
+    return result;
+}
 
 std::string compare_step(const BattleContext& source, const BattleContext& shadow,
                          const BattleCloneResult& primary, const BattleCloneResult& replay) {
@@ -42,7 +50,6 @@ std::string compare_step(const BattleContext& source, const BattleContext& shado
     if (source.getFullStateJson() != shadow.getFullStateJson()) return "diagnostic snapshot differs";
     return {};
 }
-
 }  // namespace
 
 LocalBattleControl::OpenResult LocalBattleControl::insert(std::unique_ptr<BattleCloneBranch> battle,
@@ -56,6 +63,7 @@ LocalBattleControl::OpenResult LocalBattleControl::insert(std::unique_ptr<Battle
 LocalBattleControl::OpenResult LocalBattleControl::start(const std::array<SeerRobot, 2>& robots,
                                                         unsigned int seed, int max_rounds,
                                                         bool effect_arg_fail_fast) {
+    if (dispatching_) return {0, "controller is dispatching a branch"};
     if (max_rounds < 0) return {0, "invalid round limit"};
     std::string error;
     auto battle = BattleCloneBranch::start_local(robots.data(), seed, max_rounds,
@@ -65,16 +73,13 @@ LocalBattleControl::OpenResult LocalBattleControl::start(const std::array<SeerRo
 }
 
 LocalBattleControl::OpenResult LocalBattleControl::clone(Id source) {
+    if (dispatching_) return {0, "controller is dispatching a branch"};
     const auto it = entries_.find(source);
     if (it == entries_.end()) return {0, "unknown local battle"};
+    if (it->second.branch_managed) return {0, "automatic branches are managed by run()"};
     if (it->second.mirror_of) return {0, "mirror is read-only"};
-    auto& ctx = it->second.battle->context();
     std::string error;
-    std::unique_ptr<BattleCloneBranch> branch;
-    {
-        std::lock_guard lock(ctx.run_mutex);
-        branch = BattleClone::owned_at_decision(ctx, error);
-    }
+    auto branch = it->second.battle->clone(error);
     if (!branch) return {0, std::move(error)};
     // Local IDs do not deliver history from before the fork. Raw engine
     // clones still keep their tape, and disabling it does not reset its cursor.
@@ -83,8 +88,10 @@ LocalBattleControl::OpenResult LocalBattleControl::clone(Id source) {
 }
 
 LocalBattleControl::OpenResult LocalBattleControl::mirror(Id source) {
+    if (dispatching_) return {0, "controller is dispatching a branch"};
     const auto it = entries_.find(source);
     if (it == entries_.end()) return {0, "unknown local battle"};
+    if (it->second.branch_managed) return {0, "automatic branches are managed by run()"};
     auto& root = it->second;
     if (root.mirror_of) return {0, "mirror is read-only"};
     if (root.shadow) return {0, "local battle already has a mirror"};
@@ -110,9 +117,11 @@ void LocalBattleControl::detach(Entry& source) {
 
 LocalBattleControl::SubmitResult LocalBattleControl::submit(Id id, int player, BattleCloneAction action,
                                                            int index) {
+    if (dispatching_) return {{false, "controller is dispatching a branch"}, std::nullopt};
     const auto it = entries_.find(id);
     if (it == entries_.end()) return {{false, "unknown local battle"}, std::nullopt};
     auto& source = it->second;
+    if (source.auto_branching) return {{false, "use run() for automatic branching"}, std::nullopt};
     if (source.mirror_of) return {{false, "mirror is read-only"}, std::nullopt};
     const auto input = ++source.inputs;
 
@@ -145,12 +154,107 @@ LocalBattleControl::SubmitResult LocalBattleControl::submit(Id id, int player, B
     return {std::move(primary), std::nullopt};
 }
 
-const BattleContext* LocalBattleControl::context(Id id) const noexcept {
+BattleCloneResult LocalBattleControl::set_auto_branching(Id id, std::optional<BattleChanceOptions> options) {
+    if (dispatching_) return {false, "controller is dispatching a branch"};
     const auto it = entries_.find(id);
-    return it != entries_.end() ? &std::as_const(*it->second.battle).context() : nullptr;
+    if (it == entries_.end()) return {false, "unknown local battle"};
+    auto& entry = it->second;
+    if (entry.shadow || entry.mirror_of) return {false, "automatic branching and mirroring are mutually exclusive"};
+    if (options) {
+        entry.auto_branching = std::make_shared<const BattleChanceOptions>(std::move(*options));
+        entry.branch_managed = true;
+    } else {
+        entry.auto_branching.reset();
+    }
+    return {true, {}};
+}
+
+LocalBattleControl::RunResult LocalBattleControl::run(Id id, BattleInput input) {
+    if (dispatching_) return failed_run("controller is dispatching a branch");
+    const auto it = entries_.find(id);
+    if (it == entries_.end()) return failed_run("unknown local battle");
+    auto& source = it->second;
+    if (!source.auto_branching) {
+        auto result = submit(id, input.player, input.action, input.index);
+        RunResult out;
+        out.difference = std::move(result.difference);
+        out.report.advances = 1;
+        if (!result.primary) {
+            out.report.stop = BattleChanceStop::Failed;
+            out.report.failed_mass = 1;
+            out.report.diagnostic = std::move(result.primary.error);
+            return out;
+        }
+        out.report.leaves = 1;
+        out.report.completed_mass = 1;
+        out.branches.push_back({id, 1, 1, source.battle->context().finish_flag, {}, {}});
+        return out;
+    }
+    if (!source.battle->context().need_input() || source.battle->context().finish_flag)
+        return failed_run("battle is not waiting for input");
+
+    // No controller mutations or user-visible leaves until all engine calls return.
+    dispatching_ = true;
+    struct ResetDispatching { bool& flag; ~ResetDispatching() { flag = false; } } reset{dispatching_};
+    using namespace battle_chance_detail;
+    std::vector<EngineLeaf<BattleCloneBranch>> done;
+    const auto settings = source.auto_branching;
+    RunResult out;
+    out.report = dispatch<BattleCloneBranch>(*settings, EngineFailure::Diverged,
+        [&](const BattleCloneBranch* entry, ResolverOwner& tape, const SaveBattle& save) {
+            if (entry) return replay_input(*entry, std::nullopt, tape, save);
+            return replay_input(*source.battle, input, tape, save);
+        }, [&](EngineLeaf<BattleCloneBranch> leaf) { done.push_back(std::move(leaf)); });
+
+    const auto complete = out.report.stop == BattleChanceStop::Complete;
+    const auto describe = [&](Id leaf_id, EngineLeaf<BattleCloneBranch>& leaf) {
+        out.branches.push_back({leaf_id, leaf.dispatch_id, leaf.mass, leaf.terminal,
+                                std::move(leaf.trace), leaf.coverage});
+    };
+    out.branches.reserve(done.size());
+    if (complete && done.size() == 1) {
+        describe(id, done.front());
+        source.battle = std::move(done.front().battle);
+        ++source.inputs;
+        return out;
+    }
+    if (!done.empty() && (next_id_ == 0 || done.size() - 1 > std::numeric_limits<Id>::max() - next_id_))
+        return failed_run("local battle IDs exhausted");
+    try {
+        for (auto& leaf : done) {
+            const auto opened = insert(std::move(leaf.battle), source.inputs + 1);
+            auto& entry = entries_.at(opened.id);
+            entry.auto_branching = settings;
+            entry.branch_managed = true;
+            describe(opened.id, leaf);
+        }
+    } catch (...) {
+        for (const auto& leaf : out.branches) entries_.erase(leaf.id);
+        throw;
+    }
+    if (complete) entries_.erase(it);
+    return out;
+}
+
+std::optional<LocalBattleControl::View> LocalBattleControl::inspect(Id id) const {
+    if (dispatching_) return std::nullopt;
+    const auto it = entries_.find(id);
+    if (it == entries_.end()) return std::nullopt;
+    const auto& ctx = std::as_const(*it->second.battle).context();
+    const std::array<int, 2> hp{ctx.seerRobot[0].elfPets[ctx.on_stage[0]].hp,
+                                ctx.seerRobot[1].elfPets[ctx.on_stage[1]].hp};
+    return View{ctx.currentState, ctx.roundCount, ctx.need_input() ? ctx.current_player_id_ : -1,
+                ctx.finish_flag, hp, ctx.getStateJson()};
+}
+
+const BattleContext* LocalBattleControl::context(Id id) const noexcept {
+    if (dispatching_) return nullptr;
+    const auto it = entries_.find(id);
+    return it != entries_.end() && !it->second.branch_managed ? &std::as_const(*it->second.battle).context() : nullptr;
 }
 
 bool LocalBattleControl::close(Id id) {
+    if (dispatching_) return false;
     const auto it = entries_.find(id);
     if (it == entries_.end()) return false;
     auto& entry = it->second;

@@ -67,6 +67,7 @@ public:
 
 private:
     friend class BattleClone;
+    friend class BattleCloneBranch;
     std::unordered_map<State, HandlerType> stateHandlerMap;
     bool verbose_trace_ = false;
 
@@ -74,6 +75,8 @@ private:
 
     // Caller must serialize access to the context.
     void bind_context_locked(BattleContext& context);
+    // True if a handler finished, including event delivery and sampling.
+    bool run_loop(BattleContext* battleContext, bool one_state);
     bool runInternal(BattleContext* battleContext);
 
     // 命中前全局锚点（EVENT_BEFORE_SKILL_HIT）：一回合只在第一次进入命中前时点发一次，

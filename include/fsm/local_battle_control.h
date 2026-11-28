@@ -2,6 +2,7 @@
 #define SBS_LOCAL_BATTLE_CONTROL_H
 
 #include <fsm/battle_clone.h>
+#include <fsm/chance_branch.h>
 
 #include <array>
 #include <cstdint>
@@ -42,6 +43,38 @@ public:
     OpenResult mirror(Id source);
     SubmitResult submit(Id id, int player, BattleCloneAction action, int index = 0);
 
+    struct Branch {
+        Id id;
+        std::size_t dispatch_id; // One-based within this run; use id for subsequent calls.
+        long double weight;
+        bool terminal;
+        std::vector<BattleChanceRecord> trace;
+        BattleChanceCoverage coverage;
+    };
+    struct RunResult {
+        BattleChanceReport report;
+        std::vector<Branch> branches;
+        std::optional<MirrorDifference> difference;
+    };
+    struct View {
+        State state;
+        int round;
+        int next_player; // -1 when there is no input wait.
+        bool terminal;
+        std::array<int, 2> active_hp;
+        std::string state_json;
+    };
+
+    // Opt in for this ID and its descendants. nullopt turns off enumeration;
+    // a branch-managed battle remains inspectable only via an owned view.
+    BattleCloneResult set_auto_branching(Id id, std::optional<BattleChanceOptions> options = BattleChanceOptions{});
+    // Consume one input, stopping at the next actual wait or terminal. Results
+    // hold IDs and values only. Automatic branching preserves the input root on a cut or failure.
+    RunResult run(Id id, BattleInput input);
+    std::optional<View> inspect(Id id) const;
+
+    // Legacy borrowed pointer, valid only until the next mutating call.
+    // Unavailable for branch-managed battles, even after branching is disabled.
     const BattleContext* context(Id id) const noexcept;
     // Closing a source also closes its attached shadow, not its ordinary clones.
     bool close(Id id);
@@ -52,6 +85,8 @@ private:
         Id shadow = 0;
         Id mirror_of = 0;
         std::uint64_t inputs = 0;
+        std::shared_ptr<const BattleChanceOptions> auto_branching{};
+        bool branch_managed = false;
     };
 
     OpenResult insert(std::unique_ptr<BattleCloneBranch> battle, std::uint64_t inputs = 0);
@@ -59,6 +94,7 @@ private:
 
     std::map<Id, Entry> entries_;
     Id next_id_ = 1;
+    bool dispatching_ = false;
 };
 
 #endif

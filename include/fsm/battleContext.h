@@ -95,6 +95,9 @@ enum class EffectContainer {
 };
 
 
+// 阅读入口：本类保存对局数据，不保存当前 handler 的调用栈。
+// 回合内字段看 BattleWorkspace；推进顺序看 BattleFsm::run；
+// 想复制并续跑则从 <fsm/battle_clone.h> 开始，不从字段表手写拷贝。
 class BattleContext {
 private:
     // 单对局拥有独立序列；同一 context 的访问仍须由调用方串行化。
@@ -1911,7 +1914,8 @@ public:
     std::string getStateJson() const;
     std::string getFullStateJson() const;
 
-    // Tail-only, core-owned training state. Never inherited by a decision clone.
+    // Core-owned replay for this advance (native branching or a legacy probe).
+    // Never inherited by a clone; the controller takes the record at a safe pause.
     std::optional<BinaryChanceReplay> binary_chance_replay;
 
 private:

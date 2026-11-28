@@ -15,6 +15,41 @@ cmake --build build -j8 --target sim_demo_scenario
 无需数据库、无需插件动态库：示例里的技能与面板全部手工装配（`bare_pet.h`），
 魂印程序用公开 API 直接注册（`demo_mark.h`）。
 
+## 自动分支：只用公开控制器
+
+```bash
+cmake -S . -B build
+cmake --build build -j8 --target sim_native_branch_demo
+./build/sim_native_branch_demo
+```
+
+[`native_branch_demo.cpp`](native_branch_demo.cpp) 手造技能，通过 `EffectFactory::registerAuditedSkillEffect`
+注册一个合成效果，并用 `ctx->choose_weighted(...)` 声明它的互斥结果。应用不必操作 RNG、
+克隆或回放前缀。用 [`LocalBattleControl`](../../include/fsm/local_battle_control.h) 开局后：
+
+```cpp
+// id 是 start() 返回的对局 ID；先检查配置和 run 的报告。
+const auto enabled = control.set_auto_branching(id);
+if (!enabled) throw std::runtime_error(enabled.error);
+const auto step = control.run(id, {0, BattleCloneAction::SelectSkill, 0});
+for (const auto& branch : step.branches) {
+    const auto view = control.inspect(branch.id);  // 自有值，不是 BattleContext*。
+    // 可以按 branch.id 继续 run() 或用 close() 放弃该分支。
+}
+```
+
+一次 `run` 吃一份输入，停在下一次真实等待或终局；若换宠监听器在首包就抽签，
+可能立刻得到几个都在等另一位输入的分支。无分裂的完成步骤保留原 ID；完整分裂以新 ID
+替换父局；预算截止或失败保留父局，只列出已完成子局。权重不重新归一化，`dispatch_id`
+只在这次运行内有意义。自动分支和镜像互斥；启用后用 `inspect` 取值，不借用 ctx 指针。
+`inspect` 是进程内引擎快照，不是有信息隔离的玩家观察协议。
+
+`registerAuditedSkillEffect` 要求调用方确认效果可独立重跑：参数自持，不修改外部共享状态，
+也不保留原局指针。这是克隆许可，不是沙箱；若局内已有未审计组件，`run` 会报告拒绝。
+回放只是对接入公共随机包装的语义点展开；直接采样不会凭空变成树边。用 CMake 源码集成时，
+应用以 C++20 编译，通过 `add_subdirectory` 后链接 `sim_core`。不需要官方数据库文件或本机
+插件，但 `sim_core` 仍有 SQLite 等构建和链接依赖。
+
 ## 目录
 
 | 文件 | 作用 |

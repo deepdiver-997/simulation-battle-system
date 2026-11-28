@@ -39,7 +39,8 @@
 //   v10：对局 RNG 与概率重放新增计数、控制流记录（BattleContext 布局变化）。
 //   v11：语义概率闸、区间和有序加权选择；红伤区间落 BattleWorkspace。
 //   v12：不放回的槽位选择可保留旧拒绝重掷，同时只向回放暴露合法结果。
-constexpr uint32_t kPluginAbiVersion = 12;
+//   v13：BattleContext 的原生分支回放独占持有本段记录。
+constexpr uint32_t kPluginAbiVersion = 13;
 
 // Core 原语函数指针集合。由 sim_core 填充（见 src/effects/core_api.cpp 的 core_api()）。
 struct CoreApi {

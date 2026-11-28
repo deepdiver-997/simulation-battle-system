@@ -1394,14 +1394,19 @@ void BattleFsm::bind_context_locked(BattleContext& context) {
 }
 
 void BattleFsm::run(BattleContext* battleContext) {
+    (void)run_loop(battleContext, false);
+}
+
+bool BattleFsm::run_loop(BattleContext* battleContext, bool one_state) {
     if (!battleContext) throw std::invalid_argument("null BattleContext");
     SnapshotScope snapshot_scope(battleContext);
+    bool dispatched = false;
     {
         std::lock_guard<std::mutex> guard(battleContext->run_mutex);
         bind_context_locked(*battleContext);
 
-        // 单步模式或命中断点 → 只执行一个状态就返回
-        bool single_shot = battleContext->debug_step_mode ||
+        // 本地单步、调试单步或命中断点 → 执行至多一个状态就返回。
+        const bool single_shot = one_state || battleContext->debug_step_mode ||
             battleContext->breakpoints.count(static_cast<int>(battleContext->currentState)) > 0;
 
         // 控制块全程持有 unique_ptr，FSM 使用 raw pointer
@@ -1412,6 +1417,7 @@ void BattleFsm::run(BattleContext* battleContext) {
                 // 需要等待输入，退出 run 让控制块处理
                 break;
             }
+            dispatched = true;
             if (battleContext->currentState == State::FINISHED) {
                 break;
             }
@@ -1429,6 +1435,7 @@ void BattleFsm::run(BattleContext* battleContext) {
     if (battleContext->control_block_ != nullptr) {
         battleContext->control_block_->on_fsm_paused(battleContext);
     }
+    return dispatched;
 }
 
 bool BattleFsm::runInternal(BattleContext* battleContext) {
